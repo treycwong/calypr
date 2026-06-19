@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "EdgeSpec": {
+      "description": "A directed control-flow edge. `condition` is set on edges leaving a Router.",
+      "properties": {
+        "condition": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "type": "string"
+        },
+        "source": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "source",
+        "target"
+      ],
+      "title": "EdgeSpec",
+      "type": "object"
+    },
+    "NodeSpec": {
+      "description": "A vertex in the control-flow graph. `type` resolves to a node-registry entry.",
+      "properties": {
+        "config": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "id": {
+          "type": "string"
+        },
+        "position": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "number"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "type": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "NodeSpec",
+      "type": "object"
+    },
+    "Reducer": {
+      "description": "How concurrent/iterative writes to a state channel merge (LangGraph reducer).",
+      "enum": [
+        "append",
+        "last"
+      ],
+      "title": "Reducer",
+      "type": "string"
+    },
+    "StateChannel": {
+      "description": "One typed variable in the shared graph state.",
+      "properties": {
+        "default": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "key": {
+          "type": "string"
+        },
+        "reducer": {
+          "$ref": "#/$defs/Reducer",
+          "default": "last"
+        },
+        "type": {
+          "default": "string",
+          "type": "string"
+        }
+      },
+      "required": [
+        "key"
+      ],
+      "title": "StateChannel",
+      "type": "object"
+    }
+  },
+  "description": "A complete agent graph as drawn on the canvas.",
+  "properties": {
+    "description": {
+      "default": "",
+      "type": "string"
+    },
+    "edges": {
+      "items": {
+        "$ref": "#/$defs/EdgeSpec"
+      },
+      "type": "array"
+    },
+    "entry": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "id": {
+      "type": "string"
+    },
+    "name": {
+      "type": "string"
+    },
+    "nodes": {
+      "items": {
+        "$ref": "#/$defs/NodeSpec"
+      },
+      "type": "array"
+    },
+    "schema_version": {
+      "default": "0.1.0",
+      "type": "string"
+    },
+    "state": {
+      "items": {
+        "$ref": "#/$defs/StateChannel"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "id",
+    "name"
+  ],
+  "title": "GraphSpec",
+  "type": "object"
+}

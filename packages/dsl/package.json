@@ -1,0 +1,23 @@
+{
+  "name": "@calypr/dsl",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "ts/index.ts",
+  "types": "ts/index.ts",
+  "exports": {
+    ".": "./ts/index.ts"
+  },
+  "files": ["ts"],
+  "scripts": {
+    "gen:schema": "uv run --project ../.. python -m calypr_dsl.codegen",
+    "gen:ts": "node scripts/gen-ts.mjs",
+    "gen": "pnpm gen:schema && pnpm gen:ts",
+    "gen:check": "pnpm gen && git diff --exit-code -- ts/schema ts/generated",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "json-schema-to-typescript": "^15.0.4",
+    "typescript": "^5.6.3"
+  }
+}

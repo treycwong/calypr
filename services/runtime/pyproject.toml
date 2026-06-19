@@ -1,0 +1,21 @@
+[project]
+name = "calypr-runtime"
+version = "0.0.0"
+description = "Calypr runtime — invoke, stream, and durable checkpointing."
+requires-python = ">=3.12"
+dependencies = [
+  "calypr-compiler",
+  "langgraph>=0.2",
+  "langgraph-checkpoint-postgres>=2.0",
+  "psycopg[binary]>=3.2",
+]
+
+[tool.uv.sources]
+calypr-compiler = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/calypr_runtime"]

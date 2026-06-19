@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: calypr
+          POSTGRES_PASSWORD: calypr
+          POSTGRES_DB: calypr
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U calypr -d calypr"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      CALYPR_DATABASE_URL: postgresql+psycopg://calypr:calypr@localhost:5432/calypr
+      CI: "true"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up uv (+ Python 3.12)
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync Python deps
+        run: uv sync
+
+      - name: Lint (ruff)
+        run: uvx ruff check .
+
+      - name: DSL codegen drift check
+        run: pnpm --filter @calypr/dsl gen:check
+
+      - name: Typecheck (web + dsl)
+        run: pnpm -r --if-present typecheck
+
+      - name: Migrate database
+        run: uv run --project apps/api alembic -c apps/api/alembic.ini upgrade head
+
+      - name: Backend tests (pytest)
+        run: uv run pytest
+
+      - name: Install Playwright browser
+        run: pnpm --filter @calypr/e2e exec playwright install --with-deps chromium
+
+      - name: E2E (Playwright)
+        run: pnpm --filter @calypr/e2e test

@@ -1,0 +1,31 @@
+[tool.uv.workspace]
+members = [
+  "apps/api",
+  "packages/dsl",
+  "packages/nodes",
+  "services/model",
+  "services/compiler",
+  "services/runtime",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-asyncio>=0.24"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+addopts = "-q --import-mode=importlib"
+asyncio_mode = "auto"
+testpaths = [
+  "apps/api/tests",
+  "packages/dsl/tests",
+  "packages/nodes/tests",
+  "services/model/tests",
+  "services/compiler/tests",
+  "services/runtime/tests",
+]

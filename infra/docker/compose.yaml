@@ -1,0 +1,21 @@
+name: calypr
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: calypr
+      POSTGRES_PASSWORD: calypr
+      POSTGRES_DB: calypr
+    ports:
+      - "5432:5432"
+    volumes:
+      - calypr_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U calypr -d calypr"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  calypr_pgdata:

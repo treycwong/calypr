@@ -1,0 +1,90 @@
+"""The node registry — the plugin backbone (CLAUDE-PLAN.md §5).
+
+Each node type registers once with: metadata, a Pydantic config schema, read/write
+channel declarations, and a `compile(cfg, ctx) -> node callable`. Registering a type is
+all it takes for the compiler to handle it and (later) for the canvas to render it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from typing import Any, ClassVar
+
+from calypr_model import ModelClient
+from pydantic import BaseModel
+
+# A compiled node: reads the graph state, returns a partial state update.
+NodeFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
+@dataclass
+class NodeContext:
+    """Runtime dependencies injected into a node at compile time.
+
+    Phase 1 carries the model client; tool registry, KB retrievers, and credential
+    vault are added in later phases.
+    """
+
+    model: ModelClient | None = None
+
+
+class NodeMeta(BaseModel):
+    """Palette metadata for a node type (drives the canvas in Phase 2)."""
+
+    label: str
+    category: str
+    icon: str = ""
+    description: str = ""
+
+
+class BaseNode:
+    """Base class for node types. Subclasses set `type`, `meta`, `config_model`
+    and implement `compile`."""
+
+    type: ClassVar[str]
+    meta: ClassVar[NodeMeta]
+    config_model: ClassVar[type[BaseModel]]
+
+    @classmethod
+    def reads(cls, cfg: BaseModel) -> list[str]:
+        return []
+
+    @classmethod
+    def writes(cls, cfg: BaseModel) -> list[str]:
+        return []
+
+    @classmethod
+    def compile(cls, cfg: BaseModel, ctx: NodeContext) -> NodeFn:  # pragma: no cover
+        raise NotImplementedError
+
+
+_REGISTRY: dict[str, type[BaseNode]] = {}
+
+
+def register(cls: type[BaseNode]) -> type[BaseNode]:
+    """Class decorator: add a node type to the registry, keyed by `cls.type`."""
+    if cls.type in _REGISTRY:
+        raise ValueError(f"duplicate node type: {cls.type!r}")
+    _REGISTRY[cls.type] = cls
+    return cls
+
+
+def get_node(node_type: str) -> type[BaseNode]:
+    try:
+        return _REGISTRY[node_type]
+    except KeyError as exc:
+        raise KeyError(f"unknown node type: {node_type!r}") from exc
+
+
+def has_node(node_type: str) -> bool:
+    return node_type in _REGISTRY
+
+
+def all_node_types() -> dict[str, type[BaseNode]]:
+    return dict(_REGISTRY)
+
+
+def parse_config(node_type: str, raw: dict[str, Any]) -> BaseModel:
+    """Validate a node's raw config dict against its registered schema."""
+    return get_node(node_type).config_model.model_validate(raw)
