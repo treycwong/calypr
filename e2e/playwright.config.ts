@@ -25,12 +25,16 @@ export default defineConfig({
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
-      command: `pnpm --filter @calypr/web exec next dev --port ${WEB_PORT}`,
+      // Production build, not `next dev`: fully compiled, no HMR/Fast-Refresh remounts —
+      // the canvas state stays put through the test (deterministic E2E).
+      command:
+        `pnpm --filter @calypr/web exec next build && ` +
+        `pnpm --filter @calypr/web exec next start --port ${WEB_PORT}`,
       url: `http://localhost:${WEB_PORT}`,
       cwd: root,
       env: { CALYPR_API_URL: API_URL },
       reuseExistingServer: false,
-      timeout: 120_000,
+      timeout: 180_000,
     },
     {
       command: `uv run uvicorn calypr_api.main:app --port ${API_PORT}`,

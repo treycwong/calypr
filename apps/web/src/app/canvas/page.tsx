@@ -17,6 +17,7 @@ import "./canvas.css";
 import Link from "next/link";
 import { useCallback, useRef, useState } from "react";
 
+import { CodeView } from "@/components/canvas/CodeView";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
@@ -35,6 +36,7 @@ function CanvasInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlayground, setShowPlayground] = useState(false);
+  const [showCode, setShowCode] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const counter = useRef(0);
   const lastNodeId = useRef<string | null>(null);
@@ -110,6 +112,14 @@ function CanvasInner() {
           </Button>
           <Button
             size="sm"
+            variant="outline"
+            onClick={() => setShowCode((s) => !s)}
+            data-testid="toggle-code"
+          >
+            {showCode ? "Hide code" : "Code"}
+          </Button>
+          <Button
+            size="sm"
             onClick={() => setShowPlayground((s) => !s)}
             data-testid="toggle-playground"
           >
@@ -149,6 +159,15 @@ function CanvasInner() {
         <aside className="w-72 shrink-0 overflow-auto border-l border-border p-3">
           <ConfigPanel node={selected} onChange={updateConfig} />
         </aside>
+
+        {showCode ? (
+          <aside
+            className="w-96 shrink-0 border-l border-border"
+            data-testid="code-panel"
+          >
+            <CodeView getGraph={getGraph} />
+          </aside>
+        ) : null}
 
         {showPlayground ? (
           <aside

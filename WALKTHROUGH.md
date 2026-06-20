@@ -1,4 +1,4 @@
-# Calypr — Walkthrough (Phases 0 & 1)
+# Calypr — Walkthrough (Phases 0–2)
 
 > **Who this is for:** an AI engineer who's newer to building a real product. By the end
 > you'll understand *what* Calypr is, *how* the codebase is laid out, and *why* each piece
@@ -31,11 +31,12 @@ visually, and (b) *compile* that description into a LangGraph graph and run it.
  │ Input → Agent →   │ →  │ DSL (a JSON spec)    │ →  │ LangGraph StateGraph │
  │        Output     │    │ → Compiler           │    │ → streams a reply    │
  └───────────────────┘    └──────────────────────┘    └──────────────────────┘
-   (Phase 2 builds this)    (Phase 1 — done)             (Phase 1 — done)
+   (Phase 2 — done)         (Phase 1 — done)             (Phase 1 — done)
 ```
 
-Phases 0 and 1 (this document) build the **foundation** and the **engine**. The visual canvas
-itself comes in Phase 2 — but the engine it will drive already works today.
+Phases 0–2 (this document) build the **foundation**, the **engine**, and now the **visual
+canvas** that drives it. As of Phase 2 you can draw an agent on the canvas and chat with it —
+backed by real OpenAI/Anthropic models.
 
 ---
 
@@ -67,16 +68,16 @@ manages the Python ones. They coexist at the repo root.
 ```
 calypr/
 ├── apps/
-│   ├── api/          # FastAPI service        (Python pkg: calypr-api)
-│   └── web/          # Next.js app            (JS pkg: @calypr/web)
+│   ├── api/          # FastAPI: /compile, /runs (SSE), /agents (calypr-api)
+│   └── web/          # Next.js: canvas, playground, proxies (@calypr/web)
 ├── packages/
 │   ├── dsl/          # GraphSpec contract     (calypr-dsl + @calypr/dsl)  ← the contract
 │   └── nodes/        # node registry + types  (calypr-nodes)              ← the plugin backbone
 ├── services/
-│   ├── model/        # ModelClient + adapters (calypr-model)              ← the LLM seam
+│   ├── model/        # ModelClient + OpenAI/Anthropic/fake (calypr-model) ← the LLM seam
 │   ├── compiler/     # GraphSpec → StateGraph (calypr-compiler)           ← the IP
 │   └── runtime/      # run + stream + memory  (calypr-runtime)
-├── e2e/              # Playwright browser tests (@calypr/e2e)
+├── e2e/              # Playwright gates: phase0 + phase2 (@calypr/e2e)
 ├── infra/docker/     # Postgres (pgvector) via docker compose
 ├── .github/workflows # CI pipeline
 ├── pyproject.toml    # uv workspace + ruff + pytest config
@@ -366,7 +367,105 @@ Postgres test proving durable checkpointing against the real database.
 
 ---
 
-## 6. Running & testing it yourself
+## 6. Phase 2 — The Canvas & Playground
+
+**Goal:** the empty canvas becomes a real builder — drag blocks, configure them, and chat
+with the agent you drew. This is the MVP proof.
+
+Phase 2 connects the **web front end** to the **Python engine**. Crucially, it adds *no new
+agent logic* — it's a thin UI + HTTP skin over the Phase 1 engine. Three new pieces: the
+canvas (front end), the API endpoints (back end), and the streaming plumbing between them.
+
+### 6.1 The canvas (React Flow)
+
+[React Flow](https://reactflow.dev) is a library for node-and-edge canvases. We give it:
+
+- **Custom node components** ([`nodes.tsx`](apps/web/src/components/canvas/nodes.tsx)) — how
+  each block (Input/Agent/Output) looks, with the little dots (*handles*) you connect.
+- A **palette** ([`Palette.tsx`](apps/web/src/components/canvas/Palette.tsx)) — buttons that add
+  a block; adding one auto-links it after the previous, so a few clicks build a chain.
+- A **config panel** ([`ConfigPanel.tsx`](apps/web/src/components/canvas/ConfigPanel.tsx)) —
+  select the Agent to pick its model, system prompt, and step cap.
+
+> **Beginner note — the canvas is just state.** React Flow holds two arrays: `nodes` and
+> `edges`. Clicking "+ Agent" pushes a node; connecting two handles pushes an edge. Everything
+> you see is a render of those two arrays ([`canvas/page.tsx`](apps/web/src/app/canvas/page.tsx)).
+
+### 6.2 From canvas to contract (the key bridge)
+
+The canvas's nodes/edges aren't the same shape as the engine's `GraphSpec`.
+[`buildGraphSpec()`](apps/web/src/lib/graph.ts) translates one into the other — and it imports
+the **generated `@calypr/dsl` types**, so the object it builds is exactly what the Python
+engine expects.
+
+> **This is where the Phase 0 codegen pays off.** The canvas (TypeScript) and the engine
+> (Python) agree on `GraphSpec` because both sides use types generated from the *same* Pydantic
+> source. The UI literally can't build a graph of the wrong shape.
+
+### 6.3 The API endpoints (`apps/api/routers`)
+
+The engine gets three HTTP endpoints:
+
+- `POST /compile` — validate a graph, return a list of issues (so the canvas can show errors).
+- `POST /runs` — run a graph and **stream** the reply ([`runs.py`](apps/api/src/calypr_api/routers/runs.py)).
+- `POST/GET /agents` — save/list agents; the `GraphSpec` is stored as JSON in Postgres, scoped
+  to a tenant with RLS ([`agents.py`](apps/api/src/calypr_api/routers/agents.py)).
+
+A small **provider factory** ([`factory.py`](services/model/src/calypr_model/factory.py)) picks
+the LLM client from the agent's model id: `gpt-*` → OpenAI, `claude-*` → Anthropic, `fake` →
+the deterministic stub. Adding a provider stays a one-file change.
+
+### 6.4 Streaming over a proxy (SSE + a Next route)
+
+How do tokens get from the Python engine to your browser, live?
+
+- The Python `/runs` endpoint returns **Server-Sent Events (SSE)** — one long-lived HTTP
+  response where the server writes `data: {...}` lines as things happen, ending with `[DONE]`.
+- The browser doesn't call Python directly. It calls a **same-origin Next.js route**
+  ([`app/api/runs/route.ts`](apps/web/src/app/api/runs/route.ts)) that forwards the request to
+  Python and pipes the stream straight back. The client reader is in
+  [`lib/api.ts`](apps/web/src/lib/api.ts).
+
+> **Why the proxy?** Two reasons worth internalizing: (1) **no CORS headaches** — the browser
+> only ever talks to its own origin; (2) **secrets stay server-side** — the API URL and provider
+> keys live on the server, never shipped to the browser. This is the standard production shape.
+
+> **SSE, explained:** a normal request gets one response, then closes. SSE keeps the response
+> *open* and streams text chunks as they're produced. The browser reads them as they arrive —
+> that's how you watch the reply type itself out.
+
+### 6.5 Tracing a chat end-to-end (through the UI)
+
+```
+You type "hi" in the Playground and hit Send
+        │
+   buildGraphSpec(nodes, edges)            canvas → GraphSpec (the shared contract)
+        │  POST /api/runs { graph, message, thread_id }
+        ▼
+Next route /api/runs  ── forwards ──►  Python POST /runs
+        │                                     │
+        │                       context_for(graph): "gpt-4o-mini" → OpenAIModelClient
+        │                                     │  run_stream(graph, ctx, "hi")
+        │                                     ▼  (the Phase 1 engine, unchanged!)
+        │                            Input → Agent → Output, streaming tokens
+        │  ◄── SSE: data:{"type":"token","text":"H"} … data:{"type":"final",…} ──
+        ▼
+Browser appends each token to the assistant bubble → you watch it type
+```
+
+The key insight: **the Agent runs exactly as it did in the headless Phase 1 demo.** We just
+gave it a face and a pipe.
+
+### 6.6 The Phase 2 gate
+
+[`phase2.spec.ts`](e2e/tests/phase2.spec.ts) is the gate: a real browser signs in, clicks
+**+Input / +Agent / +Output**, configures the Agent, opens the Playground, sends a message, and
+asserts a streamed reply appears. It uses the `fake` model, so it needs no API key — fast and
+deterministic in CI.
+
+---
+
+## 7. Running & testing it yourself
 
 Prerequisites: Node ≥ 20 (with Corepack for pnpm), Python 3.12 via [uv](https://docs.astral.sh/uv/),
 Docker. One-time setup is already done in this repo; the everyday commands:
@@ -376,27 +475,31 @@ Docker. One-time setup is already done in this repo; the everyday commands:
 docker compose -f infra/docker/compose.yaml up -d --wait
 
 # 2. Run the whole backend test suite (all phases)
-uv run pytest                  # ~25 tests; live LLM tests skip unless a key is set
+uv run pytest                  # ~30 tests; live LLM tests are opt-in (CALYPR_RUN_LIVE_TESTS=1)
 
 # 3. See the engine stream a reply (no key → fake model; with a key → real LLM)
 uv run python -m calypr_runtime.demo "Explain RAG in one sentence"
 #   Put OPENAI_API_KEY=... in a (gitignored) .env to use OpenAI automatically.
 
-# 4. The web app + API (the Phase 0 shell)
-uv run uvicorn calypr_api.main:app --reload --port 8000          # API
+# 4. The full app — open the canvas and chat with an agent
+uv run uvicorn calypr_api.main:app --reload --port 8000          # API (auto-loads .env keys)
 pnpm --filter @calypr/web exec next dev --port 3100              # Web → http://localhost:3100
+#   → sign in → Open canvas → +Input +Agent +Output → pick a model → Playground → chat
 
-# 5. The Phase 0 browser gate (boots both servers for you)
+# 5. The browser gates (Phase 0 + Phase 2; boots both servers for you)
 pnpm --filter @calypr/e2e test
 ```
 
 **How a beginner should explore:** run command #3 first (instant feedback), then open
 `services/runtime/.../run.py` and follow the imports backwards into the compiler, the nodes, and
-the model layer. Set `CALYPR_PROVIDER=fake` to step through with a deterministic model.
+the model layer. To see the *Phase 2* path, trace a chat **front-to-back**:
+[`Playground.tsx`](apps/web/src/components/canvas/Playground.tsx) → [`lib/api.ts`](apps/web/src/lib/api.ts)
+→ [`app/api/runs/route.ts`](apps/web/src/app/api/runs/route.ts) → [`routers/runs.py`](apps/api/src/calypr_api/routers/runs.py)
+→ `run_stream`. Set the model to `fake` to step through deterministically.
 
 ---
 
-## 7. Key design decisions (the "why" cheat-sheet)
+## 8. Key design decisions (the "why" cheat-sheet)
 
 | Decision | Why it matters |
 |---|---|
@@ -407,19 +510,34 @@ the model layer. Set `CALYPR_PROVIDER=fake` to step through with a deterministic
 | **Fake model for tests** | CI is fast, free, and deterministic; real-provider tests skip without keys. |
 | **Agent node as the hero** | One configured Agent is a complete agent — the fastest path to "build a working agent." |
 | **Build the engine before the canvas** | The compiler is the riskiest part; prove it headless so the canvas (Phase 2) is "just" UI over a working spine. |
+| **Next route proxy for the API** | The browser talks same-origin (no CORS), and the API URL + provider keys stay server-side. Production-shaped from day one. |
+| **Canvas → GraphSpec via the shared types** | The UI builds the *exact* object the engine compiles — the Phase 0 codegen contract closes the loop end-to-end. |
 
 ---
 
-## 8. What's next (Phase 2 preview)
+## 9. What's next (Phase 3 preview)
 
-Phase 2 makes the canvas real: a **node palette** (drag Input/Agent/Output), connect them, an
-**Agent config panel** (model, prompt), **save** to a `GraphSpec`, and a **playground** to chat
-with your agent — all backed by the engine you just read about. The empty `/canvas` you see today
-becomes a working builder.
+Phase 3 gives the Agent real capabilities — **tools** and **knowledge**:
+
+- **Tools** the Agent can call mid-conversation: a web-search tool, an HTTP-request tool, and an
+  **MCP client** (so any [MCP](https://modelcontextprotocol.io) server's tools become available).
+  The Agent node's tool loop — already structured in Phase 1 — starts *executing* tools.
+- **Knowledge bases (RAG):** upload documents → chunk → embed → store in **pgvector**; the Agent
+  retrieves relevant passages and answers **with citations**. (This is why we chose pgvector back
+  in Phase 0.)
+- The playground will show **tool-call steps and citations**, so you can see *how* the agent
+  reached its answer.
+
+Same discipline: it lands behind a Playwright gate — build an agent with a knowledge base and a
+tool, ask a question, and assert a cited answer with a visible tool call.
+
+> **RAG, explained:** *Retrieval-Augmented Generation* means: before answering, fetch relevant
+> snippets from your documents and hand them to the model as context. It lets an agent answer
+> from *your* data (with citations) instead of only what the model memorized.
 
 ---
 
-## 9. Mini-glossary
+## 10. Mini-glossary
 
 - **Monorepo** — one git repo holding multiple related projects (packages).
 - **Workspace** — a manager's view of those packages (pnpm for JS, uv for Python).
@@ -431,6 +549,11 @@ becomes a working builder.
 - **Compiler** — code that turns our `GraphSpec` into a runnable LangGraph graph.
 - **Checkpointer** — LangGraph's mechanism to save/restore run state (durable memory, resumable runs).
 - **Streaming** — sending the LLM's answer in chunks as it's produced.
+- **React Flow (xyflow)** — the library that renders the node-and-edge canvas; its state is just `nodes` + `edges` arrays.
+- **SSE (Server-Sent Events)** — one long-lived HTTP response the server streams `data:` chunks over until done.
+- **Proxy (Next route)** — a same-origin server endpoint that forwards to the Python API (hides keys, avoids CORS).
+- **Provider factory** — code that picks the LLM client (OpenAI / Anthropic / fake) from a model id.
+- **RAG (Retrieval-Augmented Generation)** — fetch relevant document snippets first, then answer from them (with citations). Phase 3.
 - **Migration (Alembic)** — a versioned, repeatable change to the database schema.
 - **RLS (Row-Level Security)** — Postgres feature that filters rows per tenant at the database level.
 - **CI gate** — an automated test that must pass to consider a phase "done."

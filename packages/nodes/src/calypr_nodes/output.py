@@ -7,7 +7,14 @@ from typing import Any
 from pydantic import BaseModel
 
 from calypr_nodes._convert import text_of
-from calypr_nodes.registry import BaseNode, NodeContext, NodeFn, NodeMeta, register
+from calypr_nodes.registry import (
+    BaseNode,
+    CodeFragment,
+    NodeContext,
+    NodeFn,
+    NodeMeta,
+    register,
+)
 
 
 class OutputConfig(BaseModel):
@@ -44,3 +51,14 @@ class OutputNode(BaseNode):
             return {cfg.output_channel: text}
 
         return _run
+
+    @classmethod
+    def codegen(cls, cfg: OutputConfig, fn_name: str) -> CodeFragment:
+        fn = (
+            f"def {fn_name}(state: State) -> dict:\n"
+            f'    """Return the last message\'s text as the result."""\n'
+            f'    messages = state.get("{cfg.source_channel}") or []\n'
+            f'    text = messages[-1].content if messages else ""\n'
+            f'    return {{"{cfg.output_channel}": text}}\n'
+        )
+        return CodeFragment(fn_name=fn_name, function=fn)

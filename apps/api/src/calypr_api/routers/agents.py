@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import uuid
 
+from calypr_codegen import generate_python
 from calypr_compiler import validate_graph
 from calypr_dsl import GraphSpec
 from fastapi import APIRouter, Depends, HTTPException
@@ -22,6 +23,7 @@ from calypr_api.schemas import (
     AgentDetail,
     AgentSummary,
     AgentUpdate,
+    CodegenResponse,
     CompileResponse,
 )
 
@@ -38,6 +40,12 @@ def compile_spec(graph: GraphSpec) -> CompileResponse:
     issues = validate_graph(graph)
     ok = not any(i.severity == "error" for i in issues)
     return CompileResponse(ok=ok, issues=issues)
+
+
+@router.post("/codegen", response_model=CodegenResponse, tags=["engine"])
+def codegen_spec(graph: GraphSpec) -> CodegenResponse:
+    """The 'code' altitude: render the graph as ownable Python (LangGraph)."""
+    return CodegenResponse(code=generate_python(graph))
 
 
 @router.post("/agents", response_model=AgentDetail, tags=["agents"])

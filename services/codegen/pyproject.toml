@@ -1,0 +1,21 @@
+[project]
+name = "calypr-codegen"
+version = "0.0.0"
+description = "GraphSpec -> idiomatic, ownable Python (LangGraph) — the code altitude."
+requires-python = ">=3.12"
+dependencies = [
+  "calypr-dsl",
+  "calypr-nodes",
+  "ruff>=0.6",
+]
+
+[tool.uv.sources]
+calypr-dsl = { workspace = true }
+calypr-nodes = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/calypr_codegen"]

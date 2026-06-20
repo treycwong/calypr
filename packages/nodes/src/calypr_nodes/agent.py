@@ -6,6 +6,7 @@ model call. The loop structure is in place for Phase 3 (tool execution + iterati
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from calypr_model import Done, Msg, Role, TextDelta, ToolCall, ToolCallRequest, Usage
@@ -13,7 +14,14 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
 from calypr_nodes._convert import lc_to_msgs, render_template, safe_stream_writer
-from calypr_nodes.registry import BaseNode, NodeContext, NodeFn, NodeMeta, register
+from calypr_nodes.registry import (
+    BaseNode,
+    CodeFragment,
+    NodeContext,
+    NodeFn,
+    NodeMeta,
+    register,
+)
 
 
 class AgentConfig(BaseModel):
@@ -109,3 +117,27 @@ class AgentNode(BaseNode):
             return {cfg.output_channel: produced}
 
         return _run
+
+    @classmethod
+    def codegen(cls, cfg: AgentConfig, fn_name: str) -> CodeFragment:
+        imports = ["from langchain.chat_models import init_chat_model"]
+        lines = [
+            f"def {fn_name}(state: State) -> dict:",
+            '    """Call the model and append its reply."""',
+            f"    model = init_chat_model({json.dumps(cfg.model)}, "
+            f"temperature={cfg.temperature})",
+            f'    messages = state.get("{cfg.input_channel}") or []',
+        ]
+        if cfg.system_prompt:
+            imports.append("from langchain_core.messages import SystemMessage")
+            lines += [
+                f"    prompt = [SystemMessage(content={json.dumps(cfg.system_prompt)}), "
+                "*messages]",
+                "    reply = model.invoke(prompt)",
+            ]
+        else:
+            lines.append("    reply = model.invoke(messages)")
+        lines.append(f'    return {{"{cfg.output_channel}": [reply]}}')
+        return CodeFragment(
+            fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports
+        )

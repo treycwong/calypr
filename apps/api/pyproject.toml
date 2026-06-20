@@ -12,6 +12,7 @@ dependencies = [
   "psycopg[binary]>=3.2",
   "python-dotenv>=1.0",
   "calypr-runtime",
+  "calypr-codegen",
 ]
 
 [dependency-groups]
@@ -22,6 +23,7 @@ dev = [
 
 [tool.uv.sources]
 calypr-runtime = { workspace = true }
+calypr-codegen = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

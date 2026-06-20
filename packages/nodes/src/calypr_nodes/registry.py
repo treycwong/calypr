@@ -8,7 +8,7 @@ all it takes for the compiler to handle it and (later) for the canvas to render 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from calypr_model import ModelClient
@@ -16,6 +16,18 @@ from pydantic import BaseModel
 
 # A compiled node: reads the graph state, returns a partial state update.
 NodeFn = Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]
+
+
+@dataclass
+class CodeFragment:
+    """The generated Python for one node — a node function plus the imports it needs.
+
+    The codegen service collects fragments, dedupes imports, and wires `fn_name` into the
+    `StateGraph` (CLAUDE-PLAN realignment §Phase 3 / round-trip)."""
+
+    fn_name: str
+    function: str  # full "def {fn_name}(state: State) -> dict: ..." source
+    imports: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -57,6 +69,11 @@ class BaseNode:
     @classmethod
     def compile(cls, cfg: BaseModel, ctx: NodeContext) -> NodeFn:  # pragma: no cover
         raise NotImplementedError
+
+    @classmethod
+    def codegen(cls, cfg: BaseModel, fn_name: str) -> CodeFragment:  # pragma: no cover
+        """Emit idiomatic, standalone Python for this node (the 'code' altitude)."""
+        raise NotImplementedError(f"node {cls.type!r} has no codegen yet")
 
 
 _REGISTRY: dict[str, type[BaseNode]] = {}

@@ -7,7 +7,14 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
-from calypr_nodes.registry import BaseNode, NodeContext, NodeFn, NodeMeta, register
+from calypr_nodes.registry import (
+    BaseNode,
+    CodeFragment,
+    NodeContext,
+    NodeFn,
+    NodeMeta,
+    register,
+)
 
 
 class InputConfig(BaseModel):
@@ -46,3 +53,19 @@ class InputNode(BaseNode):
             return {cfg.target_channel: [HumanMessage(content=str(raw))]}
 
         return _run
+
+    @classmethod
+    def codegen(cls, cfg: InputConfig, fn_name: str) -> CodeFragment:
+        fn = (
+            f"def {fn_name}(state: State) -> dict:\n"
+            f'    """Seed the conversation from the caller\'s input."""\n'
+            f'    text = state.get("{cfg.input_channel}")\n'
+            f"    if not text:\n"
+            f"        return {{}}\n"
+            f'    return {{"{cfg.target_channel}": [HumanMessage(content=str(text))]}}\n'
+        )
+        return CodeFragment(
+            fn_name=fn_name,
+            function=fn,
+            imports=["from langchain_core.messages import HumanMessage"],
+        )

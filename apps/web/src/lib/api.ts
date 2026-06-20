@@ -55,3 +55,14 @@ export async function saveAgent(name: string, graph: GraphSpec): Promise<{ id: s
   if (!res.ok) throw new Error(`save failed (${res.status})`);
   return res.json();
 }
+
+/** The 'code' altitude: get the agent as ownable Python (LangGraph). */
+export async function generateCode(graph: GraphSpec): Promise<string> {
+  const res = await fetch("/api/codegen", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(graph),
+  });
+  if (!res.ok) throw new Error(`codegen failed (${res.status})`);
+  return (await res.json()).code as string;
+}

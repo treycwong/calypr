@@ -4,10 +4,12 @@ Importing this package registers the built-in node types as a side effect.
 """
 
 from calypr_nodes.agent import AgentConfig, AgentNode
+from calypr_nodes.code import CodeConfig, CodeNode
 from calypr_nodes.input import InputConfig, InputNode
 from calypr_nodes.output import OutputConfig, OutputNode
 from calypr_nodes.registry import (
     BaseNode,
+    CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
@@ -21,6 +23,7 @@ from calypr_nodes.registry import (
 __all__ = [
     # registry
     "BaseNode",
+    "CodeFragment",
     "NodeContext",
     "NodeFn",
     "NodeMeta",
@@ -36,4 +39,6 @@ __all__ = [
     "AgentConfig",
     "OutputNode",
     "OutputConfig",
+    "CodeNode",
+    "CodeConfig",
 ]

@@ -50,6 +50,16 @@ def test_run_streams_tokens_with_fake_model():
     assert '"type": "final"' in body
 
 
+def test_codegen_returns_ownable_python():
+    graph = input_agent_output(model="gpt-4o-mini").model_dump()
+    r = client.post("/codegen", json=graph)
+    assert r.status_code == 200
+    code = r.json()["code"]
+    assert "def build_graph():" in code
+    assert "init_chat_model" in code
+    assert "import calypr" not in code
+
+
 @pytest.mark.skipif(not _db_available(), reason="Postgres not available")
 def test_agent_crud_roundtrip():
     graph = input_agent_output(model="fake").model_dump()

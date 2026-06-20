@@ -4,7 +4,7 @@ import type { Edge, Node } from "@xyflow/react";
 
 import type { GraphSpec, StateChannel } from "@calypr/dsl";
 
-export type CalyprNodeType = "input" | "agent" | "output";
+export type CalyprNodeType = "input" | "agent" | "output" | "code";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -14,6 +14,7 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   input: "Input",
   agent: "Agent",
   output: "Output",
+  code: "Custom Code",
 };
 
 export const MODEL_OPTIONS = [
@@ -33,6 +34,12 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     max_steps: 8,
   },
   output: { source_channel: "messages", output_channel: "output" },
+  code: {
+    code: 'last = state["messages"][-1]\nreturn {"messages": [AIMessage(content=last.content.upper())]}',
+    imports: ["from langchain_core.messages import AIMessage"],
+    input_channel: "messages",
+    output_channel: "messages",
+  },
 };
 
 // Phase 2 uses a fixed default state; a State editor for custom channels comes later.

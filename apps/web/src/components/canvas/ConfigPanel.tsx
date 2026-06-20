@@ -76,6 +76,22 @@ export function ConfigPanel({
             />
           </div>
         </>
+      ) : type === "code" ? (
+        <div className="space-y-1.5">
+          <Label htmlFor="cfg-code">Python — a function body over `state`</Label>
+          <Textarea
+            id="cfg-code"
+            data-testid="cfg-code"
+            rows={8}
+            className="font-mono text-xs"
+            value={String(config.code ?? "")}
+            onChange={(e) => set({ code: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Return a dict of state updates. This block round-trips verbatim into the
+            generated code — your no-ceiling escape hatch.
+          </p>
+        </div>
       ) : (
         <p className="text-xs text-muted-foreground">
           {type === "input"

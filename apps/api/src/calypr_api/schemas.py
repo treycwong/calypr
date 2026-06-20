@@ -13,6 +13,10 @@ class CompileResponse(BaseModel):
     issues: list[Issue]
 
 
+class CodegenResponse(BaseModel):
+    code: str
+
+
 class RunRequest(BaseModel):
     graph: GraphSpec
     message: str

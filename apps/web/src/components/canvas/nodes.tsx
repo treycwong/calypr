@@ -70,8 +70,21 @@ export function OutputNodeView({ selected }: NodeProps) {
   );
 }
 
+export function CodeNodeView({ selected }: NodeProps) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Shell title="Custom Code" accent="bg-amber-500" selected={selected}>
+        python · no ceiling
+      </Shell>
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+    </>
+  );
+}
+
 export const nodeTypes = {
   input: InputNodeView,
   agent: AgentNodeView,
   output: OutputNodeView,
+  code: CodeNodeView,
 };

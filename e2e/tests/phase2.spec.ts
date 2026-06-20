@@ -9,6 +9,8 @@ test("build an agent on the canvas and chat with it", async ({ page }) => {
   await page.goto("/canvas");
   await page.getByTestId("dev-sign-in").click();
   await expect(page).toHaveURL(/\/canvas/);
+  // Wait until React Flow has mounted client-side (palette handlers wired).
+  await expect(page.locator(".react-flow__controls")).toBeVisible();
 
   // Build the chain — adding a block links it after the previous one.
   await page.getByTestId("add-input").click();
