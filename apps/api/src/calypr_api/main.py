@@ -1,7 +1,4 @@
-"""Calypr API entrypoint.
-
-Phase 0: health/readiness only. Routers (agents, runs, knowledge) land in later phases.
-"""
+"""Calypr API entrypoint."""
 
 from __future__ import annotations
 
@@ -11,6 +8,7 @@ from sqlalchemy import text
 
 from calypr_api.config import settings
 from calypr_api.db.session import engine
+from calypr_api.routers import agents, runs
 
 
 def create_app() -> FastAPI:
@@ -40,6 +38,8 @@ def create_app() -> FastAPI:
             return {"status": "degraded", "db": "unreachable"}
         return {"status": "ready", "environment": settings.environment, "db": "ok"}
 
+    app.include_router(agents.router)
+    app.include_router(runs.router)
     return app
 
 

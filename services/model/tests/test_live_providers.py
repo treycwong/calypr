@@ -1,5 +1,6 @@
-"""Live provider smoke tests. Each is skipped unless its API key is in the environment,
-so CI (key-free) stays green. Run locally with the key exported to verify a real call."""
+"""Live provider smoke tests. Opt-in only: set CALYPR_RUN_LIVE_TESTS=1 *and* the relevant
+key. (A key alone is not enough, so a normal `pytest` never makes real API calls even when
+a .env is loaded.) Run with: CALYPR_RUN_LIVE_TESTS=1 uv run pytest services/model/tests."""
 
 from __future__ import annotations
 
@@ -9,9 +10,13 @@ import pytest
 from calypr_model import Done, Msg, Role
 
 _PING = [Msg(role=Role.user, content="Reply with exactly the single word: pong")]
+_LIVE = os.environ.get("CALYPR_RUN_LIVE_TESTS") == "1"
 
 
-@pytest.mark.skipif(not os.environ.get("OPENAI_API_KEY"), reason="no OPENAI_API_KEY")
+@pytest.mark.skipif(
+    not (_LIVE and os.environ.get("OPENAI_API_KEY")),
+    reason="set CALYPR_RUN_LIVE_TESTS=1 and OPENAI_API_KEY",
+)
 async def test_openai_streams_a_reply():
     from calypr_model import OpenAIModelClient
 
@@ -24,7 +29,8 @@ async def test_openai_streams_a_reply():
 
 
 @pytest.mark.skipif(
-    not os.environ.get("ANTHROPIC_API_KEY"), reason="no ANTHROPIC_API_KEY"
+    not (_LIVE and os.environ.get("ANTHROPIC_API_KEY")),
+    reason="set CALYPR_RUN_LIVE_TESTS=1 and ANTHROPIC_API_KEY",
 )
 async def test_anthropic_streams_a_reply():
     from calypr_model import AnthropicModelClient

@@ -3,6 +3,7 @@
 from calypr_model.anthropic_client import AnthropicModelClient
 from calypr_model.base import ModelClient
 from calypr_model.events import Done, StreamEvent, TextDelta, ToolCall, Usage
+from calypr_model.factory import model_for, provider_of
 from calypr_model.fake import FakeModelClient
 from calypr_model.messages import Msg, Role, ToolCallRequest
 from calypr_model.openai_client import OpenAIModelClient
@@ -20,4 +21,6 @@ __all__ = [
     "FakeModelClient",
     "AnthropicModelClient",
     "OpenAIModelClient",
+    "model_for",
+    "provider_of",
 ]

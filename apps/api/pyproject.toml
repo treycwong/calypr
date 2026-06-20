@@ -10,6 +10,8 @@ dependencies = [
   "sqlalchemy>=2.0",
   "alembic>=1.13",
   "psycopg[binary]>=3.2",
+  "python-dotenv>=1.0",
+  "calypr-runtime",
 ]
 
 [dependency-groups]
@@ -17,6 +19,9 @@ dev = [
   "pytest>=8",
   "httpx>=0.27",
 ]
+
+[tool.uv.sources]
+calypr-runtime = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

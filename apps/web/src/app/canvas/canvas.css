@@ -1,0 +1,21 @@
+/* React Flow reserves the node-type names "input", "output", and "default" and gives
+   them a default white box (border + padding + background) via dist/style.css. Our
+   custom node components render their own card, so neutralize the wrapper for those
+   types. Doubled class selector keeps specificity above the library default. */
+.react-flow__node.react-flow__node-input,
+.react-flow__node.react-flow__node-output,
+.react-flow__node.react-flow__node-default {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+  width: auto;
+  color: inherit;
+  text-align: left;
+}
+
+/* Selection styling is handled inside our node components (a ring). */
+.react-flow__node.selected {
+  box-shadow: none;
+}
