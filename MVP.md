@@ -1,5 +1,12 @@
 # Calypr — Post-MVP Growth Plan
 
+> **⤳ Superseded (2026-06-20) by [`WEDGE-PLAN.md`](./WEDGE-PLAN.md).** Calypr's ICP is now
+> the **AI engineer**, and the live growth/validation plan is the **No-Ceiling Wedge**
+> (prompt → canvas → code, round-trip). The **E-Commerce vertical-first strategy below is
+> deferred** to a possible post-validation vertical — kept for reference, not the current
+> direction. The retained, still-valid parts are the cross-cutting production-readiness and
+> ecosystem workstreams (Workstreams A, C, D), which are ICP-agnostic.
+
 **Boundary:** MVP = Phases 0–3 (canvas → compiler → RAG → multi-agent templates). Phases 4–6 (tools, marketplace v0, initial hardening) are the bridge. **This plan is what you double down on once real users are running agents.**
 
 **Strategy in one line:** Win E-Commerce deeply with native connectors and opinionated templates, let the ecosystem (SDK + marketplace) fill the long tail, and convert self-serve users on usage and premium templates.

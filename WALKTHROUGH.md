@@ -515,9 +515,20 @@ the model layer. To see the *Phase 2* path, trace a chat **front-to-back**:
 
 ---
 
-## 9. What's next (Phase 3 preview)
+## 9. What's next — the wedge realignment
 
-Phase 3 gives the Agent real capabilities — **tools** and **knowledge**:
+After Phases 0–2, Calypr's strategy sharpened (see **[`WEDGE-PLAN.md`](./WEDGE-PLAN.md)**):
+the audience is the **AI engineer**, and the moat is **prompt → canvas → code** — the canvas
+compiles to *ownable Python you'd actually merge*, so you never hit a ceiling and churn to raw
+code. The roadmap was reordered to prove that bet first.
+
+**Phase 3 — the code altitude (built).** A `GraphSpec` now generates idiomatic, standalone
+**Python (LangGraph)** with zero Calypr dependency — open the **Code** view in the canvas. A
+**Custom Code** node is the no-ceiling escape hatch (drop to Python, it round-trips), and a test
+proves the generated code runs *identically* to the in-memory engine (the new `services/codegen`
+package, with a `codegen()` method on each node mirroring `compile()`).
+
+**Phase 4 — tools + knowledge**, each shipping `codegen()` so the round-trip grows with the node set:
 
 - **Tools** the Agent can call mid-conversation: a web-search tool, an HTTP-request tool, and an
   **MCP client** (so any [MCP](https://modelcontextprotocol.io) server's tools become available).

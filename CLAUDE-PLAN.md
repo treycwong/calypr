@@ -1,5 +1,15 @@
 # Calypr — Foundational Building Blocks Architecture (MVP)
 
+> **⤳ Strategy realigned (2026-06-20).** The north star is now
+> **[`WEDGE-PLAN.md`](./WEDGE-PLAN.md)** — the "No-Ceiling Wedge." The ICP is the
+> **AI engineer** (not e-commerce merchants), and the moat is the **prompt → canvas → code**
+> round-trip: the canvas compiles to *ownable Python an engineer would merge*. The
+> architecture below still holds — it's **additive** to the wedge, and `GraphSpec`-as-hub
+> is exactly what canvas⇄code needs. What changed: **templates + voice retarget to
+> technical builders**, e-commerce is deferred to a possible post-validation vertical, and
+> the **code altitude** is now the lead phase (built — see the realignment plan). The
+> runtime stays open.
+
 ## Context
 
 Calypr is a multi-tenant SaaS where users design AI agents on a visual canvas that
@@ -175,7 +185,7 @@ class Tool(BaseModel):
 - **Knowledge-base-as-tool (MVP):** a KB wrapped as a retrieval tool → agentic RAG.
 - **MCP (build the abstraction MCP-shaped now):** an MCP client adapter maps any MCP server's tools into `Tool` objects. Cheap insurance that makes `MVP.md`'s "MCP client" workstream nearly free later; LangGraph already speaks MCP.
 - **Sub-agent-as-tool (Phase 5):** a compiled agent exposed via the same interface → "agents calling agents," an alternative to the supervisor.
-- **Native connectors (post-MVP):** Shopify/Klaviyo/etc. — same `Tool` interface, just more sources.
+- **Native connectors (post-MVP):** GitHub, Slack, databases, internal HTTP APIs — same `Tool` interface, just more sources.
 
 Credentials live in a per-workspace, envelope-encrypted vault and are injected at runtime;
 they are **never** serialized into the DSL.
@@ -218,8 +228,8 @@ A template = `{metadata, category, parameterized GraphSpec, setup_requirements (
 "Install to canvas" clones the `GraphSpec` and runs a setup wizard. **Zero engine
 special-casing** — the five MVP templates (`PLAN.md` §5) are authored `GraphSpec`s over
 the registry. Agent-first makes the two RAG templates essentially *one Agent node + a KB
-+ a system prompt*; the three multi-agent E-Commerce templates (Phase 5) are a Supervisor
-+ worker Agents.
++ a system prompt*; the multi-agent templates (Phase 5 — AI-engineer use cases like a
+support-triage team or a research team) are a Supervisor + worker Agents.
 
 ---
 
@@ -313,7 +323,7 @@ environment) driving the real web app against a running API + Postgres.
 - **E2E test (gate):** Playwright — install Document Q&A from the gallery, complete the setup wizard (upload a doc), chat, assert a cited answer; then run that template's golden eval suite green.
 - **Exit:** template → customize → ship, with a passing eval gate per template.
 
-### Phase 5 — Multi-agent (Sub-agent, Supervisor, HITL) + E-Commerce templates
+### Phase 5 — Multi-agent (Sub-agent, Supervisor, HITL) + AI-engineer templates
 *Goal: a multi-agent team runs end-to-end from the canvas. (Heaviest phase — `PLAN.md` §3.3.)*
 
 - **Backend:** `Sub-agent`, `Supervisor`, `Human-in-the-loop` node types; compiler subgraph composition + supervisor routing/handoffs; `interrupt()` + resume API; sub-agent-as-tool.
