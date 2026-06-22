@@ -1,4 +1,4 @@
-# Calypr — Walkthrough (Phases 0–2)
+# Calypr — Walkthrough (Phases 0–5)
 
 > **Who this is for:** an AI engineer who's newer to building a real product. By the end
 > you'll understand *what* Calypr is, *how* the codebase is laid out, and *why* each piece
@@ -26,17 +26,20 @@ engine that actually executes these graphs. Our job is to (a) let users *describ
 visually, and (b) *compile* that description into a LangGraph graph and run it.
 
 ```
-   A user's drawing                Our job                    What runs
- ┌───────────────────┐    ┌──────────────────────┐    ┌──────────────────────┐
- │ Input → Agent →   │ →  │ DSL (a JSON spec)    │ →  │ LangGraph StateGraph │
- │        Output     │    │ → Compiler           │    │ → streams a reply    │
- └───────────────────┘    └──────────────────────┘    └──────────────────────┘
-   (Phase 2 — done)         (Phase 1 — done)             (Phase 1 — done)
+   A user's drawing                Our job                    What runs / what you own
+ ┌───────────────────┐    ┌──────────────────────┐    ┌──────────────────────────┐
+ │ Input → Agent →   │ →  │ DSL (a JSON spec)    │ →  │ LangGraph StateGraph     │
+ │        Output     │    │ → Compiler / Codegen │    │ → streams a reply        │
+ └───────────────────┘    └──────────────────────┘    │ → ownable Python (LangGraph) │
+   (Phase 2 — done)         (Phases 1, 3 — done)       └──────────────────────────┘
 ```
 
-Phases 0–2 (this document) build the **foundation**, the **engine**, and now the **visual
-canvas** that drives it. As of Phase 2 you can draw an agent on the canvas and chat with it —
-backed by real OpenAI/Anthropic models.
+This document builds the **foundation** (Phase 0), the **engine** (Phase 1), the **visual
+canvas** (Phase 2), the **code altitude** (Phase 3 — every graph also generates Python you
+own), **agent types + control flow** (Phase 4 — branching, loops, the agent ladder), and
+**tools + ReAct/Reflexion** (Phase 5). As of Phase 5 you can draw — or start from a template —
+a tool-using agent, chat with it backed by real OpenAI/Anthropic models, and open a **Code**
+view to get the idiomatic LangGraph it compiles to.
 
 ---
 
@@ -73,11 +76,14 @@ calypr/
 ├── packages/
 │   ├── dsl/          # GraphSpec contract     (calypr-dsl + @calypr/dsl)  ← the contract
 │   └── nodes/        # node registry + types  (calypr-nodes)              ← the plugin backbone
+│                     #   input, agent, output, code, router, evaluator,
+│                     #   memory, tool, responder, revisor (+ a tools catalog)
 ├── services/
 │   ├── model/        # ModelClient + OpenAI/Anthropic/fake (calypr-model) ← the LLM seam
-│   ├── compiler/     # GraphSpec → StateGraph (calypr-compiler)           ← the IP
+│   ├── compiler/     # GraphSpec → StateGraph + templates  (calypr-compiler) ← the IP
+│   ├── codegen/      # GraphSpec → ownable Python          (calypr-codegen)  ← the wedge
 │   └── runtime/      # run + stream + memory  (calypr-runtime)
-├── e2e/              # Playwright gates: phase0 + phase2 (@calypr/e2e)
+├── e2e/              # Playwright gates: phase0–phase5 (@calypr/e2e)
 ├── infra/docker/     # Postgres (pgvector) via docker compose
 ├── .github/workflows # CI pipeline
 ├── pyproject.toml    # uv workspace + ruff + pytest config
@@ -123,7 +129,7 @@ A minimal **FastAPI** service. The important files:
 ### 4.3 The database (`apps/api/.../db` + `infra/docker`)
 
 - [`infra/docker/compose.yaml`](infra/docker/compose.yaml) runs **Postgres with the pgvector
-  extension** (we'll need vector search for RAG in Phase 3) in a container.
+  extension** (we'll need vector search for RAG / knowledge bases later) in a container.
 - **[Alembic](https://alembic.sqlalchemy.org/)** manages database *migrations* (versioned,
   repeatable schema changes). The baseline migration
   [`0001_baseline.py`](apps/api/migrations/versions/0001_baseline.py) does three things:
@@ -265,7 +271,7 @@ The three built-in nodes:
 - [`AgentNode`](packages/nodes/src/calypr_nodes/agent.py) — **the hero**. Reads `messages`, calls
   the model (streaming each token out), and appends the model's reply. It already contains a
   *tool loop* structure (call model → run tools → repeat) — Phase 1 just runs it with zero tools,
-  so it resolves in one model call. Phase 3 fills in tool execution.
+  so it resolves in one model call. Phase 5 fills in tool execution (ReAct).
 - [`OutputNode`](packages/nodes/src/calypr_nodes/output.py) — the terminal; reads the last
   message and writes its text to the `output` channel.
 
@@ -465,29 +471,174 @@ deterministic in CI.
 
 ---
 
-## 7. Running & testing it yourself
+## 7. Phase 3 — Code Altitude (canvas → ownable Python)
+
+**Goal:** the canvas stops being a black box. *Any* graph you draw also **generates idiomatic,
+standalone Python (LangGraph)** with zero dependency on Calypr — code you could read, edit, and
+merge. This is the strategic bet (see **[`WEDGE-PLAN.md`](./WEDGE-PLAN.md)**): an AI engineer
+never hits a ceiling, because they can always drop down to the code they own.
+
+### 7.1 A `codegen()` to mirror `compile()`
+
+Phase 1's nodes had one job: `compile(cfg, ctx)` → a runnable function. Phase 3 gives every node
+a **second, parallel job**: `codegen(cfg, fn_name)` → a **`CodeFragment`** (a chunk of Python
+source + the imports it needs). The new **`services/codegen`** package
+([`generate.py`](services/codegen/src/calypr_codegen/generate.py)) walks the graph, collects each
+node's fragment, builds a `State` TypedDict from the channels, dedupes + groups imports, and
+wires a `build_graph()` that assembles the `StateGraph`. The output is run through `ruff` so it
+reads like a person wrote it. Each node now answers two questions — *how do I run?* (`compile`)
+and *how do I look as code?* (`codegen`) — and they must agree.
+
+### 7.2 The round-trip equivalence test (the real guarantee)
+
+A pretty code generator is worthless if the code behaves differently from the canvas. The Phase 3
+gate is a **round-trip equivalence test**: take a graph, run it in-memory (`compile()` + run),
+then generate the Python, **import it as a real module, run that**, and assert the outputs match.
+If they ever diverge, CI fails. That's what turns "the code you get is the code that ran" into a
+guarantee instead of a hope.
+
+### 7.3 The Custom Code node (the no-ceiling escape hatch)
+
+The **Custom Code** node ([`code.py`](packages/nodes/src/calypr_nodes/code.py)) lets you write a
+Python function body right on the canvas. It runs as-is in the engine, and `codegen()` emits it
+**verbatim** into the generated module — so even a hand-written block round-trips. This is the
+escape hatch: when no block exists for what you need, write the Python. (It executes arbitrary
+code, so it's gated behind `CALYPR_ALLOW_CUSTOM_CODE=1` in trusted environments.)
+
+### 7.4 The Code view
+
+The canvas grows a **Code** panel ([`CodeView.tsx`](apps/web/src/components/canvas/CodeView.tsx))
+backed by a `POST /codegen` endpoint — open it to see the live Python for whatever you've drawn.
+Codegen is pure (no model call, no DB), so it needs no API key.
+
+**Gate** ([`phase3.spec.ts`](e2e/tests/phase3.spec.ts)): build Input → Agent → Custom Code →
+Output, open the Code view, and assert it's real LangGraph (`StateGraph`, `init_chat_model`) with
+the custom code round-tripped in.
+
+---
+
+## 8. Phase 4 — Agent Types & Control Flow
+
+**Goal:** go from "one Agent" to the classic **agent ladder**, and give the canvas real
+**branching and loops**. The whole phase is a *capability ladder* built on one keystone.
+
+### 8.1 Conditional control flow (the keystone)
+
+Phase 1 wired only unconditional edges ("after A, run B"). Real agents make decisions. `EdgeSpec`
+already had a `condition` field; Phase 4 makes the compiler honor it. A node's new **`routing()`**
+method returns a *path function* `(state) → branch_name`; the compiler wires it with LangGraph's
+**`add_conditional_edges`**, mapping each branch name to the target of the out-edge labelled with
+that condition. `codegen()` emits the same. Loops fall out naturally (an edge can point back), and
+a `recursion_limit` keeps them from running away.
+
+### 8.2 The Router (If-Else) node
+
+The first node built on the keystone:
+[`router.py`](packages/nodes/src/calypr_nodes/router.py) picks a branch by **rules** — a safe
+expression over state, gated like Custom Code (e.g. "if the input mentions 'refund', go left").
+Its labelled out-edges become the conditional edges.
+
+### 8.3 The agent ladder (`agent_type`)
+
+The Agent grew an `agent_type` preset spanning the **Russell & Norvig taxonomy**: *simple-reflex*
+(reacts to the latest input), *model-based* (uses the whole conversation), *goal-based* (plans
+toward a goal), *utility-based* (generates N candidates, keeps the best), *learning* (adapts from
+feedback), and *reflection* (an internal generate → critique → revise loop). Each preset scaffolds
+the system prompt and emits matching idiomatic Python. *(In Phase 5 we removed the per-node
+dropdown — you choose a type by starting from its **template** instead.)*
+
+### 8.4 Capability nodes: Evaluator & Memory
+
+- **Evaluator** ([`evaluator.py`](packages/nodes/src/calypr_nodes/evaluator.py)) — *LLM-as-judge*:
+  scores an answer against a rubric and writes the score + rationale to state. It doubles as the
+  eval/trust layer the wedge wants.
+- **Memory** ([`memory.py`](packages/nodes/src/calypr_nodes/memory.py)) — a *visible* memory step:
+  append each turn to a buffer, or summarize the conversation into long-term memory.
+
+### 8.5 Templates (the starter gallery)
+
+Archetype graphs ship as starter **templates**
+([`templates.py`](services/compiler/src/calypr_compiler/templates.py)) served from
+`GET /templates`, ordered simple → complex. Pick one from the canvas header and it hydrates the
+board — a `graphToCanvas()` that inverts `buildGraphSpec()`.
+
+**Gate** ([`phase4.spec.ts`](e2e/tests/phase4.spec.ts)): add an If-Else router and confirm the
+Code view shows `add_conditional_edges`; load a template and confirm it projects to code.
+
+---
+
+## 9. Phase 5 — Tools, ReAct & Reflexion
+
+**Goal:** give agents **tools**, then assemble two famous agent patterns from the primitives —
+all still round-tripping to ownable code.
+
+### 9.1 The Tool node + edge-driven binding
+
+A **Tool** node ([`tool.py`](packages/nodes/src/calypr_nodes/tool.py)) wraps LangGraph's prebuilt
+**`ToolNode`** over a provider (a dropdown: a deterministic `demo_search` that needs no key, plus
+**Tavily** for real web search). The clever part is **edge-driven binding**: when you wire an
+Agent → Tool, the compiler does two things — it **binds** that tool to the agent's model (so the
+model can *call* it) *and* uses the Tool node to **execute** the calls. That mirrors how LangGraph
+itself works: the bound tools and the ToolNode's tools are the same tools.
+
+> **Secrets:** an API key you type on a Tool node is used at runtime only — generated code reads
+> it from an environment variable (`TAVILY_API_KEY`) and **never embeds the secret**.
+
+### 9.2 ReAct (reason + act)
+
+With a tool wired, the Agent becomes a tiny **ReAct** loop: each turn it either asks for a tool
+(→ the Tool node runs it → loop back) or answers (→ done). The branch is LangGraph's standard
+**`tools_condition`** — and that's exactly what the generated code emits. The `tpl-react` template
+is `Input → Agent ⇄ Tools → Output`.
+
+### 9.3 Reflexion (research + self-revision)
+
+**Reflexion** is reflection *grounded in tool use*. Two new actor nodes:
+
+- **Responder** ([`responder.py`](packages/nodes/src/calypr_nodes/responder.py)) — answers,
+  critiques its own answer (what's missing / superfluous), and searches for the gaps.
+- **Revisor** ([`revisor.py`](packages/nodes/src/calypr_nodes/revisor.py)) — improves the answer
+  using the search results and **counts revisions**. Its `routing()` makes the loop **bounded**:
+  keep revising (→ Tools → Revisor) until `max_revisions`, then finish (→ Output).
+
+The `tpl-reflexion` template is `Input → Responder → Tools → Revisor → (revise loop | Output)`.
+The counter plus the `recursion_limit` guarantee termination.
+
+> **ReAct vs Reflexion:** ReAct interleaves *thinking and acting* until it can answer. Reflexion
+> adds a *self-critique loop* — answer, research, revise, repeat — to raise quality. On the canvas
+> both are just nodes + conditional edges, and both generate canonical LangGraph you own.
+
+**Gate** ([`phase5.spec.ts`](e2e/tests/phase5.spec.ts)): load the ReAct template → the Code view
+shows `ToolNode` + `tools_condition`; load Reflexion → it shows the Responder/Revisor and the
+bounded `route_node_revisor` loop; the Tool node shows its provider dropdown + key field; and the
+Agent panel no longer has a type dropdown.
+
+---
+
+## 10. Running & testing it yourself
 
 Prerequisites: Node ≥ 20 (with Corepack for pnpm), Python 3.12 via [uv](https://docs.astral.sh/uv/),
 Docker. One-time setup is already done in this repo; the everyday commands:
 
 ```bash
-# 1. Make sure Postgres is up (idempotent)
+# 1. Make sure Postgres is up (idempotent; only needed to *save* agents)
 docker compose -f infra/docker/compose.yaml up -d --wait
 
 # 2. Run the whole backend test suite (all phases)
-uv run pytest                  # ~30 tests; live LLM tests are opt-in (CALYPR_RUN_LIVE_TESTS=1)
+uv run pytest                  # ~90 tests; live LLM tests are opt-in (CALYPR_RUN_LIVE_TESTS=1)
 
 # 3. See the engine stream a reply (no key → fake model; with a key → real LLM)
 uv run python -m calypr_runtime.demo "Explain RAG in one sentence"
 #   Put OPENAI_API_KEY=... in a (gitignored) .env to use OpenAI automatically.
 
-# 4. The full app — open the canvas and chat with an agent
-uv run uvicorn calypr_api.main:app --reload --port 8000          # API (auto-loads .env keys)
-pnpm --filter @calypr/web exec next dev --port 3100              # Web → http://localhost:3100
-#   → sign in → Open canvas → +Input +Agent +Output → pick a model → Playground → chat
+# 4. The full app — boots BOTH servers (api :8000 + web :3100); Ctrl-C stops both
+./start.sh
+#   → sign in → Open canvas → pick a template (e.g. ReAct) or +Input +Agent +Output
+#   → Playground to chat, or Code to see the ownable Python it compiles to
 
-# 5. The browser gates (Phase 0 + Phase 2; boots both servers for you)
-pnpm --filter @calypr/e2e test
+# 5. The browser gates (Phases 0–5; boots both servers for you). Router/Custom Code
+#    use eval, so the gate sets CALYPR_ALLOW_CUSTOM_CODE=1.
+CALYPR_ALLOW_CUSTOM_CODE=1 pnpm --filter @calypr/e2e test
 ```
 
 **How a beginner should explore:** run command #3 first (instant feedback), then open
@@ -495,11 +646,13 @@ pnpm --filter @calypr/e2e test
 the model layer. To see the *Phase 2* path, trace a chat **front-to-back**:
 [`Playground.tsx`](apps/web/src/components/canvas/Playground.tsx) → [`lib/api.ts`](apps/web/src/lib/api.ts)
 → [`app/api/runs/route.ts`](apps/web/src/app/api/runs/route.ts) → [`routers/runs.py`](apps/api/src/calypr_api/routers/runs.py)
-→ `run_stream`. Set the model to `fake` to step through deterministically.
+→ `run_stream`. To see the *Phase 3* payoff, load a template, open the **Code** view, and read the
+generated module — then find the node whose `codegen()` produced each function. Set the model to
+`fake` to step through deterministically.
 
 ---
 
-## 8. Key design decisions (the "why" cheat-sheet)
+## 11. Key design decisions (the "why" cheat-sheet)
 
 | Decision | Why it matters |
 |---|---|
@@ -512,35 +665,32 @@ the model layer. To see the *Phase 2* path, trace a chat **front-to-back**:
 | **Build the engine before the canvas** | The compiler is the riskiest part; prove it headless so the canvas (Phase 2) is "just" UI over a working spine. |
 | **Next route proxy for the API** | The browser talks same-origin (no CORS), and the API URL + provider keys stay server-side. Production-shaped from day one. |
 | **Canvas → GraphSpec via the shared types** | The UI builds the *exact* object the engine compiles — the Phase 0 codegen contract closes the loop end-to-end. |
+| **`codegen()` mirrors `compile()` + a round-trip test** | The canvas projects to *ownable* Python that provably runs the same — the no-ceiling wedge, enforced in CI. |
+| **Conditional edges via `routing()`** | One keystone (`add_conditional_edges`) gives the canvas branching *and* loops — every later pattern (Router, ReAct, Reflexion) reuses it. |
+| **Edge-driven tool binding** | Wiring Agent → Tool both binds the tool and executes it — the same tool list, exactly like LangGraph; ReAct is "just" that loop. |
+| **Patterns as compositions, types as templates** | ReAct/Reflexion are nodes + edges (not bespoke engines), and the agent ladder lives in templates — so the canvas stays small and the generated code stays canonical. |
 
 ---
 
-## 9. What's next — the wedge realignment
+## 12. What's next
 
-After Phases 0–2, Calypr's strategy sharpened (see **[`WEDGE-PLAN.md`](./WEDGE-PLAN.md)**):
-the audience is the **AI engineer**, and the moat is **prompt → canvas → code** — the canvas
-compiles to *ownable Python you'd actually merge*, so you never hit a ceiling and churn to raw
-code. The roadmap was reordered to prove that bet first.
+Phases 0–5 prove the **prompt → canvas → code** wedge end-to-end: you can draw (or start from a
+template) a tool-using agent, run it, and walk away with idiomatic LangGraph you own. What's still
+ahead (see **[`CLAUDE-PLAN.md`](./CLAUDE-PLAN.md)** / **[`WEDGE-PLAN.md`](./WEDGE-PLAN.md)**):
 
-**Phase 3 — the code altitude (built).** A `GraphSpec` now generates idiomatic, standalone
-**Python (LangGraph)** with zero Calypr dependency — open the **Code** view in the canvas. A
-**Custom Code** node is the no-ceiling escape hatch (drop to Python, it round-trips), and a test
-proves the generated code runs *identically* to the in-memory engine (the new `services/codegen`
-package, with a `codegen()` method on each node mirroring `compile()`).
-
-**Phase 4 — tools + knowledge**, each shipping `codegen()` so the round-trip grows with the node set:
-
-- **Tools** the Agent can call mid-conversation: a web-search tool, an HTTP-request tool, and an
-  **MCP client** (so any [MCP](https://modelcontextprotocol.io) server's tools become available).
-  The Agent node's tool loop — already structured in Phase 1 — starts *executing* tools.
-- **Knowledge bases (RAG):** upload documents → chunk → embed → store in **pgvector**; the Agent
+- **Knowledge bases (RAG):** upload documents → chunk → embed → store in **pgvector**; an agent
   retrieves relevant passages and answers **with citations**. (This is why we chose pgvector back
-  in Phase 0.)
-- The playground will show **tool-call steps and citations**, so you can see *how* the agent
-  reached its answer.
+  in Phase 0.) More tool providers land alongside — an HTTP-request tool and an **MCP client**, so
+  any [MCP](https://modelcontextprotocol.io) server's tools become available — and real Tavily
+  execution (today it's codegen-only).
+- **Phase 6 — multi-agent:** supervisor/worker and hand-off graphs, composing the single agents
+  from Phases 4–5 into teams — still on the same state-graph + codegen spine.
+- **Per-node models + richer playground:** each LLM node resolves its own provider (a cheap
+  Responder + a strong Revisor), and the playground surfaces tool-call steps and citations so you
+  see *how* the agent reached its answer.
 
-Same discipline: it lands behind a Playwright gate — build an agent with a knowledge base and a
-tool, ask a question, and assert a cited answer with a visible tool call.
+Same discipline throughout: every new node ships a `codegen()` so the round-trip keeps holding,
+and each phase lands behind a Playwright gate.
 
 > **RAG, explained:** *Retrieval-Augmented Generation* means: before answering, fetch relevant
 > snippets from your documents and hand them to the model as context. It lets an agent answer
@@ -548,7 +698,7 @@ tool, ask a question, and assert a cited answer with a visible tool call.
 
 ---
 
-## 10. Mini-glossary
+## 13. Mini-glossary
 
 - **Monorepo** — one git repo holding multiple related projects (packages).
 - **Workspace** — a manager's view of those packages (pnpm for JS, uv for Python).
@@ -564,7 +714,15 @@ tool, ask a question, and assert a cited answer with a visible tool call.
 - **SSE (Server-Sent Events)** — one long-lived HTTP response the server streams `data:` chunks over until done.
 - **Proxy (Next route)** — a same-origin server endpoint that forwards to the Python API (hides keys, avoids CORS).
 - **Provider factory** — code that picks the LLM client (OpenAI / Anthropic / fake) from a model id.
-- **RAG (Retrieval-Augmented Generation)** — fetch relevant document snippets first, then answer from them (with citations). Phase 3.
+- **Codegen / round-trip** — generating ownable Python from a graph; the *round-trip test* proves the generated code runs identically to the in-memory engine.
+- **`codegen()`** — a node's "how do I look as code?" method, mirroring `compile()` ("how do I run?").
+- **Conditional edges (`routing()` / `add_conditional_edges`)** — control flow that branches (and loops) on a path function over state, instead of always running the next node.
+- **Agent ladder / `agent_type`** — the Russell & Norvig presets (simple-reflex, model-based, goal-based, utility-based, learning, reflection) a single Agent can take.
+- **Router (If-Else)** — a node that branches by a rule over state; **Evaluator** — LLM-as-judge (score + rationale); **Memory** — a visible buffer/summary step.
+- **Tool node / `ToolNode`** — runs the tools an agent calls; **edge-driven binding** — wiring Agent → Tool both *binds* the tool to the model and *executes* its calls.
+- **ReAct** — an agent that loops *reason → act (tool) → observe* until it can answer (`tools_condition`). **Reflexion** — answer, research, and *revise* in a bounded loop (Responder + Revisor).
+- **Template** — a ready-to-run starter graph (e.g. ReAct, Reflexion) served from `GET /templates` and loaded onto the canvas.
+- **RAG (Retrieval-Augmented Generation)** — fetch relevant document snippets first, then answer from them (with citations). Still ahead (see §12).
 - **Migration (Alembic)** — a versioned, repeatable change to the database schema.
 - **RLS (Row-Level Security)** — Postgres feature that filters rows per tenant at the database level.
 - **CI gate** — an automated test that must pass to consider a phase "done."
