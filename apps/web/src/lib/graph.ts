@@ -12,7 +12,9 @@ export type CalyprNodeType =
   | "router"
   | "evaluator"
   | "memory"
-  | "tool";
+  | "tool"
+  | "responder"
+  | "revisor";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -27,6 +29,8 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   evaluator: "Evaluator",
   memory: "Memory",
   tool: "Tools",
+  responder: "Responder",
+  revisor: "Revisor",
 };
 
 // 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
@@ -92,6 +96,8 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     model: "fake",
   },
   tool: { provider: "demo_search", api_key: "", max_results: 3 },
+  responder: { model: "fake", system_prompt: "" },
+  revisor: { model: "fake", system_prompt: "", max_revisions: 2 },
 };
 
 export const ROUTER_DEFAULT_BRANCH = String(DEFAULT_CONFIG.router.default);

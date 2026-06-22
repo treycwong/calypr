@@ -6,9 +6,55 @@ custom stream writer the Agent uses."""
 
 from __future__ import annotations
 
-from calypr_model import Done, Msg, TextDelta, Usage
+from calypr_model import Done, Msg, TextDelta, ToolCall, Usage
+from langchain_core.messages import AIMessage
 
 from calypr_nodes._convert import safe_stream_writer
+
+
+async def actor_message(
+    model,
+    *,
+    model_id: str,
+    system: str,
+    messages: list[Msg],
+    tools: list[dict],
+    temperature: float = 0.0,
+    max_tokens: int = 1024,
+    stream: bool = True,
+) -> AIMessage:
+    """One streaming model call that may request tools; returns an AIMessage carrying the
+    text + any tool calls (so a wired Tool node can act). Used by Responder/Revisor."""
+    writer = safe_stream_writer() if stream else (lambda _payload: None)
+    text = ""
+    calls: list[ToolCall] = []
+    async for ev in model.stream(
+        model=model_id,
+        system=system,
+        messages=messages,
+        tools=tools,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    ):
+        if isinstance(ev, TextDelta):
+            writer({"type": "token", "text": ev.text})
+        elif isinstance(ev, ToolCall):
+            calls.append(ev)
+        elif isinstance(ev, Usage):
+            writer(
+                {
+                    "type": "usage",
+                    "input_tokens": ev.input_tokens,
+                    "output_tokens": ev.output_tokens,
+                }
+            )
+        elif isinstance(ev, Done):
+            text = ev.text
+            calls = ev.tool_calls or calls
+    return AIMessage(
+        content=text,
+        tool_calls=[{"id": c.id, "name": c.name, "args": c.args} for c in calls],
+    )
 
 
 async def collect_text(

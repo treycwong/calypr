@@ -166,6 +166,52 @@ export function ToolNodeView({ data, selected }: NodeProps) {
   );
 }
 
+export function ResponderNodeView({ selected }: NodeProps) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Shell
+        title="Responder"
+        accent="bg-indigo-500"
+        selected={selected}
+        testid="node-responder"
+      >
+        draft + self-critique
+      </Shell>
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+    </>
+  );
+}
+
+export function RevisorNodeView({ selected }: NodeProps) {
+  // Branches: "revise" (loop) and "done" (finish) — labelled edges carry the names.
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Shell
+        title="Revisor"
+        accent="bg-fuchsia-500"
+        selected={selected}
+        testid="node-revisor"
+      >
+        revise · loop
+      </Shell>
+      <Handle
+        id="revise"
+        type="source"
+        position={Position.Bottom}
+        style={{ ...handleStyle, left: "33%" }}
+      />
+      <Handle
+        id="done"
+        type="source"
+        position={Position.Bottom}
+        style={{ ...handleStyle, left: "67%" }}
+      />
+    </>
+  );
+}
+
 export const nodeTypes = {
   input: InputNodeView,
   agent: AgentNodeView,
@@ -175,4 +221,6 @@ export const nodeTypes = {
   evaluator: EvaluatorNodeView,
   memory: MemoryNodeView,
   tool: ToolNodeView,
+  responder: ResponderNodeView,
+  revisor: RevisorNodeView,
 };

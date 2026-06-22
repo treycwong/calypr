@@ -24,6 +24,7 @@ def test_archetypes_present():
         "tpl-reflection",
         "tpl-learning",
         "tpl-react",
+        "tpl-reflexion",
     ]
 
 

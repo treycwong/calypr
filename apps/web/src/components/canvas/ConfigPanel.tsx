@@ -288,6 +288,48 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function PromptField({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <Field id="cfg-prompt" label="System prompt (optional)">
+      <Textarea
+        id="cfg-prompt"
+        data-testid="cfg-prompt"
+        rows={3}
+        value={String(config.system_prompt ?? "")}
+        onChange={(e) => set({ system_prompt: e.target.value })}
+      />
+    </Field>
+  );
+}
+
+function ResponderFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <ModelField config={config} set={set} />
+      <PromptField config={config} set={set} />
+    </>
+  );
+}
+
+function RevisorFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <ModelField config={config} set={set} />
+      <PromptField config={config} set={set} />
+      <Field id="cfg-max-revisions" label="Max revisions">
+        <Input
+          id="cfg-max-revisions"
+          data-testid="cfg-max-revisions"
+          type="number"
+          min={1}
+          value={Number(config.max_revisions ?? 2)}
+          onChange={(e) => set({ max_revisions: Number(e.target.value) })}
+        />
+      </Field>
+    </>
+  );
+}
+
 export function ConfigPanel({
   node,
   onChange,
@@ -313,6 +355,8 @@ export function ConfigPanel({
 
       {type === "agent" ? <AgentFields config={config} set={set} /> : null}
       {type === "tool" ? <ToolFields config={config} set={set} /> : null}
+      {type === "responder" ? <ResponderFields config={config} set={set} /> : null}
+      {type === "revisor" ? <RevisorFields config={config} set={set} /> : null}
       {type === "router" ? <RouterFields config={config} set={set} /> : null}
       {type === "evaluator" ? <EvaluatorFields config={config} set={set} /> : null}
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}

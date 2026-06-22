@@ -194,6 +194,37 @@ def react() -> GraphSpec:
     )
 
 
+def reflexion() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-reflexion",
+        name="Reflexion",
+        description="Answer, then research and revise in a bounded loop (responder + revisor).",
+        state=[
+            *_BASE_STATE,
+            StateChannel(key="revision_count", type="number", reducer=Reducer.last),
+        ],
+        nodes=[
+            _input(),
+            NodeSpec(id="responder", type="responder", config={"model": "fake"}),
+            NodeSpec(id="tools", type="tool", config={"provider": "demo_search"}),
+            NodeSpec(
+                id="revisor",
+                type="revisor",
+                config={"model": "fake", "max_revisions": 2},
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="responder"),
+            EdgeSpec(id="e2", source="responder", target="tools"),
+            EdgeSpec(id="e3", source="tools", target="revisor"),
+            EdgeSpec(id="e4", source="revisor", target="tools", condition="revise"),
+            EdgeSpec(id="e5", source="revisor", target="out", condition="done"),
+        ],
+        entry="in",
+    )
+
+
 # Ordered simple→complex — the wedge gradient the canvas gallery presents.
 TEMPLATES: list[GraphSpec] = [
     simple_reflex(),
@@ -203,4 +234,5 @@ TEMPLATES: list[GraphSpec] = [
     reflection(),
     learning(),
     react(),
+    reflexion(),
 ]

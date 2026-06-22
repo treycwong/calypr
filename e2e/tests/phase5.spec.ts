@@ -56,3 +56,20 @@ test("the Agent panel no longer has an agent-type dropdown", async ({ page }) =>
   await expect(page.getByTestId("cfg-model")).toBeVisible(); // the panel is showing
   await expect(page.getByTestId("cfg-agent-type")).toHaveCount(0); // but no type selector
 });
+
+test("the Reflexion template projects its Responder/Revisor bounded loop into code", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page.getByTestId("template-picker").selectOption({ label: "Reflexion" });
+  await expect(page.getByTestId("node-responder")).toBeVisible();
+  await expect(page.getByTestId("node-revisor")).toBeVisible();
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  await expect(code).toContainText("def node_responder");
+  await expect(code).toContainText("def route_node_revisor"); // the bounded loop
+  await expect(code).toContainText("revision_count");
+});

@@ -77,6 +77,10 @@ class ToolsNode(BaseNode):
         lc_node = LCToolNode([spec.runtime])
 
         async def _run(state: dict[str, Any], config) -> dict[str, Any]:
+            messages = state.get("messages") or []
+            last = messages[-1] if messages else None
+            if not getattr(last, "tool_calls", None):
+                return {}  # nothing to run (e.g. the actor asked no tool this turn)
             return await lc_node.ainvoke(state, config)
 
         return _run
