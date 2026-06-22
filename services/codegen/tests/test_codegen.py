@@ -2,6 +2,7 @@ import importlib.util
 import subprocess
 import sys
 
+import pytest
 from calypr_codegen import generate_python
 from calypr_compiler.golden import input_agent_output
 from calypr_dsl import EdgeSpec, GraphSpec, NodeSpec, Reducer, StateChannel
@@ -96,6 +97,205 @@ def test_generated_code_is_ruff_clean():
     )
     assert fmt.returncode == 0
     assert fmt.stdout == code, "generated code is not already ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
+def _branching_graph() -> GraphSpec:
+    """Router → (uppercase | lowercase) → Output, branching on the input (no LLM)."""
+    code_imports = ["from langchain_core.messages import AIMessage"]
+    return GraphSpec(
+        id="branch",
+        name="Branching",
+        state=[
+            StateChannel(key="input", type="string", reducer=Reducer.last),
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="router",
+                type="router",
+                config={
+                    "kind": "rules",
+                    "input_channel": "input",
+                    "branches": [
+                        {"name": "shout", "when": '"!" in state["input"]'},
+                        {"name": "calm", "when": "True"},
+                    ],
+                    "default": "calm",
+                },
+            ),
+            NodeSpec(
+                id="up",
+                type="code",
+                config={
+                    "code": 'return {"messages": [AIMessage(content=state["input"].upper())]}',
+                    "imports": code_imports,
+                },
+            ),
+            NodeSpec(
+                id="down",
+                type="code",
+                config={
+                    "code": 'return {"messages": [AIMessage(content=state["input"].lower())]}',
+                    "imports": code_imports,
+                },
+            ),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="router", target="up", condition="shout"),
+            EdgeSpec(id="e2", source="router", target="down", condition="calm"),
+            EdgeSpec(id="e3", source="up", target="out"),
+            EdgeSpec(id="e4", source="down", target="out"),
+        ],
+        entry="router",
+    )
+
+
+async def test_router_branches_and_round_trips(tmp_path):
+    """Conditional control flow: routes correctly in-memory AND the generated code
+    (with add_conditional_edges) runs identically on both branches."""
+    graph = _branching_graph()
+    ctx = NodeContext()
+
+    assert (await run(graph, ctx, "Hello!"))["output"] == "HELLO!"
+    assert (await run(graph, ctx, "Hello"))["output"] == "hello"
+
+    code = generate_python(graph)
+    assert "add_conditional_edges" in code
+    module = _import_generated(code, tmp_path)
+    assert module.build_graph().invoke({"input": "Hello!"})["output"] == "HELLO!"
+    assert module.build_graph().invoke({"input": "Hello"})["output"] == "hello"
+
+
+def _agent_graph(agent_type: str) -> GraphSpec:
+    return GraphSpec(
+        id="a",
+        name="Agent",
+        state=[
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(
+                id="ag",
+                type="agent",
+                config={
+                    "agent_type": agent_type,
+                    "model": "gpt-4o-mini",
+                    "system_prompt": "Be helpful.",
+                },
+            ),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="ag"),
+            EdgeSpec(id="e2", source="ag", target="out"),
+        ],
+        entry="in",
+    )
+
+
+# Each preset emits a distinctive idiomatic construct in its generated Python.
+_AGENT_MARKERS = {
+    "simple_reflex": "isinstance(m, HumanMessage)",
+    "model_based": "reply = model.invoke([SystemMessage",
+    "goal_based": "reply = model.invoke([SystemMessage",
+    "utility_based": "best = max(candidates, key=len)",
+    "learning": "reply = model.invoke([SystemMessage",
+    "reflection": "critique_prompt = (",
+}
+
+
+@pytest.mark.parametrize("agent_type,marker", list(_AGENT_MARKERS.items()))
+def test_agent_type_codegen_is_clean_and_idiomatic(agent_type, marker):
+    """Each agent_type generates its own idiomatic, ruff-clean Python (the code-quality
+    bet extends across the whole agent ladder)."""
+    code = generate_python(_agent_graph(agent_type))
+    assert marker in code
+
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, f"{agent_type} codegen is not ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
+def _capability_graph(node_type: str, config: dict) -> GraphSpec:
+    return GraphSpec(
+        id="c",
+        name="Capability",
+        state=[
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+            StateChannel(key="score", type="number", reducer=Reducer.last),
+            StateChannel(key="rationale", type="string", reducer=Reducer.last),
+            StateChannel(key="memory", type="list", reducer=Reducer.append),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(id="cap", type=node_type, config=config),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="cap"),
+            EdgeSpec(id="e2", source="cap", target="out"),
+        ],
+        entry="in",
+    )
+
+
+_CAPABILITY_CASES = [
+    ("evaluator", {"model": "gpt-4o-mini"}, "match = re.search"),
+    ("memory", {"operation": "buffer"}, '{"memory": [latest]}'),
+    ("memory", {"operation": "summary", "model": "gpt-4o-mini"}, "long-term memory"),
+]
+
+
+@pytest.mark.parametrize("node_type,config,marker", _CAPABILITY_CASES)
+def test_capability_node_codegen_is_clean(node_type, config, marker):
+    """Evaluator + Memory generate idiomatic, ruff-clean Python too."""
+    code = generate_python(_capability_graph(node_type, config))
+    assert marker in code
+
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, f"{node_type}/{config} codegen is not ruff-formatted"
     check = subprocess.run(
         ["ruff", "check", "--stdin-filename", "generated.py", "-"],
         input=code,

@@ -2,6 +2,7 @@
 
 from calypr_compiler.compile import CompileError, compile_graph
 from calypr_compiler.state import build_state_type
+from calypr_compiler.templates import TEMPLATES
 from calypr_compiler.validate import Issue, validate_graph
 
 __all__ = [
@@ -10,4 +11,5 @@ __all__ = [
     "validate_graph",
     "Issue",
     "build_state_type",
+    "TEMPLATES",
 ]

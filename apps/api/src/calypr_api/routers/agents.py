@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 
 from calypr_codegen import generate_python
-from calypr_compiler import validate_graph
+from calypr_compiler import TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -25,6 +25,7 @@ from calypr_api.schemas import (
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
+    TemplateInfo,
 )
 
 router = APIRouter()
@@ -46,6 +47,17 @@ def compile_spec(graph: GraphSpec) -> CompileResponse:
 def codegen_spec(graph: GraphSpec) -> CodegenResponse:
     """The 'code' altitude: render the graph as ownable Python (LangGraph)."""
     return CodegenResponse(code=generate_python(graph))
+
+
+@router.get("/templates", response_model=list[TemplateInfo], tags=["engine"])
+def list_templates() -> list[TemplateInfo]:
+    """The archetype starter graphs (the agent ladder), simple→complex."""
+    return [
+        TemplateInfo(
+            id=t.id, name=t.name, description=t.description or "", graph=t
+        )
+        for t in TEMPLATES
+    ]
 
 
 @router.post("/agents", response_model=AgentDetail, tags=["agents"])

@@ -40,15 +40,34 @@ def compile_graph(
     state_type = build_state_type(spec.state)
     builder = StateGraph(state_type)
 
+    compiled: dict[str, tuple] = {}
     for node in spec.nodes:
         node_cls = get_node(node.type)
         cfg = node_cls.config_model.model_validate(node.config)
+        compiled[node.id] = (node_cls, cfg)
         builder.add_node(node.id, node_cls.compile(cfg, ctx))
 
     builder.add_edge(START, spec.entry)
+
+    # Routing nodes (e.g. If-Else) decide a branch name; wire their labelled out-edges as
+    # conditional edges and skip them in the plain pass below.
+    routing_sources: set[str] = set()
+    for node in spec.nodes:
+        node_cls, cfg = compiled[node.id]
+        path_fn = node_cls.routing(cfg, ctx)
+        if path_fn is None:
+            continue
+        routing_sources.add(node.id)
+        path_map = {
+            e.condition: e.target
+            for e in spec.edges
+            if e.source == node.id and e.condition
+        }
+        builder.add_conditional_edges(node.id, path_fn, path_map)
+
     for edge in spec.edges:
-        # Phase 1: control-flow edges are unconditional. Router/conditional edges and
-        # handoffs arrive with the Router (Phase 2) and multi-agent (Phase 5) work.
+        if edge.source in routing_sources:
+            continue  # handled by add_conditional_edges
         builder.add_edge(edge.source, edge.target)
     for node in spec.nodes:
         if node.type == "output":

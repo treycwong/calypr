@@ -56,6 +56,20 @@ export async function saveAgent(name: string, graph: GraphSpec): Promise<{ id: s
   return res.json();
 }
 
+export type Template = {
+  id: string;
+  name: string;
+  description: string;
+  graph: GraphSpec;
+};
+
+/** The archetype starter graphs (the agent ladder), simple→complex. */
+export async function listTemplates(): Promise<Template[]> {
+  const res = await fetch("/api/templates", { cache: "no-store" });
+  if (!res.ok) throw new Error(`templates failed (${res.status})`);
+  return res.json();
+}
+
 /** The 'code' altitude: get the agent as ownable Python (LangGraph). */
 export async function generateCode(graph: GraphSpec): Promise<string> {
   const res = await fetch("/api/codegen", {

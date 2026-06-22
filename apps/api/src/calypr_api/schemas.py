@@ -42,3 +42,12 @@ class AgentDetail(BaseModel):
     id: str
     name: str
     graph: GraphSpec
+
+
+class TemplateInfo(BaseModel):
+    """An archetype starter graph for the canvas gallery."""
+
+    id: str
+    name: str
+    description: str
+    graph: GraphSpec

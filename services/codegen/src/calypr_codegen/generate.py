@@ -8,6 +8,7 @@ not on Calypr — so the user truly owns it (CLAUDE-PLAN realignment §Phase 3).
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 
@@ -81,7 +82,11 @@ def _render_imports(lines: set[str]) -> str:
         elif line.startswith("import "):
             plain.add(line[7:].strip())
 
-    groups: dict[str, list[str]] = {"future": [], "std": [], "third": []}
+    # Each section emits straight `import x` first, then `from x import ...`, each sorted
+    # by module name — matching ruff/isort's default (force-sort-within-sections off).
+    groups: dict[str, dict[str, list[str]]] = {
+        k: {"plain": [], "from": []} for k in ("future", "std", "third")
+    }
 
     def bucket(module: str) -> str:
         if module == "__future__":
@@ -89,13 +94,19 @@ def _render_imports(lines: set[str]) -> str:
         return "std" if module.split(".")[0] in _STDLIB_ROOTS else "third"
 
     for module in plain:
-        groups[bucket(module)].append(f"import {module}")
+        groups[bucket(module)]["plain"].append(f"import {module}")
     for module, names in from_imports.items():
-        groups[bucket(module)].append(
+        groups[bucket(module)]["from"].append(
             f"from {module} import {', '.join(sorted(names))}"
         )
 
-    blocks = ["\n".join(sorted(groups[k])) for k in ("future", "std", "third") if groups[k]]
+    blocks: list[str] = []
+    for k in ("future", "std", "third"):
+        section = sorted(groups[k]["plain"]) + sorted(
+            groups[k]["from"], key=lambda s: s.split()[1]
+        )
+        if section:
+            blocks.append("\n".join(section))
     return "\n\n".join(blocks)
 
 
@@ -122,6 +133,7 @@ def generate_python(graph: GraphSpec) -> str:
         "from langgraph.graph import END, START, StateGraph",
     }
 
+    routing_ids: set[str] = set()
     for node in graph.nodes:
         fn = _fn_name(node.id)
         fn_for[node.id] = fn
@@ -130,6 +142,8 @@ def generate_python(graph: GraphSpec) -> str:
         fragment = node_cls.codegen(cfg, fn)
         functions.append(fragment.function.rstrip("\n"))
         imports.update(fragment.imports)
+        if fragment.routing:
+            routing_ids.add(node.id)
 
     state_src, state_imports = _state_class(graph.state)
     imports.update(state_imports)
@@ -140,7 +154,25 @@ def generate_python(graph: GraphSpec) -> str:
         build.append(f'    graph.add_node("{node.id}", {fn_for[node.id]})')
     if graph.entry:
         build.append(f'    graph.add_edge(START, "{graph.entry}")')
+    # Conditional edges for routing nodes (If-Else): branch name -> target.
+    for node in graph.nodes:
+        if node.id not in routing_ids:
+            continue
+        path_map = {
+            e.condition: e.target
+            for e in graph.edges
+            if e.source == node.id and e.condition
+        }
+        mapping = ", ".join(
+            f"{json.dumps(k)}: {json.dumps(v)}" for k, v in path_map.items()
+        )
+        build.append(
+            f'    graph.add_conditional_edges("{node.id}", '
+            f"route_{fn_for[node.id]}, {{{mapping}}})"
+        )
     for edge in graph.edges:
+        if edge.source in routing_ids:
+            continue  # handled by add_conditional_edges
         build.append(f'    graph.add_edge("{edge.source}", "{edge.target}")')
     for node in graph.nodes:
         if node.type == "output":

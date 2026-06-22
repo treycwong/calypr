@@ -13,11 +13,16 @@ test("the canvas projects to ownable Python with a Custom Code escape hatch", as
   // (avoids a hydration race where the first clicks are lost under load).
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
-  // Build Input → Agent → Custom Code → Output (a sensible linear chain).
+  // Build Input → Agent → Custom Code → Output (a sensible linear chain). Gate each add
+  // on the node mounting so no click is lost under parallel load.
   await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
   await page.getByTestId("add-agent").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
   await page.getByTestId("add-code").click();
+  await expect(page.getByTestId("node-code")).toBeVisible();
   await page.getByTestId("add-output").click();
+  await expect(page.getByTestId("node-output")).toBeVisible();
 
   // Open the Code view — idiomatic LangGraph, with the custom code emitted verbatim.
   await page.getByTestId("toggle-code").click();

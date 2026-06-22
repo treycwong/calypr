@@ -60,6 +60,20 @@ def test_codegen_returns_ownable_python():
     assert "import calypr" not in code
 
 
+def test_templates_lists_the_archetypes():
+    r = client.get("/templates")
+    assert r.status_code == 200
+    templates = r.json()
+    ids = [t["id"] for t in templates]
+    assert "tpl-simple-reflex" in ids
+    assert "tpl-reflection" in ids
+    assert len(templates) == 6
+    # each carries a full, compilable graph
+    first = templates[0]
+    assert first["graph"]["entry"]
+    assert first["description"]
+
+
 @pytest.mark.skipif(not _db_available(), reason="Postgres not available")
 def test_agent_crud_roundtrip():
     graph = input_agent_output(model="fake").model_dump()

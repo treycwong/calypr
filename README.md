@@ -35,9 +35,16 @@ pnpm install                   # JS workspaces
 uv sync                        # Python workspace venv
 docker compose -f infra/docker/compose.yaml up -d   # Postgres + pgvector
 
-pnpm dev                       # web app  → http://localhost:3000
-uv run --project apps/api uvicorn calypr_api.main:app --reload   # api → http://localhost:8000
+./start.sh                     # ⭐ start BOTH servers (api :8000 + web :3100); Ctrl-C stops both
+
+# …or run them manually in two terminals:
+uv run uvicorn calypr_api.main:app --reload --port 8000          # api → http://localhost:8000
+pnpm --filter @calypr/web exec next dev --port 3100              # web → http://localhost:3100
 ```
+
+`start.sh` auto-loads `.env` (so OpenAI/Anthropic keys are picked up), brings up Postgres if
+Docker is running (only needed to *save* agents — chat + the Code view work without it), and
+streams both servers' logs. Override ports with `API_PORT` / `WEB_PORT`.
 
 ### Tests
 

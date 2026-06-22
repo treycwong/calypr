@@ -23,11 +23,14 @@ class CodeFragment:
     """The generated Python for one node — a node function plus the imports it needs.
 
     The codegen service collects fragments, dedupes imports, and wires `fn_name` into the
-    `StateGraph` (CLAUDE-PLAN realignment §Phase 3 / round-trip)."""
+    `StateGraph` (CLAUDE-PLAN realignment §Phase 3 / round-trip). For routing nodes, also
+    emit a `route_{fn_name}` function and set `routing=True`; the service wires it via
+    `add_conditional_edges`."""
 
     fn_name: str
     function: str  # full "def {fn_name}(state: State) -> dict: ..." source
     imports: list[str] = field(default_factory=list)
+    routing: bool = False
 
 
 @dataclass
@@ -74,6 +77,16 @@ class BaseNode:
     def codegen(cls, cfg: BaseModel, fn_name: str) -> CodeFragment:  # pragma: no cover
         """Emit idiomatic, standalone Python for this node (the 'code' altitude)."""
         raise NotImplementedError(f"node {cls.type!r} has no codegen yet")
+
+    @classmethod
+    def routing(
+        cls, cfg: BaseModel, ctx: NodeContext
+    ) -> Callable[[dict[str, Any]], str] | None:
+        """If this node makes a conditional branch decision, return a path function
+        `(state) -> branch_name`. The compiler wires it via `add_conditional_edges`,
+        mapping branch names to the targets of this node's labelled out-edges. Normal
+        nodes return None (plain control-flow edges)."""
+        return None
 
 
 _REGISTRY: dict[str, type[BaseNode]] = {}

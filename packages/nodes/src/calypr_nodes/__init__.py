@@ -5,7 +5,9 @@ Importing this package registers the built-in node types as a side effect.
 
 from calypr_nodes.agent import AgentConfig, AgentNode
 from calypr_nodes.code import CodeConfig, CodeNode
+from calypr_nodes.evaluator import EvaluatorConfig, EvaluatorNode
 from calypr_nodes.input import InputConfig, InputNode
+from calypr_nodes.memory import MemoryConfig, MemoryNode
 from calypr_nodes.output import OutputConfig, OutputNode
 from calypr_nodes.registry import (
     BaseNode,
@@ -19,6 +21,7 @@ from calypr_nodes.registry import (
     parse_config,
     register,
 )
+from calypr_nodes.router import Branch, RouterConfig, RouterNode
 
 __all__ = [
     # registry
@@ -41,4 +44,11 @@ __all__ = [
     "OutputConfig",
     "CodeNode",
     "CodeConfig",
+    "RouterNode",
+    "RouterConfig",
+    "Branch",
+    "EvaluatorNode",
+    "EvaluatorConfig",
+    "MemoryNode",
+    "MemoryConfig",
 ]

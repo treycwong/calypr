@@ -12,13 +12,17 @@ test("build an agent on the canvas and chat with it", async ({ page }) => {
   // Wait until React Flow has mounted client-side (palette handlers wired).
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
-  // Build the chain — adding a block links it after the previous one.
+  // Build the chain — adding a block links it after the previous one. Gate each add on
+  // the node mounting so no click is lost under parallel load.
   await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
   await page.getByTestId("add-agent").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
   await page.getByTestId("add-output").click();
+  await expect(page.getByTestId("node-output")).toBeVisible();
 
   // Configure the Agent: select its node, confirm the (fake) model, set a prompt.
-  await page.locator(".react-flow__node").filter({ hasText: "Agent" }).click();
+  await page.getByTestId("node-agent").click();
   await expect(page.getByTestId("cfg-model")).toHaveValue("fake");
   await page.getByTestId("cfg-prompt").fill("You are concise.");
 

@@ -15,7 +15,7 @@ import {
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
 import Link from "next/link";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { CodeView } from "@/components/canvas/CodeView";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
@@ -23,12 +23,14 @@ import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { saveAgent } from "@/lib/api";
+import { listTemplates, saveAgent, type Template } from "@/lib/api";
 import {
   buildGraphSpec,
   type CalyprNodeType,
   DEFAULT_CONFIG,
+  graphToCanvas,
   type NodeData,
+  ROUTER_DEFAULT_BRANCH,
 } from "@/lib/graph";
 
 function CanvasInner() {
@@ -38,8 +40,15 @@ function CanvasInner() {
   const [showPlayground, setShowPlayground] = useState(false);
   const [showCode, setShowCode] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const [templates, setTemplates] = useState<Template[]>([]);
   const counter = useRef(0);
   const lastNodeId = useRef<string | null>(null);
+
+  useEffect(() => {
+    listTemplates()
+      .then(setTemplates)
+      .catch(() => setTemplates([]));
+  }, []);
 
   const addNode = useCallback(
     (type: CalyprNodeType) => {
@@ -54,8 +63,10 @@ function CanvasInner() {
       setNodes((nds) => [...nds, node]);
       if (lastNodeId.current && type !== "input") {
         const from = lastNodeId.current;
+        // Edges leaving a Router need a branch name; auto-link uses its default branch.
+        const label = from.startsWith("router-") ? ROUTER_DEFAULT_BRANCH : undefined;
         setEdges((eds) =>
-          addEdge({ id: `e-${from}-${id}`, source: from, target: id }, eds),
+          addEdge({ id: `e-${from}-${id}`, source: from, target: id, label }, eds),
         );
       }
       lastNodeId.current = id;
@@ -64,8 +75,13 @@ function CanvasInner() {
     [setNodes, setEdges],
   );
 
+  // A connection dragged from a Router's named handle carries the branch name as the edge
+  // label, which becomes the edge `condition` in the GraphSpec.
   const onConnect = useCallback(
-    (c: Connection) => setEdges((eds) => addEdge(c, eds)),
+    (c: Connection) =>
+      setEdges((eds) =>
+        addEdge({ ...c, label: c.sourceHandle ?? undefined }, eds),
+      ),
     [setEdges],
   );
   const onNodeClick = useCallback(
@@ -80,6 +96,21 @@ function CanvasInner() {
         ),
       ),
     [selectedId, setNodes],
+  );
+
+  const loadTemplate = useCallback(
+    (id: string) => {
+      const tpl = templates.find((t) => t.id === id);
+      if (!tpl) return;
+      const canvas = graphToCanvas(tpl.graph);
+      setNodes(canvas.nodes);
+      setEdges(canvas.edges);
+      counter.current = canvas.nodes.length;
+      lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
+      setSelectedId(null);
+      setSaveMsg(`Loaded ${tpl.name}`);
+    },
+    [templates, setNodes, setEdges],
   );
 
   const getGraph = useCallback(() => buildGraphSpec(nodes, edges), [nodes, edges]);
@@ -100,6 +131,25 @@ function CanvasInner() {
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-3">
           <span className="text-sm font-medium">Agent Canvas</span>
+          <select
+            data-testid="template-picker"
+            aria-label="Start from a template"
+            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            value=""
+            onChange={(e) => {
+              loadTemplate(e.target.value);
+              e.target.value = "";
+            }}
+          >
+            <option value="" disabled>
+              Start from template…
+            </option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </select>
           {saveMsg ? (
             <span className="text-xs text-muted-foreground" data-testid="save-msg">
               {saveMsg}

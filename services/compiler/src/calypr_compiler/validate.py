@@ -114,6 +114,40 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                 )
             )
 
+    # Router branch coverage: a router branches by edge `condition`, so every branch (and
+    # the default) must have a matching conditional out-edge. This keeps both the compiled
+    # graph and the generated code from ever routing to a missing branch.
+    for n in spec.nodes:
+        if n.type != "router" or not has_node("router"):
+            continue
+        try:
+            cfg = get_node("router").config_model.model_validate(n.config)
+        except ValidationError:
+            continue
+        wired = {e.condition for e in spec.edges if e.source == n.id and e.condition}
+        if not wired:
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="router_no_branches",
+                    message=f"Router {n.id!r} has no conditional out-edges",
+                    node_id=n.id,
+                )
+            )
+            continue
+        expected = {b.name for b in cfg.branches}
+        if cfg.default:
+            expected.add(cfg.default)
+        for name in sorted(expected - wired):
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="router_branch_unwired",
+                    message=f"Router {n.id!r} branch {name!r} has no matching edge",
+                    node_id=n.id,
+                )
+            )
+
     # Reachability from entry.
     if spec.entry in id_set:
         reachable: set[str] = set()
