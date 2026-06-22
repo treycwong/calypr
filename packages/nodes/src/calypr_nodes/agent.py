@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 from typing import Any, Literal
 
-from calypr_model import Done, Msg, Role, TextDelta, Usage
+from calypr_model import Done, Msg, Role, TextDelta, ToolCall, Usage
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
@@ -22,11 +22,16 @@ from calypr_nodes._convert import lc_to_msgs, render_template, safe_stream_write
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
+    CodegenContext,
     NodeContext,
     NodeFn,
     NodeMeta,
     register,
 )
+
+
+def _to_lc_tool_calls(calls: list[ToolCall]) -> list[dict]:
+    return [{"id": tc.id, "name": tc.name, "args": tc.args} for tc in calls]
 
 AgentType = Literal[
     "simple_reflex",
@@ -140,20 +145,26 @@ class AgentNode(BaseNode):
         if ctx.model is None:
             raise ValueError("Agent node requires a model client in NodeContext")
         model = ctx.model
+        tool_schemas = ctx.tools or []  # bound by the compiler from wired Tool nodes
 
-        async def _call(system: str, messages: list[Msg], writer) -> str:
-            """One streaming model call; returns the final text."""
+        async def _call(
+            system: str, messages: list[Msg], writer
+        ) -> tuple[str, list[ToolCall]]:
+            """One streaming model call; returns the final text + any tool calls."""
             text = ""
+            calls: list[ToolCall] = []
             async for ev in model.stream(
                 model=cfg.model,
                 system=system,
                 messages=messages,
-                tools=[],  # tools attach in Phase 5
+                tools=tool_schemas,
                 temperature=cfg.temperature,
                 max_tokens=cfg.max_tokens,
             ):
                 if isinstance(ev, TextDelta):
                     writer({"type": "token", "text": ev.text})
+                elif isinstance(ev, ToolCall):
+                    calls.append(ev)
                 elif isinstance(ev, Usage):
                     writer(
                         {
@@ -164,15 +175,16 @@ class AgentNode(BaseNode):
                     )
                 elif isinstance(ev, Done):
                     text = ev.text
-            return text
+                    calls = ev.tool_calls or calls
+            return text, calls
 
         async def _reflect(system: str, history: list[Msg], writer) -> str:
             """Generate, then critique → revise up to `max_reflections` times. Only the
             final revision streams to the playground; the loop is bounded (terminates)."""
             n = max(0, cfg.max_reflections)
-            reply = await _call(system, history, _silent if n else writer)
+            reply, _ = await _call(system, history, _silent if n else writer)
             for i in range(n):
-                critique = await _call(
+                critique, _ = await _call(
                     _critique_prompt(cfg),
                     [Msg(role=Role.user, content=reply)],
                     _silent,
@@ -181,7 +193,7 @@ class AgentNode(BaseNode):
                     f"{system}\n\nA reviewer noted:\n{critique}\n\n"
                     "Revise your previous answer to address it."
                 ).strip()
-                reply = await _call(
+                reply, _ = await _call(
                     revise_system,
                     [*history, Msg(role=Role.assistant, content=reply)],
                     writer if i == n - 1 else _silent,
@@ -194,9 +206,8 @@ class AgentNode(BaseNode):
             candidates: list[str] = []
             n = max(1, cfg.num_candidates)
             for i in range(n):
-                candidates.append(
-                    await _call(system, history, writer if i == 0 else _silent)
-                )
+                text, _ = await _call(system, history, writer if i == 0 else _silent)
+                candidates.append(text)
             return max(candidates, key=len)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
@@ -207,28 +218,54 @@ class AgentNode(BaseNode):
                 history = _latest_user_turn(history)
 
             if cfg.agent_type == "reflection":
-                reply = await _reflect(system, history, writer)
+                message = AIMessage(content=await _reflect(system, history, writer))
             elif cfg.agent_type == "utility_based":
-                reply = await _utility(system, history, writer)
+                message = AIMessage(content=await _utility(system, history, writer))
             else:
-                reply = await _call(system, history, writer)
+                reply, calls = await _call(system, history, writer)
+                # Preserve tool calls so a wired Tool node + conditional edge can act (ReAct).
+                message = AIMessage(
+                    content=reply, tool_calls=_to_lc_tool_calls(calls)
+                )
 
-            return {cfg.output_channel: [AIMessage(content=reply)]}
+            return {cfg.output_channel: [message]}
 
         return _run
 
     @classmethod
-    def codegen(cls, cfg: AgentConfig, fn_name: str) -> CodeFragment:
+    def routing(cls, cfg: AgentConfig, ctx: NodeContext):
+        """With tools bound, the agent branches like LangGraph's `tools_condition`: if its
+        last message asked for a tool, take the `tools` branch (→ a Tool node that loops
+        back); otherwise `respond` (→ the finish edge). Without tools, a plain node."""
+        if not ctx.tools:
+            return None
+        out = cfg.output_channel
+
+        def _route(state: dict[str, Any]) -> str:
+            messages = state.get(out) or []
+            last = messages[-1] if messages else None
+            return "tools" if getattr(last, "tool_calls", None) else "respond"
+
+        return _route
+
+    @classmethod
+    def codegen(
+        cls, cfg: AgentConfig, fn_name: str, ctx: CodegenContext | None = None
+    ) -> CodeFragment:
         imports = ["from langchain.chat_models import init_chat_model"]
         system = _scaffold(cfg, cfg.system_prompt)
         msg_imports: set[str] = {"SystemMessage"} if system else set()
         out = cfg.output_channel
 
+        model_expr = f"init_chat_model({json.dumps(cfg.model)}, temperature={cfg.temperature})"
+        tool_refs = ctx.tool_refs if ctx else []
+        if tool_refs:
+            model_expr += f".bind_tools([{', '.join(tool_refs)}])"
+
         head = [
             f"def {fn_name}(state: State) -> dict:",
             f'    """{_DOC[cfg.agent_type]}"""',
-            f"    model = init_chat_model({json.dumps(cfg.model)}, "
-            f"temperature={cfg.temperature})",
+            f"    model = {model_expr}",
             f'    messages = state.get("{cfg.input_channel}") or []',
         ]
         if system:

@@ -14,7 +14,7 @@ from calypr_nodes import NodeContext
 from calypr_runtime import run
 
 
-def test_six_archetypes_present():
+def test_archetypes_present():
     ids = [t.id for t in TEMPLATES]
     assert ids == [
         "tpl-simple-reflex",
@@ -23,6 +23,7 @@ def test_six_archetypes_present():
         "tpl-utility-based",
         "tpl-reflection",
         "tpl-learning",
+        "tpl-react",
     ]
 
 

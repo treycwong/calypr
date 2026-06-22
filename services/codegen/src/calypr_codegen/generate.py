@@ -13,7 +13,7 @@ import re
 import subprocess
 
 from calypr_dsl import GraphSpec, Reducer, StateChannel
-from calypr_nodes import get_node
+from calypr_nodes import CodegenContext, get_node, has_node
 
 _PYTYPE: dict[str, str] = {
     "string": "str",
@@ -124,6 +124,20 @@ def _ruff_format(code: str) -> str:
         return code
 
 
+def _tool_refs(graph: GraphSpec) -> dict[str, list[str]]:
+    """LLM node id → tool variable names to bind (resolved from edges to Tool nodes)."""
+    if not has_node("tool"):
+        return {}
+    tool_cls = get_node("tool")
+    tool_nodes = {n.id: n for n in graph.nodes if n.type == "tool"}
+    refs: dict[str, list[str]] = {}
+    for e in graph.edges:
+        if e.target in tool_nodes:
+            cfg = tool_cls.config_model.model_validate(tool_nodes[e.target].config)
+            refs.setdefault(e.source, []).extend(tool_cls.code_refs(cfg))
+    return refs
+
+
 def generate_python(graph: GraphSpec) -> str:
     """Render a complete, formatted Python module for `graph`."""
     fn_for: dict[str, str] = {}
@@ -133,13 +147,17 @@ def generate_python(graph: GraphSpec) -> str:
         "from langgraph.graph import END, START, StateGraph",
     }
 
+    tool_refs = _tool_refs(graph)
+    tool_node_ids = {n.id for n in graph.nodes if n.type == "tool"}
+
     routing_ids: set[str] = set()
     for node in graph.nodes:
         fn = _fn_name(node.id)
         fn_for[node.id] = fn
         node_cls = get_node(node.type)
         cfg = node_cls.config_model.model_validate(node.config)
-        fragment = node_cls.codegen(cfg, fn)
+        cg_ctx = CodegenContext(tool_refs=tool_refs.get(node.id, []))
+        fragment = node_cls.codegen(cfg, fn, cg_ctx)
         functions.append(fragment.function.rstrip("\n"))
         imports.update(fragment.imports)
         if fragment.routing:
@@ -170,8 +188,24 @@ def generate_python(graph: GraphSpec) -> str:
             f'    graph.add_conditional_edges("{node.id}", '
             f"route_{fn_for[node.id]}, {{{mapping}}})"
         )
+    # ReAct: an agent wired to a Tool node binds it and branches with `tools_condition`
+    # (the canonical loop) — route to the tool node, else finish at its respond target.
+    tool_routers: set[str] = set()
+    for node in graph.nodes:
+        if node.type != "agent" or node.id not in tool_refs:
+            continue
+        tool_routers.add(node.id)
+        out = [e for e in graph.edges if e.source == node.id]
+        tools_tgt = next((e.target for e in out if e.target in tool_node_ids), None)
+        done_tgt = next((e.target for e in out if e.target not in tool_node_ids), None)
+        done_expr = f'"{done_tgt}"' if done_tgt else "END"
+        imports.add("from langgraph.prebuilt import tools_condition")
+        build.append(
+            f'    graph.add_conditional_edges("{node.id}", tools_condition, '
+            f'{{"tools": "{tools_tgt}", END: {done_expr}}})'
+        )
     for edge in graph.edges:
-        if edge.source in routing_ids:
+        if edge.source in routing_ids or edge.source in tool_routers:
             continue  # handled by add_conditional_edges
         build.append(f'    graph.add_edge("{edge.source}", "{edge.target}")')
     for node in graph.nodes:

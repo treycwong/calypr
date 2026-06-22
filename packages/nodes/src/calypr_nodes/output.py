@@ -53,7 +53,7 @@ class OutputNode(BaseNode):
         return _run
 
     @classmethod
-    def codegen(cls, cfg: OutputConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: OutputConfig, fn_name: str, ctx=None) -> CodeFragment:
         fn = (
             f"def {fn_name}(state: State) -> dict:\n"
             f'    """Return the last message\'s text as the result."""\n'

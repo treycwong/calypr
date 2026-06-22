@@ -148,6 +148,31 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                 )
             )
 
+    # ReAct: an agent wired to a Tool node branches like `tools_condition`, so it needs a
+    # 'tools' edge (→ the Tool node) and a 'respond' edge (→ Output) — otherwise it would
+    # route to a missing branch when it stops (or never stops) calling tools.
+    tool_node_ids = {n.id for n in spec.nodes if n.type == "tool"}
+    for n in spec.nodes:
+        if n.type != "agent":
+            continue
+        out = [e for e in spec.edges if e.source == n.id]
+        if not any(e.target in tool_node_ids for e in out):
+            continue
+        conds = {e.condition for e in out if e.condition}
+        if "tools" not in conds or "respond" not in conds:
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="react_branches_unwired",
+                    message=(
+                        f"Agent {n.id!r} uses tools but its branches aren't wired "
+                        "('tools' → the Tool node, 'respond' → Output). Start from the "
+                        "ReAct template."
+                    ),
+                    node_id=n.id,
+                )
+            )
+
     # Reachability from entry.
     if spec.entry in id_set:
         reachable: set[str] = set()

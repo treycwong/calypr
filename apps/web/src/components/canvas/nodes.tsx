@@ -152,6 +152,20 @@ export function MemoryNodeView({ data, selected }: NodeProps) {
   );
 }
 
+export function ToolNodeView({ data, selected }: NodeProps) {
+  const provider = (data as NodeData).config.provider ?? "demo_search";
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Shell title="Tools" accent="bg-yellow-500" selected={selected} testid="node-tool">
+        {String(provider)}
+      </Shell>
+      {/* Loops back to the agent that called it (the ReAct cycle). */}
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+    </>
+  );
+}
+
 export const nodeTypes = {
   input: InputNodeView,
   agent: AgentNodeView,
@@ -160,4 +174,5 @@ export const nodeTypes = {
   router: RouterNodeView,
   evaluator: EvaluatorNodeView,
   memory: MemoryNodeView,
+  tool: ToolNodeView,
 };

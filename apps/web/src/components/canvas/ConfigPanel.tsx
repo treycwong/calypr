@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  AGENT_TYPE_OPTIONS,
   type Branch,
   type CalyprNodeType,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
+  TOOL_PROVIDER_OPTIONS,
 } from "@/lib/graph";
 
 type Setter = (patch: Record<string, unknown>) => void;
@@ -81,16 +81,11 @@ function ModelField({ config, set }: { config: Config; set: Setter }) {
 }
 
 function AgentFields({ config, set }: { config: Config; set: Setter }) {
+  // The agent's character comes from the template (its agent_type); the panel shows the
+  // model, prompt, and only the fields that type uses — no type selector.
   const agentType = String(config.agent_type ?? "model_based");
   return (
     <>
-      <SelectField
-        id="cfg-agent-type"
-        label="Agent type"
-        value={agentType}
-        options={AGENT_TYPE_OPTIONS}
-        onChange={(v) => set({ agent_type: v })}
-      />
       <ModelField config={config} set={set} />
       <Field id="cfg-prompt" label="System prompt">
         <Textarea
@@ -260,6 +255,39 @@ function MemoryFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function ToolFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <SelectField
+        id="cfg-provider"
+        label="Provider"
+        value={String(config.provider ?? "demo_search")}
+        options={TOOL_PROVIDER_OPTIONS}
+        onChange={(v) => set({ provider: v })}
+      />
+      <Field id="cfg-api-key" label="API key">
+        <Input
+          id="cfg-api-key"
+          data-testid="cfg-api-key"
+          type="password"
+          placeholder="runtime only — never written into generated code"
+          value={String(config.api_key ?? "")}
+          onChange={(e) => set({ api_key: e.target.value })}
+        />
+      </Field>
+      <Field id="cfg-max-results" label="Max results">
+        <Input
+          id="cfg-max-results"
+          type="number"
+          min={1}
+          value={Number(config.max_results ?? 3)}
+          onChange={(e) => set({ max_results: Number(e.target.value) })}
+        />
+      </Field>
+    </>
+  );
+}
+
 export function ConfigPanel({
   node,
   onChange,
@@ -284,6 +312,7 @@ export function ConfigPanel({
       <div className="text-sm font-medium">{NODE_LABELS[type]} settings</div>
 
       {type === "agent" ? <AgentFields config={config} set={set} /> : null}
+      {type === "tool" ? <ToolFields config={config} set={set} /> : null}
       {type === "router" ? <RouterFields config={config} set={set} /> : null}
       {type === "evaluator" ? <EvaluatorFields config={config} set={set} /> : null}
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}

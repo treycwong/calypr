@@ -6,6 +6,7 @@ import type { CalyprNodeType } from "@/lib/graph";
 const ITEMS: { type: CalyprNodeType; label: string; hint: string }[] = [
   { type: "input", label: "Input", hint: "entry" },
   { type: "agent", label: "Agent", hint: "LLM" },
+  { type: "tool", label: "Tools", hint: "search" },
   { type: "router", label: "If-Else", hint: "branch" },
   { type: "evaluator", label: "Evaluator", hint: "score" },
   { type: "memory", label: "Memory", hint: "recall" },

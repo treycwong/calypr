@@ -84,7 +84,7 @@ class CodeNode(BaseNode):
         return _run
 
     @classmethod
-    def codegen(cls, cfg: CodeConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: CodeConfig, fn_name: str, ctx=None) -> CodeFragment:
         body = textwrap.indent(cfg.code.rstrip("\n"), "    ")
         fn = f"def {fn_name}(state: State) -> dict:\n{body}\n"
         return CodeFragment(fn_name=fn_name, function=fn, imports=list(cfg.imports))

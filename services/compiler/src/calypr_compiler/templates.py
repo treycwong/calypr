@@ -166,6 +166,34 @@ def learning() -> GraphSpec:
     )
 
 
+def react() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-react",
+        name="ReAct",
+        description="Reason + act: the agent calls tools (web search) in a loop, then answers.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are a research assistant. Use the web_search tool when you need "
+                    "facts, then answer from what you found."
+                ),
+            ),
+            NodeSpec(id="tools", type="tool", config={"provider": "demo_search"}),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
+        ],
+        entry="in",
+    )
+
+
 # Ordered simple→complex — the wedge gradient the canvas gallery presents.
 TEMPLATES: list[GraphSpec] = [
     simple_reflex(),
@@ -174,4 +202,5 @@ TEMPLATES: list[GraphSpec] = [
     utility_based(),
     reflection(),
     learning(),
+    react(),
 ]

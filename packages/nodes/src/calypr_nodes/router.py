@@ -113,7 +113,7 @@ class RouterNode(BaseNode):
         return _route_default
 
     @classmethod
-    def codegen(cls, cfg: RouterConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: RouterConfig, fn_name: str, ctx=None) -> CodeFragment:
         default = cls._default_branch(cfg)
         lines = [
             f"def {fn_name}(state: State) -> dict:",

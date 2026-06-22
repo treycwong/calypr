@@ -15,7 +15,11 @@ from calypr_runtime.events import RunEvent
 
 
 def _config(thread_id: str | None) -> dict:
-    return {"configurable": {"thread_id": thread_id or str(uuid4())}}
+    # recursion_limit bounds tool/reflection loops so a runaway graph stops cleanly.
+    return {
+        "configurable": {"thread_id": thread_id or str(uuid4())},
+        "recursion_limit": 50,
+    }
 
 
 async def run(

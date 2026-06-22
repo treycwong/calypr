@@ -55,7 +55,7 @@ class InputNode(BaseNode):
         return _run
 
     @classmethod
-    def codegen(cls, cfg: InputConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: InputConfig, fn_name: str, ctx=None) -> CodeFragment:
         fn = (
             f"def {fn_name}(state: State) -> dict:\n"
             f'    """Seed the conversation from the caller\'s input."""\n'

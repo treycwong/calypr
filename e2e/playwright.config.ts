@@ -17,10 +17,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
-  // Cap parallelism: the canvas tests each boot a full React Flow app from the single
-  // `next start` server, so too many concurrent workers starve hydration and drop the
-  // first palette click. Two keeps the gate fast without the contention.
-  workers: 2,
+  // Run serially: the canvas tests each boot a full React Flow app from a single
+  // `next start` server (and a single API), so concurrent workers contend on hydration +
+  // the codegen proxy and flake. The build dominates runtime, so serial costs little.
+  workers: 1,
   reporter: "list",
   use: {
     baseURL: `http://localhost:${WEB_PORT}`,

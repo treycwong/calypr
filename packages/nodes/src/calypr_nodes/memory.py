@@ -100,7 +100,7 @@ class MemoryNode(BaseNode):
         return _summary
 
     @classmethod
-    def codegen(cls, cfg: MemoryConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: MemoryConfig, fn_name: str, ctx=None) -> CodeFragment:
         if cfg.operation == "buffer":
             lines = [
                 f"def {fn_name}(state: State) -> dict:",

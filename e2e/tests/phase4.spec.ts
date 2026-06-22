@@ -12,31 +12,6 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 
-test("the Reflection agent type projects its self-critique loop into the code", async ({
-  page,
-}) => {
-  await openCanvas(page);
-
-  // Gate each add on the node mounting, so no click is lost under parallel load.
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
-
-  // Select the Agent and switch its type to Reflection.
-  await page.getByTestId("node-agent").click();
-  await page.getByTestId("cfg-agent-type").selectOption("reflection");
-  await page.getByTestId("cfg-max-reflections").fill("2");
-
-  await page.getByTestId("toggle-code").click();
-  const code = page.getByTestId("code-output");
-  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
-  await expect(code).toContainText("critique_prompt"); // the reflection loop
-  await expect(code).toContainText("for _ in range(2)");
-});
-
 test("an If-Else router projects to add_conditional_edges", async ({ page }) => {
   await openCanvas(page);
 

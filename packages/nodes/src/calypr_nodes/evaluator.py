@@ -103,7 +103,7 @@ class EvaluatorNode(BaseNode):
         return _run
 
     @classmethod
-    def codegen(cls, cfg: EvaluatorConfig, fn_name: str) -> CodeFragment:
+    def codegen(cls, cfg: EvaluatorConfig, fn_name: str, ctx=None) -> CodeFragment:
         imports = [
             "import re",
             "from langchain.chat_models import init_chat_model",

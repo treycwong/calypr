@@ -11,7 +11,8 @@ export type CalyprNodeType =
   | "code"
   | "router"
   | "evaluator"
-  | "memory";
+  | "memory"
+  | "tool";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -25,7 +26,15 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   router: "If-Else",
   evaluator: "Evaluator",
   memory: "Memory",
+  tool: "Tools",
 };
+
+// 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
+// and key-free; `tavily` is code-gen only for now (runs in the generated code with a key).
+export const TOOL_PROVIDER_OPTIONS = [
+  { value: "demo_search", label: "Demo search (no key, deterministic)" },
+  { value: "tavily", label: "Tavily · web search (code-gen)" },
+];
 
 export const MODEL_OPTIONS = [
   { value: "fake", label: "Fake (no key, deterministic)" },
@@ -82,6 +91,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     memory_channel: "memory",
     model: "fake",
   },
+  tool: { provider: "demo_search", api_key: "", max_results: 3 },
 };
 
 export const ROUTER_DEFAULT_BRANCH = String(DEFAULT_CONFIG.router.default);

@@ -12,6 +12,7 @@ from calypr_nodes.output import OutputConfig, OutputNode
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
+    CodegenContext,
     NodeContext,
     NodeFn,
     NodeMeta,
@@ -22,11 +23,13 @@ from calypr_nodes.registry import (
     register,
 )
 from calypr_nodes.router import Branch, RouterConfig, RouterNode
+from calypr_nodes.tool import ToolConfig, ToolsNode
 
 __all__ = [
     # registry
     "BaseNode",
     "CodeFragment",
+    "CodegenContext",
     "NodeContext",
     "NodeFn",
     "NodeMeta",
@@ -51,4 +54,6 @@ __all__ = [
     "EvaluatorConfig",
     "MemoryNode",
     "MemoryConfig",
+    "ToolsNode",
+    "ToolConfig",
 ]

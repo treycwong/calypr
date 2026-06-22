@@ -67,7 +67,8 @@ def test_templates_lists_the_archetypes():
     ids = [t["id"] for t in templates]
     assert "tpl-simple-reflex" in ids
     assert "tpl-reflection" in ids
-    assert len(templates) == 6
+    assert "tpl-react" in ids
+    assert len(templates) == 7
     # each carries a full, compilable graph
     first = templates[0]
     assert first["graph"]["entry"]

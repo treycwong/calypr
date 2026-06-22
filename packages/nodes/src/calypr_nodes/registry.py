@@ -37,11 +37,24 @@ class CodeFragment:
 class NodeContext:
     """Runtime dependencies injected into a node at compile time.
 
-    Phase 1 carries the model client; tool registry, KB retrievers, and credential
-    vault are added in later phases.
+    Carries the model client and, for an LLM node wired to Tool nodes, the bound tool
+    schemas (`{name, description, input_schema}`) the compiler resolves from the graph.
+    KB retrievers and a credential vault are added in later phases.
     """
 
     model: ModelClient | None = None
+    tools: list[dict] | None = None
+
+
+@dataclass
+class CodegenContext:
+    """Per-node context for `codegen()` — the codegen mirror of `NodeContext`.
+
+    Currently the tool variable names an LLM node should `bind_tools([...])` (resolved from
+    the graph by the codegen service), so generated code binds the same tools the compiler does.
+    """
+
+    tool_refs: list[str] = field(default_factory=list)
 
 
 class NodeMeta(BaseModel):
@@ -74,8 +87,12 @@ class BaseNode:
         raise NotImplementedError
 
     @classmethod
-    def codegen(cls, cfg: BaseModel, fn_name: str) -> CodeFragment:  # pragma: no cover
-        """Emit idiomatic, standalone Python for this node (the 'code' altitude)."""
+    def codegen(
+        cls, cfg: BaseModel, fn_name: str, ctx: CodegenContext | None = None
+    ) -> CodeFragment:  # pragma: no cover
+        """Emit idiomatic, standalone Python for this node (the 'code' altitude).
+
+        `ctx` carries per-node codegen info (e.g. bound tool names); most nodes ignore it."""
         raise NotImplementedError(f"node {cls.type!r} has no codegen yet")
 
     @classmethod
