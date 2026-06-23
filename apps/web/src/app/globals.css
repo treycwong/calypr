@@ -128,3 +128,13 @@
     @apply font-sans;
   }
 }
+
+/* Dotted canvas grid — the product motif, reused across the landing page. */
+.dotted {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--foreground) 9%, transparent) 1px,
+    transparent 1px
+  );
+  background-size: 18px 18px;
+}

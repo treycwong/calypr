@@ -1,7 +1,8 @@
 import Link from "next/link";
 
+import { AccountControl } from "@/components/auth/account-control";
 import { Badge } from "@/components/ui/badge";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -38,11 +39,7 @@ export default async function DashboardPage() {
             Signed in as {session?.userId ?? "unknown"}
           </p>
         </div>
-        <form method="post" action="/api/auth/signout">
-          <Button type="submit" variant="outline" data-testid="sign-out">
-            Sign out
-          </Button>
-        </form>
+        <AccountControl />
       </div>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2">

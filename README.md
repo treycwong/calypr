@@ -46,6 +46,21 @@ pnpm --filter @calypr/web exec next dev --port 3100              # web → http:
 Docker is running (only needed to *save* agents — chat + the Code view work without it), and
 streams both servers' logs. Override ports with `API_PORT` / `WEB_PORT`.
 
+### Auth
+
+The web app ships a **keyless dev sign-in** so it runs locally and in CI with no setup. To
+switch the whole app to **[Clerk](https://clerk.com)**, set two env vars (in `apps/web/.env.local`)
+— no code changes:
+
+```bash
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+```
+
+When present, the layout wraps in `ClerkProvider`, the proxy gates with Clerk, and the
+sign-in page + account menu render Clerk's UI. When absent, the dev cookie sign-in is used.
+The single seam is `getSession()` in [`apps/web/src/lib/auth.ts`](apps/web/src/lib/auth.ts).
+
 ### Tests
 
 ```bash
