@@ -33,3 +33,4 @@ playwright/.cache/
 .idea/
 .vscode/
 *.log
+.vercel
