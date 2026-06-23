@@ -26,6 +26,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    model_for_node,
     register,
 )
 
@@ -142,9 +143,7 @@ class AgentNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: AgentConfig, ctx: NodeContext) -> NodeFn:
-        if ctx.model is None:
-            raise ValueError("Agent node requires a model client in NodeContext")
-        model = ctx.model
+        model = model_for_node(ctx, cfg.model)  # each agent uses its own provider
         tool_schemas = ctx.tools or []  # bound by the compiler from wired Tool nodes
 
         async def _call(

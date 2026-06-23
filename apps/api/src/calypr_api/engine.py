@@ -4,7 +4,6 @@ process-wide checkpointer for conversational memory in the playground."""
 from __future__ import annotations
 
 from calypr_dsl import GraphSpec
-from calypr_model import model_for
 from calypr_nodes import NodeContext
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -14,10 +13,7 @@ checkpointer = InMemorySaver()
 
 
 def context_for(graph: GraphSpec) -> NodeContext:
-    """Pick the provider from the graph's (first) Agent node and build a NodeContext."""
-    model_id = "fake"
-    for node in graph.nodes:
-        if node.type == "agent":
-            model_id = str(node.config.get("model", "fake"))
-            break
-    return NodeContext(model=model_for(model_id))
+    """An empty context: each LLM node resolves its *own* provider from its `model` id (so a
+    Reflexion graph's Responder/Revisor use their configured models — not one model picked
+    from a single Agent, which Reflexion doesn't even have)."""
+    return NodeContext()

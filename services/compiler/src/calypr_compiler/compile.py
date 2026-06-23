@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from calypr_dsl import GraphSpec
-from calypr_nodes import NodeContext, get_node, has_node
+from calypr_nodes import NodeContext, get_node, graph_channels, has_node
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -59,7 +59,9 @@ def compile_graph(
     if errors:
         raise CompileError(errors)
 
-    state_type = build_state_type(spec.state)
+    # Union the declared state with any channel a node owns (e.g. a loop counter) so the
+    # graph never silently drops writes to an undeclared channel.
+    state_type = build_state_type(graph_channels(spec.nodes, spec.state))
     builder = StateGraph(state_type)
 
     bound_tools = _tools_bound_to(spec)

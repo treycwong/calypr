@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from calypr_dsl import Reducer, StateChannel
 from calypr_model import Msg, Role
 from pydantic import BaseModel
 
@@ -21,6 +22,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    model_for_node,
     register,
 )
 
@@ -81,10 +83,15 @@ class EvaluatorNode(BaseNode):
         return [cfg.score_channel, cfg.rationale_channel]
 
     @classmethod
+    def channels(cls, cfg: EvaluatorConfig) -> list[StateChannel]:
+        return [
+            StateChannel(key=cfg.score_channel, type="number", reducer=Reducer.last),
+            StateChannel(key=cfg.rationale_channel, type="string", reducer=Reducer.last),
+        ]
+
+    @classmethod
     def compile(cls, cfg: EvaluatorConfig, ctx: NodeContext) -> NodeFn:
-        if ctx.model is None:
-            raise ValueError("Evaluator node requires a model client in NodeContext")
-        model = ctx.model
+        model = model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             answer = _last_text(state.get(cfg.input_channel))

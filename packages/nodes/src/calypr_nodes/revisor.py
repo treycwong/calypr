@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from calypr_dsl import Reducer, StateChannel
 from pydantic import BaseModel
 
 from calypr_nodes._codegen import assign_str
@@ -20,6 +21,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    model_for_node,
     register,
 )
 
@@ -67,10 +69,13 @@ class RevisorNode(BaseNode):
         return [cfg.output_channel, _COUNT]
 
     @classmethod
+    def channels(cls, cfg: RevisorConfig) -> list[StateChannel]:
+        # The loop counter must be declared (last-write) or the bounded loop never bounds.
+        return [StateChannel(key=_COUNT, type="number", reducer=Reducer.last)]
+
+    @classmethod
     def compile(cls, cfg: RevisorConfig, ctx: NodeContext) -> NodeFn:
-        if ctx.model is None:
-            raise ValueError("Revisor node requires a model client in NodeContext")
-        model = ctx.model
+        model = model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             history = lc_to_msgs(state.get(cfg.input_channel) or [])

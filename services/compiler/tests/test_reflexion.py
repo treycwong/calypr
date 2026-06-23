@@ -63,6 +63,36 @@ async def test_reflexion_loop_runs_and_terminates():
     assert result["output"]
 
 
+def _without_counter(graph: GraphSpec) -> GraphSpec:
+    """Drop the revision_count channel — simulates the canvas sending a fixed state."""
+    return graph.model_copy(
+        update={"state": [c for c in graph.state if c.key != "revision_count"]}
+    )
+
+
+async def test_reflexion_terminates_even_when_state_omits_the_counter():
+    # The canvas bug: a graph whose `state` lacks revision_count. The engine must derive it
+    # from the Revisor (channels()), or the bounded loop runs away to the recursion limit.
+    graph = _without_counter(_reflexion_graph(max_revisions=2))
+    assert not any(c.key == "revision_count" for c in graph.state)
+
+    result = await run(graph, NodeContext(model=FakeModelClient()), "explain x")
+    assert result["revision_count"] == 2  # the derived counter still bounds the loop
+
+
+def test_reflexion_codegen_includes_counter_when_state_omits_it():
+    code = generate_python(_without_counter(_reflexion_graph(max_revisions=2)))
+    assert "revision_count" in code  # the generated State carries the owned channel too
+
+
+async def test_reflexion_runs_with_an_empty_context_resolving_own_models():
+    # The playground path: context_for returns an empty NodeContext, so each actor resolves
+    # its own provider (here "fake"). It must still run + terminate.
+    result = await run(_reflexion_graph(max_revisions=2), NodeContext(), "explain x")
+    assert result["revision_count"] == 2
+    assert result["output"]
+
+
 def test_reflexion_codegen_has_actors_loop_and_is_clean():
     code = generate_python(_reflexion_graph(max_revisions=2))
     assert "def node_responder(state: State)" in code

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode as LCToolNode
 from pydantic import BaseModel
 
@@ -64,13 +65,29 @@ class ToolsNode(BaseNode):
     def compile(cls, cfg: ToolConfig, ctx: NodeContext) -> NodeFn:
         spec = tool_spec(cfg.provider, max_results=cfg.max_results)
         if spec.runtime is None:
+            # Codegen-only provider: answer each pending tool call with an explanatory
+            # ToolMessage instead of raising — raising would leave the assistant's tool_calls
+            # unanswered and corrupt the thread for the next turn.
+            note = (
+                f"{cfg.provider!r} execution is codegen-only here — generate the code and "
+                "run it with your API key, or switch this Tool node to 'demo_search' to "
+                "run on the canvas."
+            )
 
             async def _unsupported(state: dict[str, Any]) -> dict[str, Any]:
-                raise RuntimeError(
-                    f"{cfg.provider!r} execution is codegen-only for now — use "
-                    "'demo_search' to run on the canvas, or generate the code and run "
-                    "it with your API key."
-                )
+                messages = state.get("messages") or []
+                last = messages[-1] if messages else None
+                calls = getattr(last, "tool_calls", None) or []
+                return {
+                    "messages": [
+                        ToolMessage(
+                            content=note,
+                            tool_call_id=tc["id"],
+                            name=tc.get("name", cfg.provider),
+                        )
+                        for tc in calls
+                    ]
+                }
 
             return _unsupported
 

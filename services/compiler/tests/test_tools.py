@@ -79,6 +79,27 @@ async def test_react_loop_runs_the_tool_and_terminates():
     assert any("demo results" in c for c in contents)
 
 
+async def test_codegen_only_tool_answers_each_call_instead_of_crashing():
+    # A codegen-only provider (tavily) must answer the agent's tool call with a ToolMessage,
+    # not raise — raising leaves a dangling tool_call that poisons the next OpenAI turn.
+    graph = _react_graph().model_copy(
+        update={
+            "nodes": [
+                n.model_copy(update={"config": {"provider": "tavily"}})
+                if n.id == "tools"
+                else n
+                for n in _react_graph().nodes
+            ]
+        }
+    )
+    fake = ReActFake()
+    result = await run(graph, NodeContext(model=fake), "what is calypr?")
+
+    assert result["output"] == "Calypr is a no-code agent builder."  # the agent still answered
+    contents = [getattr(m, "content", "") for m in result["messages"]]
+    assert any("codegen-only" in c for c in contents)  # the tool explained itself, gracefully
+
+
 def test_react_codegen_is_canonical_and_ruff_clean():
     code = generate_python(_react_graph())
     assert "from langgraph.prebuilt import ToolNode" in code

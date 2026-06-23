@@ -19,6 +19,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    model_for_node,
     register,
 )
 
@@ -65,9 +66,7 @@ class ResponderNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: ResponderConfig, ctx: NodeContext) -> NodeFn:
-        if ctx.model is None:
-            raise ValueError("Responder node requires a model client in NodeContext")
-        model = ctx.model
+        model = model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             history = lc_to_msgs(state.get(cfg.input_channel) or [])

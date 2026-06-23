@@ -18,7 +18,9 @@ from calypr_nodes.registry import (
     NodeMeta,
     all_node_types,
     get_node,
+    graph_channels,
     has_node,
+    model_for_node,
     parse_config,
     register,
 )
@@ -40,6 +42,8 @@ __all__ = [
     "has_node",
     "all_node_types",
     "parse_config",
+    "graph_channels",
+    "model_for_node",
     # node types + configs
     "InputNode",
     "InputConfig",

@@ -13,7 +13,7 @@ import re
 import subprocess
 
 from calypr_dsl import GraphSpec, Reducer, StateChannel
-from calypr_nodes import CodegenContext, get_node, has_node
+from calypr_nodes import CodegenContext, get_node, graph_channels, has_node
 
 _PYTYPE: dict[str, str] = {
     "string": "str",
@@ -163,7 +163,9 @@ def generate_python(graph: GraphSpec) -> str:
         if fragment.routing:
             routing_ids.add(node.id)
 
-    state_src, state_imports = _state_class(graph.state)
+    # Owned channels (e.g. a loop counter) must appear in the generated State even if the
+    # client's spec omitted them — same augmentation the compiler applies.
+    state_src, state_imports = _state_class(graph_channels(graph.nodes, graph.state))
     imports.update(state_imports)
 
     build = ["def build_graph():", '    """Build and compile the agent graph."""']

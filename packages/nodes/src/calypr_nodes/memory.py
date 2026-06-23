@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from calypr_dsl import Reducer, StateChannel
 from calypr_model import Msg, Role
 from pydantic import BaseModel
 
@@ -20,6 +21,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    model_for_node,
     register,
 )
 
@@ -72,6 +74,10 @@ class MemoryNode(BaseNode):
         return [cfg.memory_channel]
 
     @classmethod
+    def channels(cls, cfg: MemoryConfig) -> list[StateChannel]:
+        return [StateChannel(key=cfg.memory_channel, type="list", reducer=Reducer.append)]
+
+    @classmethod
     def compile(cls, cfg: MemoryConfig, ctx: NodeContext) -> NodeFn:
         if cfg.operation == "buffer":
 
@@ -81,9 +87,7 @@ class MemoryNode(BaseNode):
 
             return _buffer
 
-        if ctx.model is None:
-            raise ValueError("Memory summary requires a model client in NodeContext")
-        model = ctx.model
+        model = model_for_node(ctx, cfg.model)
 
         async def _summary(state: dict[str, Any]) -> dict[str, Any]:
             transcript = _transcript(state.get(cfg.input_channel))

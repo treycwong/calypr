@@ -5,6 +5,7 @@ from calypr_nodes import (
     NodeContext,
     OutputConfig,
     all_node_types,
+    model_for_node,
     parse_config,
 )
 from calypr_nodes.agent import AgentNode
@@ -42,3 +43,11 @@ async def test_output_node_extracts_last_message_text():
     run = OutputNode.compile(OutputConfig(), NodeContext())
     update = await run({"messages": [AIMessage(content="final answer")]})
     assert update["output"] == "final answer"
+
+
+def test_model_for_node_prefers_injected_then_resolves_own():
+    spy = FakeModelClient()
+    # an injected client (e.g. a test double) always wins
+    assert model_for_node(NodeContext(model=spy), "gpt-4o") is spy
+    # otherwise each node resolves its own provider from its model id
+    assert isinstance(model_for_node(NodeContext(), "fake"), FakeModelClient)

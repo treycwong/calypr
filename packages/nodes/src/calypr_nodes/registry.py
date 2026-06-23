@@ -11,7 +11,8 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
-from calypr_model import ModelClient
+from calypr_dsl import StateChannel
+from calypr_model import ModelClient, model_for
 from pydantic import BaseModel
 
 # A compiled node: reads the graph state, returns a partial state update.
@@ -83,6 +84,13 @@ class BaseNode:
         return []
 
     @classmethod
+    def channels(cls, cfg: BaseModel) -> list[StateChannel]:
+        """State channels this node *owns* — declared with their reducer so the engine can
+        guarantee they exist even if the client's `state` omits them (e.g. a canvas that
+        sends a fixed default state). Most nodes only use the common channels and return []."""
+        return []
+
+    @classmethod
     def compile(cls, cfg: BaseModel, ctx: NodeContext) -> NodeFn:  # pragma: no cover
         raise NotImplementedError
 
@@ -135,3 +143,29 @@ def all_node_types() -> dict[str, type[BaseNode]]:
 def parse_config(node_type: str, raw: dict[str, Any]) -> BaseModel:
     """Validate a node's raw config dict against its registered schema."""
     return get_node(node_type).config_model.model_validate(raw)
+
+
+def graph_channels(nodes, declared: list[StateChannel]) -> list[StateChannel]:
+    """The full state for a graph: the declared channels plus any a node *owns* but the
+    client omitted. Declared channels win on a key clash. This makes the engine robust to a
+    client (e.g. the canvas) that sends an incomplete `state` — without it, a node that
+    writes an undeclared channel (like a loop counter) silently loses every write."""
+    by_key: dict[str, StateChannel] = {c.key: c for c in declared}
+    for node in nodes:
+        if not has_node(node.type):
+            continue
+        node_cls = get_node(node.type)
+        try:
+            cfg = node_cls.config_model.model_validate(node.config)
+        except Exception:
+            continue
+        for ch in node_cls.channels(cfg):
+            by_key.setdefault(ch.key, ch)
+    return list(by_key.values())
+
+
+def model_for_node(ctx: NodeContext, model_id: str) -> ModelClient:
+    """Resolve the model for an LLM node: the injected client (tests) if present, otherwise
+    the node's *own* provider from its `model` id. This lets each LLM node use its own model
+    (e.g. a cheap Responder + a strong Revisor), instead of one model for the whole graph."""
+    return ctx.model if ctx.model is not None else model_for(model_id)

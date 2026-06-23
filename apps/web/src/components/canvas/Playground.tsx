@@ -14,7 +14,16 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const [threadId] = useState(() => `web-${Math.random().toString(36).slice(2)}`);
+  const newThread = () => `web-${Math.random().toString(36).slice(2)}`;
+  const [threadId, setThreadId] = useState(newThread);
+
+  // Start a fresh conversation thread — clears history (and recovers a thread that a tool
+  // error may have left mid-tool-call).
+  function reset() {
+    if (busy) return;
+    setMessages([]);
+    setThreadId(newThread());
+  }
 
   async function send() {
     const text = input.trim();
@@ -41,7 +50,19 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-border px-3 py-2 text-sm font-medium">Playground</div>
+      <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <span className="text-sm font-medium">Playground</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={reset}
+          disabled={busy}
+          data-testid="chat-reset"
+        >
+          New chat
+        </Button>
+      </div>
       <div className="flex-1 space-y-3 overflow-auto p-3" data-testid="chat-log">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">Send a message to test your agent.</p>
