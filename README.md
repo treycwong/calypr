@@ -49,17 +49,23 @@ streams both servers' logs. Override ports with `API_PORT` / `WEB_PORT`.
 ### Auth
 
 The web app ships a **keyless dev sign-in** so it runs locally and in CI with no setup. To
-switch the whole app to **[Clerk](https://clerk.com)**, set two env vars (in `apps/web/.env.local`)
-— no code changes:
+switch the whole app to **[Better Auth](https://better-auth.com)** (GitHub OAuth, self-hosted
+against the project's Postgres) set these env vars in `apps/web/.env.local` — no code changes:
 
 ```bash
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
-CLERK_SECRET_KEY=sk_test_...
+BETTER_AUTH_SECRET=...          # openssl rand -base64 32
+BETTER_AUTH_URL=http://localhost:3100
+DATABASE_URL=postgresql://calypr:calypr@localhost:5432/calypr
+GITHUB_CLIENT_ID=...            # a GitHub OAuth app; callback:
+GITHUB_CLIENT_SECRET=...        #   ${BETTER_AUTH_URL}/api/auth/callback/github
+npx @better-auth/cli migrate    # one-time: create the auth tables in Postgres
 ```
 
-When present, the layout wraps in `ClerkProvider`, the proxy gates with Clerk, and the
-sign-in page + account menu render Clerk's UI. When absent, the dev cookie sign-in is used.
-The single seam is `getSession()` in [`apps/web/src/lib/auth.ts`](apps/web/src/lib/auth.ts).
+When `BETTER_AUTH_SECRET` is set, the proxy gates on the Better Auth session, the sign-in page
+shows "Continue with GitHub", and the account control signs out via Better Auth. When unset, the
+dev cookie sign-in is used. The single seam is `getSession()` in
+[`apps/web/src/lib/auth.ts`](apps/web/src/lib/auth.ts) — Organizations (collaboration) and an
+MCP/API-key provider (agent auth) are natural follow-ons on the same instance.
 
 ### Tests
 

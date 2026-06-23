@@ -1,8 +1,8 @@
-import { SignIn } from "@clerk/nextjs";
 import Link from "next/link";
 
+import { GithubSignIn } from "@/components/auth/github-sign-in";
 import { Button } from "@/components/ui/button";
-import { clerkEnabled } from "@/lib/auth";
+import { betterAuthEnabled } from "@/lib/auth";
 
 type Props = { searchParams: Promise<{ next?: string }> };
 
@@ -32,28 +32,29 @@ function Frame({ children }: { children: React.ReactNode }) {
 
 export default async function SignInPage({ searchParams }: Props) {
   const { next } = await searchParams;
+  const enabled = betterAuthEnabled();
+  const devAction = `/api/auth/dev${next ? `?next=${encodeURIComponent(next)}` : ""}`;
 
-  if (clerkEnabled()) {
-    return (
-      <Frame>
-        <SignIn fallbackRedirectUrl={next ?? "/dashboard"} />
-      </Frame>
-    );
-  }
-
-  const action = `/api/auth/dev${next ? `?next=${encodeURIComponent(next)}` : ""}`;
   return (
     <Frame>
       <div className="w-full rounded-xl border border-border bg-card/40 p-6 backdrop-blur">
         <h1 className="text-lg font-medium tracking-tight">Sign in to Calypr</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Development sign-in — set Clerk keys to enable real auth.
+          {enabled
+            ? "Continue with your GitHub account."
+            : "Development sign-in — set Better Auth keys to enable real auth."}
         </p>
-        <form method="post" action={action} className="mt-5">
-          <Button type="submit" className="w-full" data-testid="dev-sign-in">
-            Continue
-          </Button>
-        </form>
+        <div className="mt-5">
+          {enabled ? (
+            <GithubSignIn next={next} />
+          ) : (
+            <form method="post" action={devAction}>
+              <Button type="submit" className="w-full" data-testid="dev-sign-in">
+                Continue
+              </Button>
+            </form>
+          )}
+        </div>
       </div>
       <p className="mt-6 font-mono text-[11px] text-muted-foreground">prompt → canvas → code</p>
     </Frame>
