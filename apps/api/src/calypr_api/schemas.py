@@ -3,6 +3,8 @@ from the DSL contract, so the API speaks the exact same shape the canvas seriali
 
 from __future__ import annotations
 
+from typing import Literal
+
 from calypr_compiler import Issue
 from calypr_dsl import GraphSpec
 from pydantic import BaseModel
@@ -45,9 +47,11 @@ class AgentDetail(BaseModel):
 
 
 class TemplateInfo(BaseModel):
-    """An archetype starter graph for the canvas gallery."""
+    """A starter graph for the canvas gallery — a `framework` (agent pattern) or a
+    `template` (multi-agent use case)."""
 
     id: str
     name: str
     description: str
+    kind: Literal["framework", "template"]
     graph: GraphSpec

@@ -60,10 +60,11 @@ export type Template = {
   id: string;
   name: string;
   description: string;
+  kind: "framework" | "template";
   graph: GraphSpec;
 };
 
-/** The archetype starter graphs (the agent ladder), simple→complex. */
+/** The canvas starter gallery: frameworks (agent patterns) + templates (use cases). */
 export async function listTemplates(): Promise<Template[]> {
   const res = await fetch("/api/templates", { cache: "no-store" });
   if (!res.ok) throw new Error(`templates failed (${res.status})`);

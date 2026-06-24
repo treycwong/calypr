@@ -60,18 +60,19 @@ def test_codegen_returns_ownable_python():
     assert "import calypr" not in code
 
 
-def test_templates_lists_the_archetypes():
+def test_templates_lists_frameworks_and_use_case_templates():
     r = client.get("/templates")
     assert r.status_code == 200
-    templates = r.json()
-    ids = [t["id"] for t in templates]
-    assert "tpl-simple-reflex" in ids
-    assert "tpl-reflection" in ids
-    assert "tpl-react" in ids
-    assert "tpl-reflexion" in ids
-    assert len(templates) == 8
+    starters = r.json()
+    by_kind = {s["id"]: s["kind"] for s in starters}
+    # frameworks (agent patterns) + templates (use cases), each tagged with its kind
+    assert by_kind["tpl-react"] == "framework"
+    assert by_kind["tpl-reflexion"] == "framework"
+    assert by_kind["tpl-market-research"] == "template"
+    assert by_kind["tpl-contract-review"] == "template"
+    assert len(starters) == 11  # 8 frameworks + 3 templates
     # each carries a full, compilable graph
-    first = templates[0]
+    first = starters[0]
     assert first["graph"]["entry"]
     assert first["description"]
 

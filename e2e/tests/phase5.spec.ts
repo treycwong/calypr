@@ -73,3 +73,21 @@ test("the Reflexion template projects its Responder/Revisor bounded loop into co
   await expect(code).toContainText("def route_node_revisor"); // the bounded loop
   await expect(code).toContainText("revision_count");
 });
+
+test("a use-case template loads a multi-agent pipeline and projects to code", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page
+    .getByTestId("template-picker")
+    .selectOption({ label: "Market research report" });
+  await expect(page.getByTestId("node-agent").first()).toBeVisible();
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  // the specialist agents become one function each
+  await expect(code).toContainText("def node_research");
+  await expect(code).toContainText("def node_editor");
+});

@@ -1,8 +1,10 @@
-"""Archetype templates — the Russell & Norvig agent ladder as starter graphs.
+"""Starter graphs for the canvas gallery — two kinds, both valid GraphSpecs that compile,
+run, and round-trip to ownable Python (and double as a compile/run test matrix):
 
-Six ready-to-run GraphSpecs spanning the simple→complex gradient the wedge plan wants:
-each is a valid graph that compiles, runs, and round-trips to ownable Python. They double
-as the canvas's starter gallery (served by the API) and as a compile/run test matrix."""
+- **Frameworks**: agent-architecture patterns (the Russell & Norvig ladder + ReAct/Reflexion)
+  — choose *how* an agent thinks.
+- **Templates**: multi-agent systems for real use cases (research, support, contract review)
+  — sequential pipelines of role-prompted Agent nodes; choose *what* to build."""
 
 from __future__ import annotations
 
@@ -43,6 +45,21 @@ def _agent(agent_type: str, **config) -> NodeSpec:
             "input_channel": "messages",
             "output_channel": "messages",
             **config,
+        },
+    )
+
+
+def _role_agent(node_id: str, system_prompt: str) -> NodeSpec:
+    """One Agent in a multi-agent pipeline: model-based (reads the full running transcript)
+    with a role-specific system prompt. The next agent sees everything written before it."""
+    return NodeSpec(
+        id=node_id,
+        type="agent",
+        config={
+            "model": "fake",
+            "system_prompt": system_prompt,
+            "input_channel": "messages",
+            "output_channel": "messages",
         },
     )
 
@@ -225,8 +242,133 @@ def reflexion() -> GraphSpec:
     )
 
 
-# Ordered simple→complex — the wedge gradient the canvas gallery presents.
-TEMPLATES: list[GraphSpec] = [
+# ── Use-case templates ───────────────────────────────────────────────────────
+# Multi-agent systems for real tasks: a sequential pipeline of Agent nodes, each with a
+# role-specific system prompt, where every stage reads the running transcript and adds to it.
+
+
+def market_research() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-market-research",
+        name="Market research report",
+        description="Specialist agents research, analyse, write, critique, and edit a report.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _role_agent(
+                "research",
+                "You are a market research analyst. Collect and summarise the key market "
+                "trends, leading competitors, and recent news relevant to the user's topic. "
+                "Lead with concrete facts and figures.",
+            ),
+            _role_agent(
+                "analysis",
+                "You are a data analyst. Interpret the research above: identify numerical "
+                "trends, growth patterns, and any anomalies or risks. Be quantitative and precise.",
+            ),
+            _role_agent(
+                "writing",
+                "You are a business writer. Using the research and analysis above, draft a "
+                "structured, engaging market-research report (overview, trends, "
+                "competition, outlook).",
+            ),
+            _role_agent(
+                "critique",
+                "You are an editorial critic. Review the draft above for logical consistency, "
+                "completeness, and clarity. List specific, actionable improvements.",
+            ),
+            _role_agent(
+                "editor",
+                "You are a senior editor. Produce the final report by applying the critique, "
+                "polishing grammar and style to publishing standard. Output only the "
+                "finished report.",
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "research", "analysis", "writing", "critique", "editor", "out"),
+        entry="in",
+    )
+
+
+def customer_support() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-customer-support",
+        name="Customer support automation",
+        description="Specialist agents triage, look up knowledge, respond, and escalate.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _role_agent(
+                "intent",
+                "You are a support triage agent. Classify the user's request (billing, "
+                "technical support, or general inquiry) and restate precisely what they need.",
+            ),
+            _role_agent(
+                "knowledge",
+                "You are a knowledge-base agent. For the classified intent, recall the most "
+                "relevant FAQ answers, policies, and prior-ticket resolutions.",
+            ),
+            _role_agent(
+                "response",
+                "You are a customer support specialist. Write a personalised, context-aware "
+                "reply that resolves the request using the retrieved knowledge. Warm and concise.",
+            ),
+            _role_agent(
+                "escalation",
+                "You are an escalation reviewer. Decide whether the issue is fully resolved. If "
+                "not, summarise it for a human agent and note what is outstanding; "
+                "otherwise confirm.",
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "intent", "knowledge", "response", "escalation", "out"),
+        entry="in",
+    )
+
+
+def contract_review() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-contract-review",
+        name="Legal contract review",
+        description="Extract clauses, check compliance, flag risk, and summarise a contract.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _role_agent(
+                "clauses",
+                "You are a legal analyst. Identify and extract the key clauses (parties, term, "
+                "payment, liability, termination, IP, confidentiality) from the contract.",
+            ),
+            _role_agent(
+                "compliance",
+                "You are a compliance officer. Check the extracted clauses against common "
+                "regulatory and policy requirements; flag anything non-compliant.",
+            ),
+            _role_agent(
+                "risk",
+                "You are a risk analyst. Flag ambiguous, one-sided, or high-risk terms, and "
+                "explain the exposure each one creates.",
+            ),
+            _role_agent(
+                "summary",
+                "You are a legal summariser. Produce an executive summary highlighting the main "
+                "concerns and their severity.",
+            ),
+            _role_agent(
+                "memo",
+                "You are a legal writer. Compile the findings above into a clean, formatted "
+                "legal review memo with clear recommendations.",
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "clauses", "compliance", "risk", "summary", "memo", "out"),
+        entry="in",
+    )
+
+
+# Frameworks — the agent-architecture patterns (the Russell & Norvig ladder + ReAct/Reflexion),
+# ordered simple→complex. Start here to choose *how* an agent thinks.
+FRAMEWORKS: list[GraphSpec] = [
     simple_reflex(),
     model_based(),
     goal_based(),
@@ -236,3 +378,13 @@ TEMPLATES: list[GraphSpec] = [
     react(),
     reflexion(),
 ]
+
+# Templates — multi-agent systems for real use cases. Start here to choose *what* to build.
+TEMPLATES: list[GraphSpec] = [
+    market_research(),
+    customer_support(),
+    contract_review(),
+]
+
+# Everything the canvas gallery offers.
+STARTERS: list[GraphSpec] = [*FRAMEWORKS, *TEMPLATES]

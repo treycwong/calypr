@@ -9,7 +9,7 @@ from __future__ import annotations
 import uuid
 
 from calypr_codegen import generate_python
-from calypr_compiler import TEMPLATES, validate_graph
+from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -51,12 +51,13 @@ def codegen_spec(graph: GraphSpec) -> CodegenResponse:
 
 @router.get("/templates", response_model=list[TemplateInfo], tags=["engine"])
 def list_templates() -> list[TemplateInfo]:
-    """The archetype starter graphs (the agent ladder), simple→complex."""
+    """The canvas starter gallery: frameworks (agent patterns) + templates (use cases)."""
     return [
         TemplateInfo(
-            id=t.id, name=t.name, description=t.description or "", graph=t
+            id=t.id, name=t.name, description=t.description or "", kind=kind, graph=t
         )
-        for t in TEMPLATES
+        for kind, group in (("framework", FRAMEWORKS), ("template", TEMPLATES))
+        for t in group
     ]
 
 

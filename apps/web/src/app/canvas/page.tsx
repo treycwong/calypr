@@ -133,7 +133,7 @@ function CanvasInner() {
           <span className="text-sm font-medium">Agent Canvas</span>
           <select
             data-testid="template-picker"
-            aria-label="Start from a template"
+            aria-label="Start from a framework or template"
             className="h-8 rounded-md border border-input bg-background px-2 text-sm"
             value=""
             onChange={(e) => {
@@ -142,13 +142,26 @@ function CanvasInner() {
             }}
           >
             <option value="" disabled>
-              Start from template…
+              Start from a framework or template…
             </option>
-            {templates.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
+            <optgroup label="Frameworks">
+              {templates
+                .filter((t) => t.kind === "framework")
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </optgroup>
+            <optgroup label="Templates">
+              {templates
+                .filter((t) => t.kind === "template")
+                .map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+            </optgroup>
           </select>
           {saveMsg ? (
             <span className="text-xs text-muted-foreground" data-testid="save-msg">
