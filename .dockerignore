@@ -1,0 +1,39 @@
+# The API image is Python-only and built from the repo root — keep the web app, node
+# modules, local venvs, VCS history, and (critically) secrets out of the build context.
+
+# Node / web
+node_modules
+**/node_modules
+apps/web/.next
+apps/web/out
+apps/web/.vercel
+e2e
+
+# Python caches / local virtualenvs
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+**/.pytest_cache
+.ruff_cache
+**/.mypy_cache
+
+# VCS / editor / local
+.git
+.gitignore
+.github
+.idea
+.vscode
+
+# Secrets — never bake these into an image
+.env
+.env.*
+**/.env
+**/.env.*
+.vercel
+
+# Docs / plans / scratch
+*.md
+.claude
+compute
