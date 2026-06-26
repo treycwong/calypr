@@ -104,7 +104,7 @@ export function RouterNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Top} style={handleStyle} />
-      <Shell title="If-Else" accent="bg-rose-500" selected={selected} testid="node-router">
+      <Shell title="Router" accent="bg-rose-500" selected={selected} testid="node-router">
         {(isLlm ? ["llm", ...names] : names).join(" · ")}
       </Shell>
       {names.map((name, i) => (

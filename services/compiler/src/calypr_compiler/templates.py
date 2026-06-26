@@ -277,8 +277,8 @@ def rag() -> GraphSpec:
 def routing() -> GraphSpec:
     return GraphSpec(
         id="tpl-routing",
-        name="Routing",
-        description="A classifier routes each request to the right specialist agent.",
+        name="Summarize or translate",
+        description="A Router reads each request and sends it to a summarizer or a translator.",
         state=[*_BASE_STATE, StateChannel(key="task_type", type="string", reducer=Reducer.last)],
         nodes=[
             _input(),
@@ -461,7 +461,6 @@ FRAMEWORKS: list[GraphSpec] = [
     react(),
     reflexion(),
     rag(),
-    routing(),
 ]
 
 # Templates — multi-agent systems for real use cases. Start here to choose *what* to build.
@@ -469,6 +468,7 @@ TEMPLATES: list[GraphSpec] = [
     market_research(),
     customer_support(),
     contract_review(),
+    routing(),
 ]
 
 # Everything the canvas gallery offers.

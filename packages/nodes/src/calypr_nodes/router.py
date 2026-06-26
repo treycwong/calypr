@@ -1,4 +1,4 @@
-"""Router / If-Else node — conditional control flow (Phase 4 keystone).
+"""Router node — conditional control flow (Phase 4 keystone).
 
 The node is a passthrough; the *decision* is `routing()`, which the compiler wires via
 `add_conditional_edges` to the targets of this node's labelled out-edges (the edge's
@@ -104,7 +104,7 @@ def _pick_branch(reply: str, cfg: RouterConfig, default: str) -> str:
 class RouterNode(BaseNode):
     type = "router"
     meta = NodeMeta(
-        label="If-Else",
+        label="Router",
         category="control",
         icon="git-branch",
         description="Branch the flow on a condition (Python rules or an LLM classifier).",
@@ -191,12 +191,12 @@ class RouterNode(BaseNode):
 
         lines = [
             f"def {fn_name}(state: State) -> dict:",
-            '    """If-Else router — passthrough; routing is on the conditional edges."""',
+            '    """Router — passthrough; routing is on the conditional edges."""',
             "    return {}",
             "",
             "",
             f"def route_{fn_name}(state: State) -> str:",
-            '    """Pick the branch for the If-Else node."""',
+            '    """Pick the branch for the Router node."""',
         ]
         for b in cfg.branches:
             if b.when:

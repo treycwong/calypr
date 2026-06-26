@@ -10,7 +10,7 @@ const ITEMS: { type: CalyprNodeType; label: string; hint: string }[] = [
   { type: "retriever", label: "Knowledge", hint: "RAG" },
   { type: "responder", label: "Responder", hint: "draft" },
   { type: "revisor", label: "Revisor", hint: "revise" },
-  { type: "router", label: "If-Else", hint: "branch" },
+  { type: "router", label: "Router", hint: "route" },
   { type: "evaluator", label: "Evaluator", hint: "score" },
   { type: "memory", label: "Memory", hint: "recall" },
   { type: "code", label: "Custom Code", hint: "Python" },

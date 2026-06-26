@@ -131,16 +131,18 @@ test("the Knowledge node exposes a source dropdown; pgvector reveals a collectio
   await expect(page.getByTestId("cfg-collection")).toBeVisible();
 });
 
-// Phase 5d gate: LLM-based routing. The Routing framework projects to an init_chat_model
-// classifier wired through add_conditional_edges; the Router's "Decide by" toggle switches
-// between Python rules and an LLM classifier (which reveals a model picker).
+// Phase 5d gate: LLM-based routing. The Summarize-or-translate template projects to an
+// init_chat_model classifier wired through add_conditional_edges; the Router's "Decide by"
+// toggle switches between Python rules and an LLM classifier (which reveals a model picker).
 
-test("the Routing framework loads an LLM router and projects to a classifier", async ({
+test("the Summarize-or-translate template loads an LLM router and projects to a classifier", async ({
   page,
 }) => {
   await openCanvas(page);
 
-  await page.getByTestId("template-picker").selectOption({ label: "Routing" });
+  await page
+    .getByTestId("template-picker")
+    .selectOption({ label: "Summarize or translate" });
   await expect(page.getByTestId("node-router")).toBeVisible();
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 

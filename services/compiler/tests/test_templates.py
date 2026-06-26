@@ -25,7 +25,6 @@ def test_frameworks_present():
         "tpl-react",
         "tpl-reflexion",
         "tpl-rag",
-        "tpl-routing",
     ]
 
 
@@ -35,6 +34,7 @@ def test_use_case_templates_present():
         "tpl-market-research",
         "tpl-customer-support",
         "tpl-contract-review",
+        "tpl-routing",
     ]
 
 

@@ -12,10 +12,10 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 
-test("an If-Else router projects to add_conditional_edges", async ({ page }) => {
+test("a Router projects to add_conditional_edges", async ({ page }) => {
   await openCanvas(page);
 
-  // Input → If-Else → Output; the auto-linked router edge carries its default branch.
+  // Input → Router → Output; the auto-linked router edge carries its default branch.
   await page.getByTestId("add-input").click();
   await expect(page.getByTestId("node-input")).toBeVisible();
   await page.getByTestId("add-router").click();

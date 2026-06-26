@@ -26,7 +26,7 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   agent: "Agent",
   output: "Output",
   code: "Custom Code",
-  router: "If-Else",
+  router: "Router",
   evaluator: "Evaluator",
   memory: "Memory",
   tool: "Tools",
