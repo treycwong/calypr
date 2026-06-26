@@ -7,6 +7,7 @@ const ITEMS: { type: CalyprNodeType; label: string; hint: string }[] = [
   { type: "input", label: "Input", hint: "entry" },
   { type: "agent", label: "Agent", hint: "LLM" },
   { type: "tool", label: "Tools", hint: "search" },
+  { type: "retriever", label: "Knowledge", hint: "RAG" },
   { type: "responder", label: "Responder", hint: "draft" },
   { type: "revisor", label: "Revisor", hint: "revise" },
   { type: "router", label: "If-Else", hint: "branch" },

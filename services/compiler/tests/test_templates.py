@@ -24,6 +24,7 @@ def test_frameworks_present():
         "tpl-learning",
         "tpl-react",
         "tpl-reflexion",
+        "tpl-rag",
     ]
 
 

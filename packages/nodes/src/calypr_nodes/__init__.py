@@ -25,6 +25,7 @@ from calypr_nodes.registry import (
     register,
 )
 from calypr_nodes.responder import ResponderConfig, ResponderNode
+from calypr_nodes.retriever import RetrieverConfig, RetrieverNode
 from calypr_nodes.revisor import RevisorConfig, RevisorNode
 from calypr_nodes.router import Branch, RouterConfig, RouterNode
 from calypr_nodes.tool import ToolConfig, ToolsNode
@@ -66,4 +67,6 @@ __all__ = [
     "ResponderConfig",
     "RevisorNode",
     "RevisorConfig",
+    "RetrieverNode",
+    "RetrieverConfig",
 ]

@@ -87,7 +87,46 @@ test("a use-case template loads a multi-agent pipeline and projects to code", as
   await page.getByTestId("toggle-code").click();
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
-  // the specialist agents become one function each
+  // a Knowledge node grounds the research agent, then the specialists each become a function
   await expect(code).toContainText("def node_research");
   await expect(code).toContainText("def node_editor");
+});
+
+// Phase 5c gate: RAG reaches the canvas. The RAG framework projects to a self-contained,
+// keyless vector-store retriever (InMemoryVectorStore + DeterministicFakeEmbedding), and the
+// Knowledge node's source dropdown reveals a pgvector collection field.
+
+test("the RAG framework loads a Knowledge node and projects to a vector-store retriever", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page.getByTestId("template-picker").selectOption({ label: "RAG (retrieval)" });
+  await expect(page.getByTestId("node-retriever")).toBeVisible();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  await expect(code).toContainText("InMemoryVectorStore");
+  await expect(code).toContainText("DeterministicFakeEmbedding");
+});
+
+test("the Knowledge node exposes a source dropdown; pgvector reveals a collection field", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("add-retriever").click();
+  await expect(page.getByTestId("node-retriever")).toBeVisible();
+
+  await page.getByTestId("node-retriever").click();
+  await expect(page.getByTestId("cfg-source")).toBeVisible();
+  await expect(page.getByTestId("cfg-top-k")).toBeVisible();
+  // demo source hides the collection; switching to pgvector reveals it
+  await expect(page.getByTestId("cfg-collection")).toHaveCount(0);
+  await page.getByTestId("cfg-source").selectOption("pgvector");
+  await expect(page.getByTestId("cfg-collection")).toBeVisible();
 });

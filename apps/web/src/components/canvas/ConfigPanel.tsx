@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   type Branch,
   type CalyprNodeType,
+  KNOWLEDGE_SOURCE_OPTIONS,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
@@ -288,6 +289,60 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function RetrieverFields({ config, set }: { config: Config; set: Setter }) {
+  const source = String(config.source ?? "demo");
+  return (
+    <>
+      <SelectField
+        id="cfg-source"
+        label="Knowledge source"
+        value={source}
+        options={KNOWLEDGE_SOURCE_OPTIONS}
+        onChange={(v) => set({ source: v })}
+      />
+      <Field id="cfg-top-k" label="Top K (chunks)">
+        <Input
+          id="cfg-top-k"
+          data-testid="cfg-top-k"
+          type="number"
+          min={1}
+          value={Number(config.top_k ?? 4)}
+          onChange={(e) => set({ top_k: Number(e.target.value) })}
+        />
+      </Field>
+      {source === "pgvector" ? (
+        <>
+          <Field id="cfg-collection" label="Collection (knowledge base)">
+            <Input
+              id="cfg-collection"
+              data-testid="cfg-collection"
+              placeholder="e.g. handbook"
+              value={String(config.collection ?? "")}
+              onChange={(e) => set({ collection: e.target.value })}
+            />
+          </Field>
+          <Field id="cfg-embedding-model" label="Embedding model">
+            <Input
+              id="cfg-embedding-model"
+              value={String(config.embedding_model ?? "text-embedding-3-small")}
+              onChange={(e) => set({ embedding_model: e.target.value })}
+            />
+          </Field>
+          <p className="text-xs text-muted-foreground">
+            Code-gen only: the generated agent retrieves from your Postgres
+            (<code>DATABASE_URL</code>) — never from Calypr.
+          </p>
+        </>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          A seeded in-memory demo KB — keyless and deterministic, so the canvas runs
+          without a database. Switch to pgvector to point at your own data.
+        </p>
+      )}
+    </>
+  );
+}
+
 function PromptField({ config, set }: { config: Config; set: Setter }) {
   return (
     <Field id="cfg-prompt" label="System prompt (optional)">
@@ -355,6 +410,7 @@ export function ConfigPanel({
 
       {type === "agent" ? <AgentFields config={config} set={set} /> : null}
       {type === "tool" ? <ToolFields config={config} set={set} /> : null}
+      {type === "retriever" ? <RetrieverFields config={config} set={set} /> : null}
       {type === "responder" ? <ResponderFields config={config} set={set} /> : null}
       {type === "revisor" ? <RevisorFields config={config} set={set} /> : null}
       {type === "router" ? <RouterFields config={config} set={set} /> : null}

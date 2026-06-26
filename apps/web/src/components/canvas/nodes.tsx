@@ -166,6 +166,24 @@ export function ToolNodeView({ data, selected }: NodeProps) {
   );
 }
 
+export function RetrieverNodeView({ data, selected }: NodeProps) {
+  const source = (data as NodeData).config.source ?? "demo";
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Shell
+        title="Knowledge"
+        accent="bg-lime-500"
+        selected={selected}
+        testid="node-retriever"
+      >
+        RAG · {String(source)}
+      </Shell>
+      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+    </>
+  );
+}
+
 export function ResponderNodeView({ selected }: NodeProps) {
   return (
     <>
@@ -223,4 +241,5 @@ export const nodeTypes = {
   tool: ToolNodeView,
   responder: ResponderNodeView,
   revisor: RevisorNodeView,
+  retriever: RetrieverNodeView,
 };

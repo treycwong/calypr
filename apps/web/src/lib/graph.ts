@@ -14,7 +14,8 @@ export type CalyprNodeType =
   | "memory"
   | "tool"
   | "responder"
-  | "revisor";
+  | "revisor"
+  | "retriever";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -31,6 +32,7 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   tool: "Tools",
   responder: "Responder",
   revisor: "Revisor",
+  retriever: "Knowledge",
 };
 
 // 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
@@ -38,6 +40,14 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
 export const TOOL_PROVIDER_OPTIONS = [
   { value: "demo_search", label: "Demo search (no key, deterministic)" },
   { value: "tavily", label: "Tavily · web search (code-gen)" },
+];
+
+// The vector store a Knowledge (RAG) node retrieves from. `demo` is a seeded in-memory store
+// (no key, deterministic); `pgvector` is code-gen only for now — the generated code retrieves
+// from the user's own Postgres + a knowledge-base collection.
+export const KNOWLEDGE_SOURCE_OPTIONS = [
+  { value: "demo", label: "Demo KB (no key, deterministic)" },
+  { value: "pgvector", label: "pgvector · your Postgres (code-gen)" },
 ];
 
 export const MODEL_OPTIONS = [
@@ -98,6 +108,14 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
   tool: { provider: "demo_search", api_key: "", max_results: 3 },
   responder: { model: "fake", system_prompt: "" },
   revisor: { model: "fake", system_prompt: "", max_revisions: 2 },
+  retriever: {
+    source: "demo",
+    collection: "",
+    top_k: 4,
+    embedding_model: "text-embedding-3-small",
+    input_channel: "messages",
+    output_channel: "context",
+  },
 };
 
 export const ROUTER_DEFAULT_BRANCH = String(DEFAULT_CONFIG.router.default);
@@ -114,7 +132,9 @@ export function routerHandleNames(config: Record<string, unknown>): string[] {
 }
 
 // Phase 2 uses a fixed default state; a State editor for custom channels comes later. The
-// extra channels back the Evaluator (score/rationale) and Memory (memory) nodes.
+// extra channels back the Evaluator (score/rationale), Memory (memory), and Knowledge
+// (context) nodes. (The engine also unions node-declared channels at compile time, so an
+// incomplete client state can't drop them — this list just keeps the canvas self-consistent.)
 const DEFAULT_STATE: StateChannel[] = [
   { key: "input", type: "string", reducer: "last" },
   { key: "messages", type: "messages", reducer: "append" },
@@ -122,6 +142,7 @@ const DEFAULT_STATE: StateChannel[] = [
   { key: "score", type: "number", reducer: "last" },
   { key: "rationale", type: "string", reducer: "last" },
   { key: "memory", type: "list", reducer: "append" },
+  { key: "context", type: "string", reducer: "last" },
 ];
 
 // The inverse of buildGraphSpec: hydrate the canvas from a GraphSpec (e.g. a template).

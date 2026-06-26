@@ -179,6 +179,124 @@ async def test_router_branches_and_round_trips(tmp_path):
     assert module.build_graph().invoke({"input": "Hello"})["output"] == "hello"
 
 
+def _retriever_graph(source: str = "demo", **cfg) -> GraphSpec:
+    """Input -> Knowledge(retriever) -> Output(context): a no-LLM RAG graph for round-trip proof."""
+    return GraphSpec(
+        id="rag",
+        name="Retriever",
+        state=[
+            StateChannel(key="input", type="string", reducer=Reducer.last),
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="context", type="string", reducer=Reducer.last),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(id="kb", type="retriever", config={"source": source, **cfg}),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "context", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="kb"),
+            EdgeSpec(id="e2", source="kb", target="out"),
+        ],
+        entry="in",
+    )
+
+
+async def test_retriever_demo_round_trips(tmp_path):
+    """RAG keystone: the keyless demo Knowledge node retrieves deterministically, and the
+    generated module (a self-contained InMemoryVectorStore) retrieves the *same* chunks —
+    so the exported RAG agent grounds on identical context."""
+    graph = _retriever_graph("demo", top_k=3)
+
+    in_memory = await run(graph, NodeContext(), "what is pgvector?")
+    assert in_memory["output"]  # retrieved some context
+
+    code = generate_python(graph)
+    assert "InMemoryVectorStore" in code
+    assert "DeterministicFakeEmbedding" in code
+    module = _import_generated(code, tmp_path)
+    generated = module.build_graph().invoke({"input": "what is pgvector?"})
+    assert generated["output"] == in_memory["output"]
+
+
+def test_retriever_pgvector_codegen_is_real_and_clean():
+    """The pgvector source projects to an idiomatic PGVector retriever against the user's own
+    Postgres + OpenAI key — owned code, no Calypr dependency."""
+    code = generate_python(_retriever_graph("pgvector", collection="handbook", top_k=5))
+    assert "from langchain_postgres import PGVector" in code
+    assert "OpenAIEmbeddings(" in code
+    assert 'os.environ["DATABASE_URL"]' in code
+    assert 'collection_name="kb_handbook"' in code
+    assert "import calypr" not in code and "from calypr" not in code
+
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, "pgvector codegen is not ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
+def test_agent_prompt_placeholder_substituted_in_codegen():
+    """An Agent whose prompt uses `{{ state.context }}` (the RAG pattern) emits a runtime
+    substitution in the generated code, so the exported agent fills in retrieved context
+    rather than carrying a literal placeholder."""
+    graph = GraphSpec(
+        id="p",
+        name="Prompt",
+        state=[
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="context", type="string", reducer=Reducer.last),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(
+                id="ag",
+                type="agent",
+                config={
+                    "model": "gpt-4o-mini",
+                    "system_prompt": "Use it.\n\nContext:\n{{ state.context }}",
+                },
+            ),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="ag"),
+            EdgeSpec(id="e2", source="ag", target="out"),
+        ],
+        entry="in",
+    )
+    code = generate_python(graph)
+    assert 'system.replace("{{ state.context }}", str(state.get("context", "")))' in code
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, "placeholder-substitution codegen is not ruff-formatted"
+
+
 def _agent_graph(agent_type: str) -> GraphSpec:
     return GraphSpec(
         id="a",

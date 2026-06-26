@@ -8,6 +8,7 @@ dependencies = [
   "calypr-model",
   "langgraph>=0.2",
   "langchain-core>=0.3",
+  "numpy>=1.26",  # langchain_core vector store + fake embeddings (the keyless demo KB)
   "pydantic>=2.9",
 ]
 

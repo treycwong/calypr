@@ -46,8 +46,11 @@ class OutputNode(BaseNode):
     @classmethod
     def compile(cls, cfg: OutputConfig, ctx: NodeContext) -> NodeFn:
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
-            messages = state.get(cfg.source_channel) or []
-            text = text_of(messages[-1]) if messages else ""
+            value = state.get(cfg.source_channel)
+            if isinstance(value, str):  # a plain channel (e.g. retrieved context)
+                text = value
+            else:  # a messages list — surface the last message's text
+                text = text_of(value[-1]) if value else ""
             return {cfg.output_channel: text}
 
         return _run
@@ -56,9 +59,12 @@ class OutputNode(BaseNode):
     def codegen(cls, cfg: OutputConfig, fn_name: str, ctx=None) -> CodeFragment:
         fn = (
             f"def {fn_name}(state: State) -> dict:\n"
-            f'    """Return the last message\'s text as the result."""\n'
-            f'    messages = state.get("{cfg.source_channel}") or []\n'
-            f'    text = messages[-1].content if messages else ""\n'
+            f'    """Return the selected channel as the result."""\n'
+            f'    value = state.get("{cfg.source_channel}")\n'
+            f"    if isinstance(value, str):\n"
+            f"        text = value\n"
+            f"    else:\n"
+            f'        text = value[-1].content if value else ""\n'
             f'    return {{"{cfg.output_channel}": text}}\n'
         )
         return CodeFragment(fn_name=fn_name, function=fn)

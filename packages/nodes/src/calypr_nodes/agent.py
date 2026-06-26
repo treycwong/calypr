@@ -11,6 +11,7 @@ then they run as single-or-looped model calls with type-specific framing."""
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Literal
 
 from calypr_model import Done, Msg, Role, TextDelta, ToolCall, Usage
@@ -33,6 +34,19 @@ from calypr_nodes.registry import (
 
 def _to_lc_tool_calls(calls: list[ToolCall]) -> list[dict]:
     return [{"id": tc.id, "name": tc.name, "args": tc.args} for tc in calls]
+
+
+# `{{ state.x }}` prompt placeholders — render_template substitutes these at runtime; codegen
+# emits the equivalent so the *generated* agent fills them in too (e.g. retrieved context).
+_PLACEHOLDER = re.compile(r"{{\s*state\.([A-Za-z_]\w*)\s*}}")
+
+
+def _placeholders(text: str) -> list[tuple[str, str]]:
+    """Unique (exact placeholder, channel) pairs in `text`, in first-seen order."""
+    seen: dict[str, str] = {}
+    for m in _PLACEHOLDER.finditer(text):
+        seen.setdefault(m.group(0), m.group(1))
+    return list(seen.items())
 
 AgentType = Literal[
     "simple_reflex",
@@ -269,6 +283,12 @@ class AgentNode(BaseNode):
         ]
         if system:
             head.extend(assign_str("system", system))
+            # `{{ state.x }}` placeholders fill from state at runtime, mirroring render_template.
+            for placeholder, channel in _placeholders(system):
+                head.append(
+                    f"    system = system.replace({placeholder!r}, "
+                    f'str(state.get({channel!r}, "")))'
+                )
 
         prompt = "[SystemMessage(content=system), *messages]" if system else "messages"
 

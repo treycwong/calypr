@@ -21,6 +21,10 @@ _EVAL_STATE = [
     StateChannel(key="score", type="number", reducer=Reducer.last),
     StateChannel(key="rationale", type="string", reducer=Reducer.last),
 ]
+# Retrieval (RAG): a Knowledge node writes retrieved chunks here; an Agent reads them via
+# `{{ state.context }}`. (The Knowledge node declares this channel too — graph_channels unions
+# them — but listing it keeps the starter self-documenting, like Reflexion's revision_count.)
+_RAG_STATE = [*_BASE_STATE, StateChannel(key="context", type="string", reducer=Reducer.last)]
 
 
 def _input() -> NodeSpec:
@@ -62,6 +66,13 @@ def _role_agent(node_id: str, system_prompt: str) -> NodeSpec:
             "output_channel": "messages",
         },
     )
+
+
+def _knowledge(node_id: str = "knowledge") -> NodeSpec:
+    """A Knowledge (RAG) node: retrieve the top chunks for the latest query into `context`.
+    Uses the keyless `demo` source so the starter runs on the canvas; swap to `pgvector` +
+    a collection to point it at your own knowledge base."""
+    return NodeSpec(id=node_id, type="retriever", config={"source": "demo", "top_k": 4})
 
 
 def _chain(*node_ids: str) -> list[EdgeSpec]:
@@ -242,6 +253,27 @@ def reflexion() -> GraphSpec:
     )
 
 
+def rag() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-rag",
+        name="RAG (retrieval)",
+        description="Retrieve relevant context from a knowledge base, then answer grounded in it.",
+        state=_RAG_STATE,
+        nodes=[
+            _input(),
+            _knowledge(),
+            _role_agent(
+                "agent",
+                "Answer the user's question using only the retrieved context below. If the "
+                "context does not cover it, say so plainly.\n\nContext:\n{{ state.context }}",
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "knowledge", "agent", "out"),
+        entry="in",
+    )
+
+
 # ── Use-case templates ───────────────────────────────────────────────────────
 # Multi-agent systems for real tasks: a sequential pipeline of Agent nodes, each with a
 # role-specific system prompt, where every stage reads the running transcript and adds to it.
@@ -251,15 +283,17 @@ def market_research() -> GraphSpec:
     return GraphSpec(
         id="tpl-market-research",
         name="Market research report",
-        description="Specialist agents research, analyse, write, critique, and edit a report.",
-        state=_BASE_STATE,
+        description="Retrieve sources, then specialist agents analyse, write, critique, and edit.",
+        state=_RAG_STATE,
         nodes=[
             _input(),
+            _knowledge(),
             _role_agent(
                 "research",
-                "You are a market research analyst. Collect and summarise the key market "
-                "trends, leading competitors, and recent news relevant to the user's topic. "
-                "Lead with concrete facts and figures.",
+                "You are a market research analyst. Using the retrieved sources below plus your "
+                "own knowledge, summarise the key market trends, leading competitors, and recent "
+                "news for the user's topic. Lead with concrete facts and figures."
+                "\n\nSources:\n{{ state.context }}",
             ),
             _role_agent(
                 "analysis",
@@ -285,7 +319,9 @@ def market_research() -> GraphSpec:
             ),
             _output(),
         ],
-        edges=_chain("in", "research", "analysis", "writing", "critique", "editor", "out"),
+        edges=_chain(
+            "in", "knowledge", "research", "analysis", "writing", "critique", "editor", "out"
+        ),
         entry="in",
     )
 
@@ -294,8 +330,8 @@ def customer_support() -> GraphSpec:
     return GraphSpec(
         id="tpl-customer-support",
         name="Customer support automation",
-        description="Specialist agents triage, look up knowledge, respond, and escalate.",
-        state=_BASE_STATE,
+        description="Triage, retrieve FAQ/ticket knowledge, respond, and escalate.",
+        state=_RAG_STATE,
         nodes=[
             _input(),
             _role_agent(
@@ -303,15 +339,12 @@ def customer_support() -> GraphSpec:
                 "You are a support triage agent. Classify the user's request (billing, "
                 "technical support, or general inquiry) and restate precisely what they need.",
             ),
-            _role_agent(
-                "knowledge",
-                "You are a knowledge-base agent. For the classified intent, recall the most "
-                "relevant FAQ answers, policies, and prior-ticket resolutions.",
-            ),
+            _knowledge(),
             _role_agent(
                 "response",
-                "You are a customer support specialist. Write a personalised, context-aware "
-                "reply that resolves the request using the retrieved knowledge. Warm and concise.",
+                "You are a customer support specialist. Write a personalised reply that "
+                "resolves the request using the retrieved knowledge below. Warm and concise."
+                "\n\nKnowledge:\n{{ state.context }}",
             ),
             _role_agent(
                 "escalation",
@@ -377,6 +410,7 @@ FRAMEWORKS: list[GraphSpec] = [
     learning(),
     react(),
     reflexion(),
+    rag(),
 ]
 
 # Templates — multi-agent systems for real use cases. Start here to choose *what* to build.
