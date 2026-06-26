@@ -9,7 +9,16 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from calypr_api.config import settings
 
-engine = create_engine(settings.database_url, pool_pre_ping=True, future=True)
+# `prepare_threshold=None` disables psycopg3's client-side prepared statements, which a
+# transaction-pooling proxy (Neon's `-pooler` endpoint, Supabase's pooler, any pgBouncer)
+# cannot keep across checkouts — without it you hit "prepared statement already exists".
+# It's a no-op cost on a direct connection, so it's safe to set unconditionally.
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    future=True,
+    connect_args={"prepare_threshold": None},
+)
 SessionLocal = sessionmaker(
     bind=engine, autoflush=False, expire_on_commit=False, class_=Session
 )
