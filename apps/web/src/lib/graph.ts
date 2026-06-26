@@ -50,6 +50,13 @@ export const KNOWLEDGE_SOURCE_OPTIONS = [
   { value: "pgvector", label: "pgvector · your Postgres (code-gen)" },
 ];
 
+// A Router decides a branch either by Python rules over state, or by an LLM classifier
+// (the "routing agent" pattern) that picks the best branch for the request.
+export const ROUTER_KIND_OPTIONS = [
+  { value: "rules", label: "Rules — Python conditions over state" },
+  { value: "llm", label: "LLM — a classifier picks the branch" },
+];
+
 export const MODEL_OPTIONS = [
   { value: "fake", label: "Fake (no key, deterministic)" },
   { value: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini" },
@@ -88,9 +95,17 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     input_channel: "messages",
     output_channel: "messages",
   },
-  // Passthrough by default (always the `default` branch); add rules + wire their handles
-  // to branch. Auto-linking from a router labels the new edge with `default`.
-  router: { kind: "rules", input_channel: "input", branches: [], default: "next" },
+  // Passthrough by default (always the `default` branch); add rules/branches + wire their
+  // handles to branch. Auto-linking from a router labels the new edge with `default`. In
+  // `llm` mode the classifier writes `route_channel` and the branch `when` is a description.
+  router: {
+    kind: "rules",
+    input_channel: "input",
+    branches: [],
+    default: "next",
+    model: "fake",
+    route_channel: "task_type",
+  },
   evaluator: {
     model: "fake",
     input_channel: "messages",
@@ -143,6 +158,7 @@ const DEFAULT_STATE: StateChannel[] = [
   { key: "rationale", type: "string", reducer: "last" },
   { key: "memory", type: "list", reducer: "append" },
   { key: "context", type: "string", reducer: "last" },
+  { key: "task_type", type: "string", reducer: "last" },
 ];
 
 // The inverse of buildGraphSpec: hydrate the canvas from a GraphSpec (e.g. a template).

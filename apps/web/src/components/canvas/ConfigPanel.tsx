@@ -14,6 +14,7 @@ import {
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
+  ROUTER_KIND_OPTIONS,
   TOOL_PROVIDER_OPTIONS,
 } from "@/lib/graph";
 
@@ -139,11 +140,22 @@ function AgentFields({ config, set }: { config: Config; set: Setter }) {
 }
 
 function RouterFields({ config, set }: { config: Config; set: Setter }) {
+  const isLlm = String(config.kind ?? "rules") === "llm";
   const branches = (config.branches as Branch[] | undefined) ?? [];
   const setBranch = (i: number, patch: Partial<Branch>) =>
     set({ branches: branches.map((b, j) => (j === i ? { ...b, ...patch } : b)) });
   return (
     <>
+      <SelectField
+        id="cfg-router-kind"
+        label="Decide by"
+        value={String(config.kind ?? "rules")}
+        options={ROUTER_KIND_OPTIONS}
+        onChange={(v) => set({ kind: v })}
+      />
+
+      {isLlm ? <ModelField config={config} set={set} /> : null}
+
       <Field id="cfg-input-channel" label="Reads channel">
         <Input
           id="cfg-input-channel"
@@ -155,8 +167,9 @@ function RouterFields({ config, set }: { config: Config; set: Setter }) {
       <div className="space-y-2">
         <Label>Branches</Label>
         <p className="text-xs text-muted-foreground">
-          Each rule is a Python expression over <code>state</code>. Wire each branch
-          handle to its target; unmatched input takes the default.
+          {isLlm
+            ? "Describe each branch in plain language — the classifier picks one. Wire each branch handle to its target; unmatched takes the default."
+            : "Each rule is a Python expression over state. Wire each branch handle to its target; unmatched input takes the default."}
         </p>
         {branches.map((b, i) => (
           <div key={i} className="space-y-1 rounded-md border border-border p-2">
@@ -167,9 +180,13 @@ function RouterFields({ config, set }: { config: Config; set: Setter }) {
               onChange={(e) => setBranch(i, { name: e.target.value })}
             />
             <Input
-              aria-label={`branch ${i} rule`}
-              className="font-mono text-xs"
-              placeholder={'"urgent" in state["input"].lower()'}
+              aria-label={isLlm ? `branch ${i} description` : `branch ${i} rule`}
+              className={isLlm ? "text-xs" : "font-mono text-xs"}
+              placeholder={
+                isLlm
+                  ? "when the user wants a summary"
+                  : '"urgent" in state["input"].lower()'
+              }
               value={b.when}
               onChange={(e) => setBranch(i, { when: e.target.value })}
             />

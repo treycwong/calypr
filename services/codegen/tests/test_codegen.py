@@ -297,6 +297,73 @@ def test_agent_prompt_placeholder_substituted_in_codegen():
     assert fmt.stdout == code, "placeholder-substitution codegen is not ruff-formatted"
 
 
+def test_router_llm_codegen_emits_classifier():
+    """The LLM router (semantic routing) projects to an idiomatic init_chat_model classifier
+    that writes the route channel, plus a conditional-edge fn that reads it back."""
+    graph = GraphSpec(
+        id="r",
+        name="Routing",
+        state=[
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="task_type", type="string", reducer=Reducer.last),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(
+                id="router",
+                type="router",
+                config={
+                    "kind": "llm",
+                    "model": "gpt-4o-mini",
+                    "route_channel": "task_type",
+                    "branches": [
+                        {"name": "summarize", "when": "wants a summary"},
+                        {"name": "translate", "when": "wants a translation"},
+                    ],
+                    "default": "summarize",
+                },
+            ),
+            NodeSpec(id="summarize", type="agent", config={"model": "gpt-4o-mini"}),
+            NodeSpec(id="translate", type="agent", config={"model": "gpt-4o-mini"}),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="router"),
+            EdgeSpec(id="e2", source="router", target="summarize", condition="summarize"),
+            EdgeSpec(id="e3", source="router", target="translate", condition="translate"),
+            EdgeSpec(id="e4", source="summarize", target="out"),
+            EdgeSpec(id="e5", source="translate", target="out"),
+        ],
+        entry="in",
+    )
+    code = generate_python(graph)
+    assert "init_chat_model" in code  # the classifier
+    assert "add_conditional_edges" in code  # routing wired
+    assert 'state.get("task_type"' in code  # the route fn reads the classifier's channel
+    assert "import calypr" not in code and "from calypr" not in code
+
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, "router-llm codegen is not ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
 def _agent_graph(agent_type: str) -> GraphSpec:
     return GraphSpec(
         id="a",

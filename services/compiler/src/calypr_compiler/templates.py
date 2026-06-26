@@ -274,6 +274,56 @@ def rag() -> GraphSpec:
     )
 
 
+def routing() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-routing",
+        name="Routing",
+        description="A classifier routes each request to the right specialist agent.",
+        state=[*_BASE_STATE, StateChannel(key="task_type", type="string", reducer=Reducer.last)],
+        nodes=[
+            _input(),
+            NodeSpec(
+                id="router",
+                type="router",
+                config={
+                    "kind": "llm",
+                    "model": "fake",
+                    "input_channel": "messages",
+                    "route_channel": "task_type",
+                    "branches": [
+                        {
+                            "name": "summarize",
+                            "when": "the user wants the text summarized or condensed",
+                        },
+                        {
+                            "name": "translate",
+                            "when": "the user wants the text translated into another language",
+                        },
+                    ],
+                    "default": "summarize",
+                },
+            ),
+            _role_agent(
+                "summarize",
+                "You are a summarizer. Produce a concise summary of the user's text.",
+            ),
+            _role_agent(
+                "translate",
+                "You are a translator. Translate the user's text as requested.",
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="router"),
+            EdgeSpec(id="e2", source="router", target="summarize", condition="summarize"),
+            EdgeSpec(id="e3", source="router", target="translate", condition="translate"),
+            EdgeSpec(id="e4", source="summarize", target="out"),
+            EdgeSpec(id="e5", source="translate", target="out"),
+        ],
+        entry="in",
+    )
+
+
 # ── Use-case templates ───────────────────────────────────────────────────────
 # Multi-agent systems for real tasks: a sequential pipeline of Agent nodes, each with a
 # role-specific system prompt, where every stage reads the running transcript and adds to it.
@@ -411,6 +461,7 @@ FRAMEWORKS: list[GraphSpec] = [
     react(),
     reflexion(),
     rag(),
+    routing(),
 ]
 
 # Templates — multi-agent systems for real use cases. Start here to choose *what* to build.

@@ -25,6 +25,7 @@ def test_frameworks_present():
         "tpl-react",
         "tpl-reflexion",
         "tpl-rag",
+        "tpl-routing",
     ]
 
 

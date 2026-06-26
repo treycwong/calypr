@@ -130,3 +130,41 @@ test("the Knowledge node exposes a source dropdown; pgvector reveals a collectio
   await page.getByTestId("cfg-source").selectOption("pgvector");
   await expect(page.getByTestId("cfg-collection")).toBeVisible();
 });
+
+// Phase 5d gate: LLM-based routing. The Routing framework projects to an init_chat_model
+// classifier wired through add_conditional_edges; the Router's "Decide by" toggle switches
+// between Python rules and an LLM classifier (which reveals a model picker).
+
+test("the Routing framework loads an LLM router and projects to a classifier", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page.getByTestId("template-picker").selectOption({ label: "Routing" });
+  await expect(page.getByTestId("node-router")).toBeVisible();
+  await expect(page.getByTestId("node-agent").first()).toBeVisible();
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  await expect(code).toContainText("init_chat_model");
+  await expect(code).toContainText("add_conditional_edges");
+});
+
+test("the Router 'Decide by' toggle reveals a model picker in LLM mode", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("add-router").click();
+  await expect(page.getByTestId("node-router")).toBeVisible();
+
+  await page.getByTestId("node-router").click();
+  await expect(page.getByTestId("cfg-router-kind")).toBeVisible();
+  // rules mode: no model picker; switching to LLM reveals it
+  await expect(page.getByTestId("cfg-model")).toHaveCount(0);
+  await page.getByTestId("cfg-router-kind").selectOption("llm");
+  await expect(page.getByTestId("cfg-model")).toBeVisible();
+});

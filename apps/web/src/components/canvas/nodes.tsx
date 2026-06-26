@@ -98,12 +98,14 @@ export function CodeNodeView({ selected }: NodeProps) {
 export function RouterNodeView({ data, selected }: NodeProps) {
   // One named source handle per branch (+ the default) — wire each to its target; the edge
   // label becomes the branch `condition` in the GraphSpec.
-  const names = routerHandleNames((data as NodeData).config);
+  const config = (data as NodeData).config;
+  const names = routerHandleNames(config);
+  const isLlm = String(config.kind ?? "rules") === "llm";
   return (
     <>
       <Handle type="target" position={Position.Top} style={handleStyle} />
       <Shell title="If-Else" accent="bg-rose-500" selected={selected} testid="node-router">
-        {names.join(" · ")}
+        {(isLlm ? ["llm", ...names] : names).join(" · ")}
       </Shell>
       {names.map((name, i) => (
         <Handle
