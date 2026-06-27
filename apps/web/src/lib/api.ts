@@ -46,13 +46,38 @@ export async function* runAgent(
   }
 }
 
-export async function saveAgent(name: string, graph: GraphSpec): Promise<{ id: string }> {
+/** A saved agent ("project") with its full graph. */
+export type AgentDetail = { id: string; name: string; graph: GraphSpec };
+
+/** Create a new saved agent; returns it (with the new id). */
+export async function createAgent(name: string, graph: GraphSpec): Promise<AgentDetail> {
   const res = await fetch("/api/agents", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, graph }),
   });
   if (!res.ok) throw new Error(`save failed (${res.status})`);
+  return res.json();
+}
+
+/** Update an existing saved agent in place (name and/or graph) — no duplicate rows. */
+export async function updateAgent(
+  id: string,
+  body: { name?: string; graph?: GraphSpec },
+): Promise<AgentDetail> {
+  const res = await fetch(`/api/agents/${id}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`save failed (${res.status})`);
+  return res.json();
+}
+
+/** Load a saved agent by id (to reopen it on the canvas). */
+export async function getAgent(id: string): Promise<AgentDetail> {
+  const res = await fetch(`/api/agents/${id}`, { cache: "no-store" });
+  if (!res.ok) throw new Error(`load failed (${res.status})`);
   return res.json();
 }
 

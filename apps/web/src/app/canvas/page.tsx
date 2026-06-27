@@ -23,7 +23,13 @@ import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { listTemplates, saveAgent, type Template } from "@/lib/api";
+import {
+  createAgent,
+  getAgent,
+  listTemplates,
+  type Template,
+  updateAgent,
+} from "@/lib/api";
 import {
   buildGraphSpec,
   type CalyprNodeType,
@@ -41,6 +47,10 @@ function CanvasInner() {
   const [showCode, setShowCode] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
+  // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
+  // once then updates in place, so re-saving never duplicates.
+  const [agentId, setAgentId] = useState<string | null>(null);
+  const [name, setName] = useState("Untitled Agent");
   const counter = useRef(0);
   const lastNodeId = useRef<string | null>(null);
 
@@ -49,6 +59,24 @@ function CanvasInner() {
       .then(setTemplates)
       .catch(() => setTemplates([]));
   }, []);
+
+  // Open an existing agent when arriving via /canvas?agent=<id> (from the dashboard), so Save
+  // updates that agent rather than creating a new one.
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("agent");
+    if (!id) return;
+    getAgent(id)
+      .then((a) => {
+        const canvas = graphToCanvas(a.graph);
+        setNodes(canvas.nodes);
+        setEdges(canvas.edges);
+        counter.current = canvas.nodes.length;
+        lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
+        setAgentId(a.id);
+        setName(a.name);
+      })
+      .catch(() => setSaveMsg("Couldn't load that agent"));
+  }, [setNodes, setEdges]);
 
   const addNode = useCallback(
     (type: CalyprNodeType) => {
@@ -109,6 +137,9 @@ function CanvasInner() {
       counter.current = canvas.nodes.length;
       lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
       setSelectedId(null);
+      // Loading a starter begins a fresh project: Save will create a new agent.
+      setAgentId(null);
+      setName(tpl.name);
       setSaveMsg(`Loaded ${tpl.name}`);
     },
     [templates, setNodes, setEdges],
@@ -117,13 +148,22 @@ function CanvasInner() {
   const getGraph = useCallback(() => buildGraphSpec(nodes, edges), [nodes, edges]);
 
   const onSave = useCallback(async () => {
+    setSaveMsg("Saving…");
     try {
-      const { id } = await saveAgent("Untitled Agent", getGraph());
-      setSaveMsg(`Saved ${id.slice(0, 8)}`);
+      const agentName = name.trim() || "Untitled Agent";
+      if (agentId) {
+        await updateAgent(agentId, { name: agentName, graph: getGraph() });
+      } else {
+        const created = await createAgent(agentName, getGraph());
+        setAgentId(created.id);
+        // Reflect the saved agent in the URL so a refresh reopens it.
+        window.history.replaceState(null, "", `/canvas?agent=${created.id}`);
+      }
+      setSaveMsg("Saved ✓");
     } catch {
       setSaveMsg("Save failed");
     }
-  }, [getGraph]);
+  }, [agentId, name, getGraph]);
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
@@ -131,7 +171,14 @@ function CanvasInner() {
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-3">
-          <span className="text-sm font-medium">Agent Canvas</span>
+          <input
+            data-testid="agent-name"
+            aria-label="Agent name"
+            className="h-8 w-48 rounded-md bg-transparent px-2 text-sm font-medium outline-none hover:bg-muted focus:bg-muted"
+            value={name}
+            placeholder="Untitled Agent"
+            onChange={(e) => setName(e.target.value)}
+          />
           <select
             data-testid="template-picker"
             aria-label="Start from a framework or template"
