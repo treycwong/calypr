@@ -87,8 +87,38 @@ def test_agent_crud_roundtrip():
     assert created.status_code == 200
     agent_id = created.json()["id"]
 
-    assert any(a["id"] == agent_id for a in client.get("/agents").json())
+    summaries = client.get("/agents").json()
+    mine = next(a for a in summaries if a["id"] == agent_id)
+    assert "updated_at" in mine  # the dashboard sorts/labels by this
 
     got = client.get(f"/agents/{agent_id}")
     assert got.status_code == 200
     assert got.json()["graph"]["id"] == "golden-input-agent-output"
+
+    # delete → gone from the list + 404 on fetch
+    assert client.delete(f"/agents/{agent_id}").status_code == 204
+    assert all(a["id"] != agent_id for a in client.get("/agents").json())
+    assert client.get(f"/agents/{agent_id}").status_code == 404
+
+
+@pytest.mark.skipif(not _db_available(), reason="Postgres not available")
+def test_per_user_workspace_isolation(monkeypatch):
+    """With the internal key set, two users resolve to separate workspaces and can't see each
+    other's agents; a request without the key is rejected."""
+    from calypr_api.config import settings
+
+    monkeypatch.setattr(settings, "internal_key", "test-key")
+    graph = input_agent_output(model="fake").model_dump()
+
+    def hdr(uid: str) -> dict[str, str]:
+        return {"x-calypr-internal-key": "test-key", "x-calypr-user-id": uid}
+
+    a = client.post("/agents", json={"name": "A", "graph": graph}, headers=hdr("user-a"))
+    assert a.status_code == 200
+    a_id = a.json()["id"]
+
+    assert any(x["id"] == a_id for x in client.get("/agents", headers=hdr("user-a")).json())
+    assert all(x["id"] != a_id for x in client.get("/agents", headers=hdr("user-b")).json())
+
+    # missing/incorrect internal key → 401 (can't spoof identity from the public internet)
+    assert client.get("/agents", headers={"x-calypr-user-id": "user-a"}).status_code == 401

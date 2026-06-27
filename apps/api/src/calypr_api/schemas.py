@@ -3,6 +3,7 @@ from the DSL contract, so the API speaks the exact same shape the canvas seriali
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from calypr_compiler import Issue
@@ -38,12 +39,22 @@ class AgentUpdate(BaseModel):
 class AgentSummary(BaseModel):
     id: str
     name: str
+    updated_at: datetime
 
 
 class AgentDetail(BaseModel):
     id: str
     name: str
     graph: GraphSpec
+
+
+class WorkspaceInfo(BaseModel):
+    id: str
+    name: str
+
+
+class WorkspaceUpdate(BaseModel):
+    name: str
 
 
 class TemplateInfo(BaseModel):

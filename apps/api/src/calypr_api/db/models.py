@@ -26,6 +26,8 @@ class Workspace(Base):
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
     clerk_org_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    # A user's personal workspace (= Better Auth user.id); NULL for the shared dev workspace.
+    owner_user_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False

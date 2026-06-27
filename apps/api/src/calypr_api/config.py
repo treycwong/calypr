@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://calypr:calypr@localhost:5432/calypr"
     # Auth seam: "dev" (local cookie) or "clerk" (JWT). See CLAUDE-PLAN.md Phase 0.
     auth_provider: str = "dev"
+    # Shared secret the Next proxy presents (X-Calypr-Internal-Key) to prove it's the trusted
+    # caller; when set, requests are scoped to the X-Calypr-User-Id's workspace. Unset (local/CI)
+    # → every request falls back to the shared dev workspace.
+    internal_key: str = ""
 
 
 settings = Settings()

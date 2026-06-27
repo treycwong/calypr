@@ -81,6 +81,35 @@ export async function getAgent(id: string): Promise<AgentDetail> {
   return res.json();
 }
 
+/** A saved agent in the dashboard list (no graph). */
+export type AgentSummary = { id: string; name: string; updated_at: string };
+
+/** The current user's saved agents ("projects"), most-recently-edited first. */
+export async function listAgents(): Promise<AgentSummary[]> {
+  const res = await fetch("/api/agents", { cache: "no-store" });
+  if (!res.ok) throw new Error(`list failed (${res.status})`);
+  return res.json();
+}
+
+/** Delete a saved agent. */
+export async function deleteAgent(id: string): Promise<void> {
+  const res = await fetch(`/api/agents/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`delete failed (${res.status})`);
+}
+
+export type WorkspaceInfo = { id: string; name: string };
+
+/** Rename the current workspace. */
+export async function renameWorkspace(name: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspace", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`rename failed (${res.status})`);
+  return res.json();
+}
+
 export type Template = {
   id: string;
   name: string;
