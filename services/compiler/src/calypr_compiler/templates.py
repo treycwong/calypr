@@ -53,14 +53,16 @@ def _agent(agent_type: str, **config) -> NodeSpec:
     )
 
 
-def _role_agent(node_id: str, system_prompt: str) -> NodeSpec:
+def _role_agent(node_id: str, system_prompt: str, label: str | None = None) -> NodeSpec:
     """One Agent in a multi-agent pipeline: model-based (reads the full running transcript)
-    with a role-specific system prompt. The next agent sees everything written before it."""
+    with a role-specific system prompt. The next agent sees everything written before it.
+    `label` names the agent on the canvas (defaults to the id, e.g. orchestrator → Orchestrator)."""
     return NodeSpec(
         id=node_id,
         type="agent",
         config={
             "model": "fake",
+            "label": label or node_id.replace("_", " ").title(),
             "system_prompt": system_prompt,
             "input_channel": "messages",
             "output_channel": "messages",

@@ -93,6 +93,9 @@ class AgentConfig(BaseModel):
     # Model id is resolved against the provider at runtime; the fake client ignores it.
     model: str = "claude-sonnet-4-5"
     system_prompt: str = ""
+    # Optional display name on the canvas (e.g. "Orchestrator", "Flights"). Cosmetic only —
+    # the engine + codegen ignore it; it distinguishes role-specialized agents in the UI.
+    label: str = ""
     input_channel: str = "messages"
     output_channel: str = "messages"
     temperature: float = 0.7

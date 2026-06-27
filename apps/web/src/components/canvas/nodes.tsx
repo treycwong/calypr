@@ -7,6 +7,7 @@ import { type NodeData, routerHandleNames } from "@/lib/graph";
 
 const handleStyle = { width: 10, height: 10 };
 
+// Flow runs left → right: inputs enter on the Left, outputs leave on the Right.
 function Shell({
   title,
   accent,
@@ -44,20 +45,22 @@ export function InputNodeView({ selected }: NodeProps) {
       <Shell title="Input" accent="bg-sky-500" selected={selected} testid="node-input">
         chat entry
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
 
 export function AgentNodeView({ data, selected }: NodeProps) {
   const config = (data as NodeData).config;
+  // A role-specialized agent (e.g. "Orchestrator") shows its label; a bare agent shows "Agent".
+  const title = String(config.label || "Agent");
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
-      <Shell title="Agent" accent="bg-violet-500" selected={selected} testid="node-agent">
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell title={title} accent="bg-violet-500" selected={selected} testid="node-agent">
         {String(config.agent_type ?? "model_based")} · {String(config.model ?? "fake")}
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
@@ -65,7 +68,7 @@ export function AgentNodeView({ data, selected }: NodeProps) {
 export function OutputNodeView({ selected }: NodeProps) {
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Output"
         accent="bg-emerald-500"
@@ -81,7 +84,7 @@ export function OutputNodeView({ selected }: NodeProps) {
 export function CodeNodeView({ selected }: NodeProps) {
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Custom Code"
         accent="bg-amber-500"
@@ -90,20 +93,20 @@ export function CodeNodeView({ selected }: NodeProps) {
       >
         python · no ceiling
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
 
 export function RouterNodeView({ data, selected }: NodeProps) {
-  // One named source handle per branch (+ the default) — wire each to its target; the edge
-  // label becomes the branch `condition` in the GraphSpec.
+  // One named source handle per branch (+ the default), spread down the Right edge — wire each
+  // to its target; the edge label becomes the branch `condition` in the GraphSpec.
   const config = (data as NodeData).config;
   const names = routerHandleNames(config);
   const isLlm = String(config.kind ?? "rules") === "llm";
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="Router" accent="bg-rose-500" selected={selected} testid="node-router">
         {(isLlm ? ["llm", ...names] : names).join(" · ")}
       </Shell>
@@ -112,10 +115,10 @@ export function RouterNodeView({ data, selected }: NodeProps) {
           key={name}
           id={name}
           type="source"
-          position={Position.Bottom}
+          position={Position.Right}
           style={{
             ...handleStyle,
-            left: `${((i + 1) / (names.length + 1)) * 100}%`,
+            top: `${((i + 1) / (names.length + 1)) * 100}%`,
           }}
         />
       ))}
@@ -127,7 +130,7 @@ export function EvaluatorNodeView({ data, selected }: NodeProps) {
   const max = (data as NodeData).config.scale_max ?? 10;
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Evaluator"
         accent="bg-orange-500"
@@ -136,7 +139,7 @@ export function EvaluatorNodeView({ data, selected }: NodeProps) {
       >
         LLM judge · 1–{String(max)}
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
@@ -145,11 +148,11 @@ export function MemoryNodeView({ data, selected }: NodeProps) {
   const op = (data as NodeData).config.operation ?? "buffer";
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="Memory" accent="bg-teal-500" selected={selected} testid="node-memory">
         {String(op)}
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
@@ -158,12 +161,12 @@ export function ToolNodeView({ data, selected }: NodeProps) {
   const provider = (data as NodeData).config.provider ?? "demo_search";
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="Tools" accent="bg-yellow-500" selected={selected} testid="node-tool">
         {String(provider)}
       </Shell>
       {/* Loops back to the agent that called it (the ReAct cycle). */}
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
@@ -172,7 +175,7 @@ export function RetrieverNodeView({ data, selected }: NodeProps) {
   const source = (data as NodeData).config.source ?? "demo";
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Knowledge"
         accent="bg-lime-500"
@@ -181,7 +184,7 @@ export function RetrieverNodeView({ data, selected }: NodeProps) {
       >
         RAG · {String(source)}
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
@@ -189,7 +192,7 @@ export function RetrieverNodeView({ data, selected }: NodeProps) {
 export function ResponderNodeView({ selected }: NodeProps) {
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Responder"
         accent="bg-indigo-500"
@@ -198,16 +201,17 @@ export function ResponderNodeView({ selected }: NodeProps) {
       >
         draft + self-critique
       </Shell>
-      <Handle type="source" position={Position.Bottom} style={handleStyle} />
+      <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
   );
 }
 
 export function RevisorNodeView({ selected }: NodeProps) {
-  // Branches: "revise" (loop) and "done" (finish) — labelled edges carry the names.
+  // Branches: "revise" (loop) and "done" (finish), spread down the Right edge — labelled edges
+  // carry the names.
   return (
     <>
-      <Handle type="target" position={Position.Top} style={handleStyle} />
+      <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Revisor"
         accent="bg-fuchsia-500"
@@ -219,14 +223,14 @@ export function RevisorNodeView({ selected }: NodeProps) {
       <Handle
         id="revise"
         type="source"
-        position={Position.Bottom}
-        style={{ ...handleStyle, left: "33%" }}
+        position={Position.Right}
+        style={{ ...handleStyle, top: "33%" }}
       />
       <Handle
         id="done"
         type="source"
-        position={Position.Bottom}
-        style={{ ...handleStyle, left: "67%" }}
+        position={Position.Right}
+        style={{ ...handleStyle, top: "67%" }}
       />
     </>
   );

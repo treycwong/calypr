@@ -185,6 +185,15 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
     .selectOption({ label: "Trip itinerary planner" });
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
+  // Role agents are named, not all "Agent", and the flow runs left → right.
+  const orchestrator = page.getByText("Orchestrator", { exact: true });
+  const synthesizer = page.getByText("Synthesizer", { exact: true });
+  await expect(orchestrator).toBeVisible();
+  await expect(synthesizer).toBeVisible();
+  const ob = await orchestrator.boundingBox();
+  const sb = await synthesizer.boundingBox();
+  expect(ob && sb && ob.x < sb.x).toBeTruthy(); // orchestrator sits left of the synthesizer
+
   await page.getByTestId("toggle-code").click();
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });

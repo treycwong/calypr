@@ -57,7 +57,8 @@ function CanvasInner() {
       const node: Node<NodeData> = {
         id,
         type,
-        position: { x: 280, y: 30 + index * 130 },
+        // Flow left → right: each new block is placed to the right of the previous one.
+        position: { x: 80 + index * 240, y: 300 },
         data: { config: { ...DEFAULT_CONFIG[type] } },
       };
       setNodes((nds) => [...nds, node]);

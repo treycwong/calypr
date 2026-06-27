@@ -88,6 +88,15 @@ function AgentFields({ config, set }: { config: Config; set: Setter }) {
   const agentType = String(config.agent_type ?? "model_based");
   return (
     <>
+      <Field id="cfg-label" label="Name (optional)">
+        <Input
+          id="cfg-label"
+          data-testid="cfg-label"
+          placeholder="e.g. Orchestrator"
+          value={String(config.label ?? "")}
+          onChange={(e) => set({ label: e.target.value })}
+        />
+      </Field>
       <ModelField config={config} set={set} />
       <Field id="cfg-prompt" label="System prompt">
         <Textarea

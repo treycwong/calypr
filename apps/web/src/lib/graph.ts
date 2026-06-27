@@ -80,6 +80,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
   agent: {
     agent_type: "model_based",
     model: "fake",
+    label: "",
     system_prompt: "You are a helpful assistant.",
     input_channel: "messages",
     output_channel: "messages",
@@ -161,15 +162,86 @@ const DEFAULT_STATE: StateChannel[] = [
   { key: "task_type", type: "string", reducer: "last" },
 ];
 
+// Auto-layout: place nodes in left→right columns by their distance (depth) from the entry, and
+// spread nodes that share a column vertically. This makes fan-out (orchestrator → N parallel
+// workers) visible instead of a single stack. Used only when the GraphSpec carries no explicit
+// positions (i.e. a template); saved agents keep their positions.
+function layeredLayout(
+  nodes: GraphSpec["nodes"],
+  edges: GraphSpec["edges"],
+  entry: GraphSpec["entry"],
+): Map<string, { x: number; y: number }> {
+  const ns = nodes ?? [];
+  const es = edges ?? [];
+  const adj = new Map<string, string[]>();
+  const indeg = new Map<string, number>();
+  for (const n of ns) {
+    adj.set(n.id, []);
+    indeg.set(n.id, 0);
+  }
+  for (const e of es) {
+    adj.get(e.source)?.push(e.target);
+    indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1);
+  }
+  // Roots: the entry, else any node with no incoming edge, else the first node.
+  const roots = entry
+    ? [entry]
+    : ns.filter((n) => (indeg.get(n.id) ?? 0) === 0).map((n) => n.id);
+  const start = roots.length ? roots : ns.slice(0, 1).map((n) => n.id);
+
+  // BFS first-visit depth (a back-edge in a loop doesn't re-deepen a visited node).
+  const depth = new Map<string, number>();
+  const queue: string[] = [];
+  for (const r of start) {
+    depth.set(r, 0);
+    queue.push(r);
+  }
+  while (queue.length) {
+    const id = queue.shift() as string;
+    const d = depth.get(id) ?? 0;
+    for (const t of adj.get(id) ?? []) {
+      if (!depth.has(t)) {
+        depth.set(t, d + 1);
+        queue.push(t);
+      }
+    }
+  }
+  for (const n of ns) if (!depth.has(n.id)) depth.set(n.id, 0);
+
+  const columns = new Map<number, string[]>();
+  for (const n of ns) {
+    const c = depth.get(n.id) ?? 0;
+    const col = columns.get(c) ?? [];
+    col.push(n.id);
+    columns.set(c, col);
+  }
+
+  const COL_W = 260;
+  const ROW_H = 130;
+  const pos = new Map<string, { x: number; y: number }>();
+  for (const [c, ids] of columns) {
+    ids.forEach((id, i) => {
+      pos.set(id, { x: 60 + c * COL_W, y: 300 + (i - (ids.length - 1) / 2) * ROW_H });
+    });
+  }
+  return pos;
+}
+
 // The inverse of buildGraphSpec: hydrate the canvas from a GraphSpec (e.g. a template).
 export function graphToCanvas(graph: GraphSpec): {
   nodes: Node<NodeData>[];
   edges: Edge[];
 } {
-  const nodes: Node<NodeData>[] = (graph.nodes ?? []).map((n, i) => ({
+  const specNodes = graph.nodes ?? [];
+  // Honor saved positions; otherwise auto-place left→right by graph depth so fan-out is visible.
+  const hasPositions = specNodes.some((n) => n.position?.x != null);
+  const auto = hasPositions
+    ? null
+    : layeredLayout(graph.nodes, graph.edges, graph.entry);
+  const nodes: Node<NodeData>[] = specNodes.map((n, i) => ({
     id: n.id,
     type: n.type as CalyprNodeType,
-    position: {
+    position: auto?.get(n.id) ?? {
       x: (n.position?.x as number | undefined) ?? 280,
       y: (n.position?.y as number | undefined) ?? 30 + i * 130,
     },
