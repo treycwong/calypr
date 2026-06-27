@@ -170,3 +170,25 @@ test("the Router 'Decide by' toggle reveals a model picker in LLM mode", async (
   await page.getByTestId("cfg-router-kind").selectOption("llm");
   await expect(page.getByTestId("cfg-model")).toBeVisible();
 });
+
+// Phase 5e gate: the Orchestrator–Worker template. An orchestrator fans out to parallel
+// specialist agents that fan in to a synthesizer; it projects to idiomatic LangGraph where
+// the workers each become a function and the synthesizer merges them.
+
+test("the Trip-itinerary template fans out to parallel workers and a synthesizer", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await page
+    .getByTestId("template-picker")
+    .selectOption({ label: "Trip itinerary planner" });
+  await expect(page.getByTestId("node-agent").first()).toBeVisible();
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  // each specialist + the synthesizer becomes its own function
+  await expect(code).toContainText("def node_flights");
+  await expect(code).toContainText("def node_synthesizer");
+});

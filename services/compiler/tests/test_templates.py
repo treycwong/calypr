@@ -35,7 +35,18 @@ def test_use_case_templates_present():
         "tpl-customer-support",
         "tpl-contract-review",
         "tpl-routing",
+        "tpl-trip-planner",
     ]
+
+
+def test_orchestrator_worker_fans_out():
+    """The Trip itinerary planner is a static orchestrator–worker: the orchestrator fans out to
+    several parallel workers that fan in to one synthesizer (every worker feeds it)."""
+    g = next(t for t in TEMPLATES if t.id == "tpl-trip-planner")
+    fan_out = [e for e in g.edges if e.source == "orchestrator"]
+    fan_in = [e for e in g.edges if e.target == "synthesizer"]
+    assert len(fan_out) >= 2  # parallel fan-out
+    assert len(fan_in) == len(fan_out)  # every worker feeds the synthesizer (fan-in)
 
 
 @pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)

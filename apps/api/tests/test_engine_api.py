@@ -72,7 +72,8 @@ def test_templates_lists_frameworks_and_use_case_templates():
     assert by_kind["tpl-contract-review"] == "template"
     assert by_kind["tpl-rag"] == "framework"
     assert by_kind["tpl-routing"] == "template"
-    assert len(starters) == 13  # 9 frameworks + 4 templates
+    assert by_kind["tpl-trip-planner"] == "template"
+    assert len(starters) == 14  # 9 frameworks + 5 templates
     # each carries a full, compilable graph
     first = starters[0]
     assert first["graph"]["entry"]

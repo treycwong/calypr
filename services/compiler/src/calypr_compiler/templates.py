@@ -449,6 +449,64 @@ def contract_review() -> GraphSpec:
     )
 
 
+def trip_planner() -> GraphSpec:
+    """Orchestrator–Worker: an orchestrator frames the trip, four specialists work in parallel
+    (fan-out), and a synthesizer merges their suggestions into one itinerary (fan-in). Workers
+    append to `messages`, whose add_messages reducer makes the concurrent writes safe."""
+    return GraphSpec(
+        id="tpl-trip-planner",
+        name="Trip itinerary planner",
+        description="An orchestrator delegates to parallel specialists, then a synthesizer merges.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _role_agent(
+                "orchestrator",
+                "You are a trip-planning coordinator. Read the traveller's request and outline "
+                "what each specialist (flights, lodging, activities, dining) should focus on.",
+            ),
+            _role_agent(
+                "flights",
+                "You are a flights specialist. Suggest flight options and routing for the trip "
+                "described above.",
+            ),
+            _role_agent(
+                "lodging",
+                "You are a lodging specialist. Recommend places to stay that fit the trip.",
+            ),
+            _role_agent(
+                "activities",
+                "You are an activities specialist. Suggest things to see and do on the trip.",
+            ),
+            _role_agent(
+                "dining",
+                "You are a dining specialist. Recommend places to eat for the trip.",
+            ),
+            _role_agent(
+                "synthesizer",
+                "You are the lead planner. Combine the specialists' suggestions above into one "
+                "clear, day-by-day itinerary.",
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="orchestrator"),
+            # fan-out: the orchestrator dispatches to four workers that run in parallel
+            EdgeSpec(id="e2", source="orchestrator", target="flights"),
+            EdgeSpec(id="e3", source="orchestrator", target="lodging"),
+            EdgeSpec(id="e4", source="orchestrator", target="activities"),
+            EdgeSpec(id="e5", source="orchestrator", target="dining"),
+            # fan-in: every worker feeds the synthesizer (it waits for all of them)
+            EdgeSpec(id="e6", source="flights", target="synthesizer"),
+            EdgeSpec(id="e7", source="lodging", target="synthesizer"),
+            EdgeSpec(id="e8", source="activities", target="synthesizer"),
+            EdgeSpec(id="e9", source="dining", target="synthesizer"),
+            EdgeSpec(id="e10", source="synthesizer", target="out"),
+        ],
+        entry="in",
+    )
+
+
 # Frameworks — the agent-architecture patterns (the Russell & Norvig ladder + ReAct/Reflexion),
 # ordered simple→complex. Start here to choose *how* an agent thinks.
 FRAMEWORKS: list[GraphSpec] = [
@@ -469,6 +527,7 @@ TEMPLATES: list[GraphSpec] = [
     customer_support(),
     contract_review(),
     routing(),
+    trip_planner(),
 ]
 
 # Everything the canvas gallery offers.
