@@ -2,7 +2,12 @@ import { cookies, headers } from "next/headers";
 
 import { SESSION_COOKIE } from "@/lib/constants";
 
-export type Session = { userId: string };
+export type Session = {
+  userId: string;
+  name: string;
+  email: string;
+  image: string | null;
+};
 
 /**
  * Better Auth is active when a secret is configured (production); otherwise the app uses a
@@ -18,9 +23,17 @@ export async function getSession(): Promise<Session | null> {
     // Imported lazily so the dev path never loads Better Auth's server runtime / pg.
     const { auth } = await import("@/lib/auth-server");
     const data = await auth.api.getSession({ headers: await headers() });
-    return data?.user ? { userId: data.user.id } : null;
+    if (!data?.user) return null;
+    return {
+      userId: data.user.id,
+      name: data.user.name ?? "",
+      email: data.user.email ?? "",
+      image: data.user.image ?? null,
+    };
   }
   const store = await cookies();
   const value = store.get(SESSION_COOKIE)?.value;
-  return value ? { userId: value } : null;
+  if (!value) return null;
+  // Dev session: no real profile — synthesize a placeholder so the UI renders.
+  return { userId: value, name: "Developer", email: "dev@calypr.local", image: null };
 }

@@ -8,6 +8,14 @@ export const dynamic = "force-dynamic";
 const json = (text: string, status: number) =>
   new Response(text, { status, headers: { "content-type": "application/json" } });
 
+export async function GET() {
+  const r = await fetch(`${API_URL}/workspaces/current`, {
+    cache: "no-store",
+    headers: await internalHeaders(),
+  });
+  return json(await r.text(), r.status);
+}
+
 export async function PATCH(req: Request) {
   const body = await req.text();
   const r = await fetch(`${API_URL}/workspaces/current`, {

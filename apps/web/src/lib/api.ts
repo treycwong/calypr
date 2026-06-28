@@ -99,6 +99,13 @@ export async function deleteAgent(id: string): Promise<void> {
 
 export type WorkspaceInfo = { id: string; name: string };
 
+/** The current user's workspace. */
+export async function getWorkspace(): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspace", { cache: "no-store" });
+  if (!res.ok) throw new Error(`workspace failed (${res.status})`);
+  return res.json();
+}
+
 /** Rename the current workspace. */
 export async function renameWorkspace(name: string): Promise<WorkspaceInfo> {
   const res = await fetch("/api/workspace", {

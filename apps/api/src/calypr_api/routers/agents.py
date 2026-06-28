@@ -132,6 +132,14 @@ def delete_agent(agent_id: str, t: Tenant = Depends(tenant)) -> Response:
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
+@router.get("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
+def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
+    ws = t.session.get(Workspace, t.workspace_id)
+    if ws is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return WorkspaceInfo(id=str(ws.id), name=ws.name)
+
+
 @router.patch("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
 def rename_workspace(
     body: WorkspaceUpdate, t: Tenant = Depends(tenant)

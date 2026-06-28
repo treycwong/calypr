@@ -15,9 +15,8 @@ test("dev sign-in lands on the dashboard", async ({ page }) => {
   await page.goto("/dashboard"); // proxy bounces to /sign-in?next=/dashboard
   await page.getByTestId("dev-sign-in").click();
   await expect(page).toHaveURL(/\/dashboard/);
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  // The dashboard reflects live API health.
-  await expect(page.getByTestId("api-status")).toHaveText(/online/i);
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(page.getByTestId("nav-projects")).toBeVisible();
 });
 
 test("API /health returns ok", async ({ request }) => {
