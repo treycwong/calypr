@@ -19,3 +19,22 @@
 .react-flow__node.selected {
   box-shadow: none;
 }
+
+/* Zoom / fit controls — the library default renders a near-white button whose icons
+   vanish against our dark canvas. Re-theme them so the icons are clearly visible. */
+.react-flow__controls {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+}
+.react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground);
+}
+.react-flow__controls-button:hover {
+  background: var(--muted);
+}
+.react-flow__controls-button svg {
+  fill: var(--foreground);
+}

@@ -14,7 +14,14 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
-import { Blocks, LayoutTemplate, type LucideIcon } from "lucide-react";
+import {
+  Blocks,
+  Code2,
+  LayoutTemplate,
+  LogOut,
+  type LucideIcon,
+  Play,
+} from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -24,7 +31,7 @@ import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
 import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
-import { Button, buttonVariants } from "@/components/ui/button";
+import { Button } from "@/components/ui/button";
 import {
   createAgent,
   getAgent,
@@ -206,7 +213,15 @@ function CanvasInner() {
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard"
+            aria-label="Back to dashboard"
+            title="Back to dashboard"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4" />
+          </Link>
           <input
             data-testid="agent-name"
             aria-label="Agent name"
@@ -227,25 +242,12 @@ function CanvasInner() {
           </Button>
           <Button
             size="sm"
-            variant="outline"
-            onClick={() => setShowCode((s) => !s)}
-            data-testid="toggle-code"
-          >
-            {showCode ? "Hide code" : "Code"}
-          </Button>
-          <Button
-            size="sm"
             onClick={() => setShowPlayground((s) => !s)}
             data-testid="toggle-playground"
           >
-            {showPlayground ? "Hide" : "Playground"}
+            <Play className="h-4 w-4" />
+            {showPlayground ? "Hide" : "Try it"}
           </Button>
-          <Link
-            href="/dashboard"
-            className={buttonVariants({ variant: "ghost", size: "sm" })}
-          >
-            ← Dashboard
-          </Link>
         </div>
       </header>
 
@@ -265,6 +267,14 @@ function CanvasInner() {
             active={leftTab === "templates"}
             onClick={() => setLeftTab("templates")}
             testid="tab-templates"
+          />
+          <div className="my-1 h-px w-5 bg-border" />
+          <RailButton
+            icon={Code2}
+            label="Code"
+            active={showCode}
+            onClick={() => setShowCode((s) => !s)}
+            testid="toggle-code"
           />
         </aside>
         <aside className="w-48 shrink-0 overflow-auto border-r border-border p-3">
