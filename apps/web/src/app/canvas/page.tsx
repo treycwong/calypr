@@ -21,10 +21,12 @@ import {
   LogOut,
   type LucideIcon,
   Play,
+  Sparkles,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { AssistantPanel } from "@/components/canvas/AssistantPanel";
 import { CodeView } from "@/components/canvas/CodeView";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
@@ -86,6 +88,7 @@ function CanvasInner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlayground, setShowPlayground] = useState(false);
   const [showCode, setShowCode] = useState(false);
+  const [showAssistant, setShowAssistant] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   // Which panel the left icon-rail is showing.
@@ -276,6 +279,13 @@ function CanvasInner() {
             onClick={() => setShowCode((s) => !s)}
             testid="toggle-code"
           />
+          <RailButton
+            icon={Sparkles}
+            label="AI assistant"
+            active={showAssistant}
+            onClick={() => setShowAssistant((s) => !s)}
+            testid="toggle-assistant"
+          />
         </aside>
         <aside className="w-48 shrink-0 overflow-auto border-r border-border p-3">
           {leftTab === "blocks" ? (
@@ -321,6 +331,15 @@ function CanvasInner() {
             data-testid="playground"
           >
             <Playground getGraph={getGraph} />
+          </aside>
+        ) : null}
+
+        {showAssistant ? (
+          <aside
+            className="w-80 shrink-0 border-l border-border"
+            data-testid="assistant"
+          >
+            <AssistantPanel />
           </aside>
         ) : null}
       </div>
