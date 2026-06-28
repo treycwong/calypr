@@ -79,7 +79,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
   input: { input_channel: "input", target_channel: "messages" },
   agent: {
     agent_type: "model_based",
-    model: "fake",
+    model: "gpt-4o-mini",
     label: "",
     system_prompt: "You are a helpful assistant.",
     input_channel: "messages",
@@ -125,7 +125,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
   responder: { model: "fake", system_prompt: "" },
   revisor: { model: "fake", system_prompt: "", max_revisions: 2 },
   retriever: {
-    source: "demo",
+    source: "pgvector",
     collection: "",
     top_k: 4,
     embedding_model: "text-embedding-3-small",

@@ -14,6 +14,7 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
+import { Blocks, LayoutTemplate, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -22,6 +23,7 @@ import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
+import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   createAgent,
@@ -39,6 +41,38 @@ import {
   ROUTER_DEFAULT_BRANCH,
 } from "@/lib/graph";
 
+function RailButton({
+  icon: Icon,
+  label,
+  active,
+  onClick,
+  testid,
+}: {
+  icon: LucideIcon;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+  testid: string;
+}) {
+  return (
+    <button
+      type="button"
+      title={label}
+      aria-label={label}
+      aria-pressed={active}
+      data-testid={testid}
+      onClick={onClick}
+      className={`flex h-9 w-9 items-center justify-center rounded-md transition ${
+        active
+          ? "bg-muted text-foreground"
+          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+      }`}
+    >
+      <Icon className="h-4 w-4" />
+    </button>
+  );
+}
+
 function CanvasInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
@@ -47,6 +81,8 @@ function CanvasInner() {
   const [showCode, setShowCode] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
+  // Which panel the left icon-rail is showing.
+  const [leftTab, setLeftTab] = useState<"blocks" | "templates">("blocks");
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -179,38 +215,6 @@ function CanvasInner() {
             placeholder="Untitled Agent"
             onChange={(e) => setName(e.target.value)}
           />
-          <select
-            data-testid="template-picker"
-            aria-label="Start from a framework or template"
-            className="h-8 rounded-md border border-input bg-background px-2 text-sm"
-            value=""
-            onChange={(e) => {
-              loadTemplate(e.target.value);
-              e.target.value = "";
-            }}
-          >
-            <option value="" disabled>
-              Start from a framework or template…
-            </option>
-            <optgroup label="Frameworks">
-              {templates
-                .filter((t) => t.kind === "framework")
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-            </optgroup>
-            <optgroup label="Templates">
-              {templates
-                .filter((t) => t.kind === "template")
-                .map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-            </optgroup>
-          </select>
           {saveMsg ? (
             <span className="text-xs text-muted-foreground" data-testid="save-msg">
               {saveMsg}
@@ -246,8 +250,29 @@ function CanvasInner() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        <aside className="w-48 shrink-0 border-r border-border p-3">
-          <Palette onAdd={addNode} />
+        {/* Slim icon rail: switch the adjacent panel between Blocks and Templates. */}
+        <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border py-2">
+          <RailButton
+            icon={Blocks}
+            label="Blocks"
+            active={leftTab === "blocks"}
+            onClick={() => setLeftTab("blocks")}
+            testid="tab-blocks"
+          />
+          <RailButton
+            icon={LayoutTemplate}
+            label="Templates"
+            active={leftTab === "templates"}
+            onClick={() => setLeftTab("templates")}
+            testid="tab-templates"
+          />
+        </aside>
+        <aside className="w-48 shrink-0 overflow-auto border-r border-border p-3">
+          {leftTab === "blocks" ? (
+            <Palette onAdd={addNode} />
+          ) : (
+            <TemplatesPanel templates={templates} onLoad={loadTemplate} />
+          )}
         </aside>
 
         <div className="relative flex-1" data-testid="canvas">

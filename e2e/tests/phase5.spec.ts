@@ -12,12 +12,18 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 
+// Templates moved from a header dropdown to the left icon-rail's Templates panel.
+async function loadTemplate(page: Page, name: string) {
+  await page.getByTestId("tab-templates").click();
+  await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+}
+
 test("the ReAct template projects to the canonical ToolNode + tools_condition loop", async ({
   page,
 }) => {
   await openCanvas(page);
 
-  await page.getByTestId("template-picker").selectOption({ label: "ReAct" });
+  await loadTemplate(page, "ReAct");
   await expect(page.getByTestId("node-agent")).toBeVisible();
   await expect(page.getByTestId("node-tool")).toBeVisible();
 
@@ -62,7 +68,7 @@ test("the Reflexion template projects its Responder/Revisor bounded loop into co
 }) => {
   await openCanvas(page);
 
-  await page.getByTestId("template-picker").selectOption({ label: "Reflexion" });
+  await loadTemplate(page, "Reflexion");
   await expect(page.getByTestId("node-responder")).toBeVisible();
   await expect(page.getByTestId("node-revisor")).toBeVisible();
 
@@ -79,9 +85,7 @@ test("a use-case template loads a multi-agent pipeline and projects to code", as
 }) => {
   await openCanvas(page);
 
-  await page
-    .getByTestId("template-picker")
-    .selectOption({ label: "Market research report" });
+  await loadTemplate(page, "Market research report");
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
   await page.getByTestId("toggle-code").click();
@@ -92,24 +96,25 @@ test("a use-case template loads a multi-agent pipeline and projects to code", as
   await expect(code).toContainText("def node_editor");
 });
 
-// Phase 5c gate: RAG reaches the canvas. The RAG framework projects to a self-contained,
-// keyless vector-store retriever (InMemoryVectorStore + DeterministicFakeEmbedding), and the
-// Knowledge node's source dropdown reveals a pgvector collection field.
+// Phase 5c gate: RAG reaches the canvas. The RAG framework projects to a PGVector retriever
+// (the default Knowledge source) against the user's own Postgres, and the Knowledge node's
+// source dropdown can switch to the keyless demo store.
 
 test("the RAG framework loads a Knowledge node and projects to a vector-store retriever", async ({
   page,
 }) => {
   await openCanvas(page);
 
-  await page.getByTestId("template-picker").selectOption({ label: "RAG (retrieval)" });
+  await loadTemplate(page, "RAG (retrieval)");
   await expect(page.getByTestId("node-retriever")).toBeVisible();
   await expect(page.getByTestId("node-agent")).toBeVisible();
 
   await page.getByTestId("toggle-code").click();
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
-  await expect(code).toContainText("InMemoryVectorStore");
-  await expect(code).toContainText("DeterministicFakeEmbedding");
+  // the default Knowledge source is pgvector → owned PGVector + OpenAI embeddings
+  await expect(code).toContainText("PGVector");
+  await expect(code).toContainText("OpenAIEmbeddings");
 });
 
 test("the Knowledge node exposes a source dropdown; pgvector reveals a collection field", async ({
@@ -125,10 +130,10 @@ test("the Knowledge node exposes a source dropdown; pgvector reveals a collectio
   await page.getByTestId("node-retriever").click();
   await expect(page.getByTestId("cfg-source")).toBeVisible();
   await expect(page.getByTestId("cfg-top-k")).toBeVisible();
-  // demo source hides the collection; switching to pgvector reveals it
-  await expect(page.getByTestId("cfg-collection")).toHaveCount(0);
-  await page.getByTestId("cfg-source").selectOption("pgvector");
+  // default pgvector shows the collection field; switching to demo hides it
   await expect(page.getByTestId("cfg-collection")).toBeVisible();
+  await page.getByTestId("cfg-source").selectOption("demo");
+  await expect(page.getByTestId("cfg-collection")).toHaveCount(0);
 });
 
 // Phase 5d gate: LLM-based routing. The Summarize-or-translate template projects to an
@@ -140,9 +145,7 @@ test("the Summarize-or-translate template loads an LLM router and projects to a 
 }) => {
   await openCanvas(page);
 
-  await page
-    .getByTestId("template-picker")
-    .selectOption({ label: "Summarize or translate" });
+  await loadTemplate(page, "Summarize or translate");
   await expect(page.getByTestId("node-router")).toBeVisible();
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
@@ -180,9 +183,7 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
 }) => {
   await openCanvas(page);
 
-  await page
-    .getByTestId("template-picker")
-    .selectOption({ label: "Trip itinerary planner" });
+  await loadTemplate(page, "Trip itinerary planner");
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
   // Role agents are named, not all "Agent", and the flow runs left → right.

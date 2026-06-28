@@ -12,6 +12,12 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 
+// Templates moved from a header dropdown to the left icon-rail's Templates panel.
+async function loadTemplate(page: Page, name: string) {
+  await page.getByTestId("tab-templates").click();
+  await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+}
+
 test("a Router projects to add_conditional_edges", async ({ page }) => {
   await openCanvas(page);
 
@@ -35,7 +41,7 @@ test("a starter template loads onto the canvas and projects to code", async ({
   await openCanvas(page);
 
   // Loading an archetype hydrates the canvas from its GraphSpec (API → proxy → canvas).
-  await page.getByTestId("template-picker").selectOption({ label: "Reflection" });
+  await loadTemplate(page, "Reflection");
   await expect(page.getByTestId("node-agent")).toBeVisible();
 
   await page.getByTestId("toggle-code").click();

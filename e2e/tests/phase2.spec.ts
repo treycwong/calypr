@@ -21,8 +21,10 @@ test("build an agent on the canvas and chat with it", async ({ page }) => {
   await page.getByTestId("add-output").click();
   await expect(page.getByTestId("node-output")).toBeVisible();
 
-  // Configure the Agent: select its node, confirm the (fake) model, set a prompt.
+  // Configure the Agent: select its node, switch to the keyless fake model (the default is now
+  // gpt-4o-mini), set a prompt.
   await page.getByTestId("node-agent").click();
+  await page.getByTestId("cfg-model").selectOption("fake");
   await expect(page.getByTestId("cfg-model")).toHaveValue("fake");
   await page.getByTestId("cfg-prompt").fill("You are concise.");
 

@@ -45,7 +45,7 @@ def _agent(agent_type: str, **config) -> NodeSpec:
         type="agent",
         config={
             "agent_type": agent_type,
-            "model": "fake",
+            "model": "gpt-4o-mini",
             "input_channel": "messages",
             "output_channel": "messages",
             **config,
@@ -61,7 +61,7 @@ def _role_agent(node_id: str, system_prompt: str, label: str | None = None) -> N
         id=node_id,
         type="agent",
         config={
-            "model": "fake",
+            "model": "gpt-4o-mini",
             "label": label or node_id.replace("_", " ").title(),
             "system_prompt": system_prompt,
             "input_channel": "messages",
@@ -72,9 +72,11 @@ def _role_agent(node_id: str, system_prompt: str, label: str | None = None) -> N
 
 def _knowledge(node_id: str = "knowledge") -> NodeSpec:
     """A Knowledge (RAG) node: retrieve the top chunks for the latest query into `context`.
-    Uses the keyless `demo` source so the starter runs on the canvas; swap to `pgvector` +
-    a collection to point it at your own knowledge base."""
-    return NodeSpec(id=node_id, type="retriever", config={"source": "demo", "top_k": 4})
+    Defaults to the `pgvector` source (your own Postgres + a collection); switch to the keyless
+    `demo` source to retrieve deterministically on the canvas without a database."""
+    return NodeSpec(
+        id=node_id, type="retriever", config={"source": "pgvector", "top_k": 4}
+    )
 
 
 def _chain(*node_ids: str) -> list[EdgeSpec]:
