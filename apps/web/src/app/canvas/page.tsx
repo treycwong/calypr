@@ -87,12 +87,15 @@ function CanvasInner() {
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlayground, setShowPlayground] = useState(false);
-  const [showCode, setShowCode] = useState(false);
-  const [showAssistant, setShowAssistant] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
-  // Which panel the left icon-rail is showing.
-  const [leftTab, setLeftTab] = useState<"blocks" | "templates">("blocks");
+  // The single rail-driven side panel — one tab at a time (or null = closed). Clicking the
+  // active tab again closes it (full-width canvas).
+  const [activePanel, setActivePanel] = useState<
+    "blocks" | "templates" | "code" | "ai" | null
+  >("blocks");
+  const togglePanel = (p: "blocks" | "templates" | "code" | "ai") =>
+    setActivePanel((cur) => (cur === p ? null : p));
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -255,45 +258,65 @@ function CanvasInner() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Slim icon rail: switch the adjacent panel between Blocks and Templates. */}
+        {/* Slim icon rail: each tab drives the single side panel — one at a time. */}
         <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border py-2">
           <RailButton
             icon={Blocks}
             label="Blocks"
-            active={leftTab === "blocks"}
-            onClick={() => setLeftTab("blocks")}
+            active={activePanel === "blocks"}
+            onClick={() => togglePanel("blocks")}
             testid="tab-blocks"
           />
           <RailButton
             icon={LayoutTemplate}
             label="Templates"
-            active={leftTab === "templates"}
-            onClick={() => setLeftTab("templates")}
+            active={activePanel === "templates"}
+            onClick={() => togglePanel("templates")}
             testid="tab-templates"
           />
           <div className="my-1 h-px w-5 bg-border" />
           <RailButton
             icon={Code2}
             label="Code"
-            active={showCode}
-            onClick={() => setShowCode((s) => !s)}
+            active={activePanel === "code"}
+            onClick={() => togglePanel("code")}
             testid="toggle-code"
           />
           <RailButton
             icon={Sparkles}
             label="AI assistant"
-            active={showAssistant}
-            onClick={() => setShowAssistant((s) => !s)}
+            active={activePanel === "ai"}
+            onClick={() => togglePanel("ai")}
             testid="toggle-assistant"
           />
         </aside>
-        <aside className="w-48 shrink-0 overflow-auto border-r border-border p-3">
-          {leftTab === "blocks" ? (
-            <Palette onAdd={addNode} />
-          ) : (
-            <TemplatesPanel templates={templates} onLoad={loadTemplate} />
-          )}
-        </aside>
+
+        {/* The single rail-selected panel. */}
+        {activePanel === "blocks" || activePanel === "templates" ? (
+          <aside className="w-52 shrink-0 overflow-auto border-r border-border p-3">
+            {activePanel === "blocks" ? (
+              <Palette onAdd={addNode} />
+            ) : (
+              <TemplatesPanel templates={templates} onLoad={loadTemplate} />
+            )}
+          </aside>
+        ) : null}
+        {activePanel === "code" ? (
+          <aside
+            className="w-[30rem] shrink-0 border-r border-border"
+            data-testid="code-panel"
+          >
+            <CodeView getGraph={getGraph} />
+          </aside>
+        ) : null}
+        {activePanel === "ai" ? (
+          <aside
+            className="w-80 shrink-0 border-r border-border"
+            data-testid="assistant"
+          >
+            <AssistantPanel />
+          </aside>
+        ) : null}
 
         <div className="relative flex-1" data-testid="canvas">
           <ReactFlow
@@ -312,16 +335,13 @@ function CanvasInner() {
           </ReactFlow>
         </div>
 
-        <aside className="w-72 shrink-0 overflow-auto border-l border-border p-3">
-          <ConfigPanel node={selected} onChange={updateConfig} />
-        </aside>
-
-        {showCode ? (
+        {/* Properties: shown only when a node is selected. */}
+        {selected ? (
           <aside
-            className="w-96 shrink-0 border-l border-border"
-            data-testid="code-panel"
+            className="w-72 shrink-0 overflow-auto border-l border-border p-3"
+            data-testid="config-panel"
           >
-            <CodeView getGraph={getGraph} />
+            <ConfigPanel node={selected} onChange={updateConfig} />
           </aside>
         ) : null}
 
@@ -331,15 +351,6 @@ function CanvasInner() {
             data-testid="playground"
           >
             <Playground getGraph={getGraph} />
-          </aside>
-        ) : null}
-
-        {showAssistant ? (
-          <aside
-            className="w-80 shrink-0 border-l border-border"
-            data-testid="assistant"
-          >
-            <AssistantPanel />
           </aside>
         ) : null}
       </div>

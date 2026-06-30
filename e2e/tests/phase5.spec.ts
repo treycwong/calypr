@@ -203,19 +203,17 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
   await expect(code).toContainText("def node_synthesizer");
 });
 
-test("the rail Code icon opens the code panel and the AI icon opens the assistant", async ({
+test("the rail drives a single panel — opening AI replaces the Code panel", async ({
   page,
 }) => {
   await openCanvas(page);
 
-  // Code moved from the header to the rail; it still opens the right-hand code panel.
-  await expect(page.getByTestId("code-panel")).toHaveCount(0);
   await page.getByTestId("toggle-code").click();
   await expect(page.getByTestId("code-panel")).toBeVisible();
 
-  // The AI rail icon opens the assistant panel (a scaffold — its input is disabled).
-  await expect(page.getByTestId("assistant")).toHaveCount(0);
+  // Single-select: opening the AI panel replaces the code panel (no layering).
   await page.getByTestId("toggle-assistant").click();
   await expect(page.getByTestId("assistant-panel")).toBeVisible();
-  await expect(page.getByTestId("assistant-input")).toBeDisabled();
+  await expect(page.getByTestId("code-panel")).toHaveCount(0);
+  await expect(page.getByTestId("assistant-input")).toBeDisabled(); // scaffold
 });
