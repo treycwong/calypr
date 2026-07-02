@@ -25,7 +25,9 @@ function Shell({
     <div
       data-testid={testid}
       className={`min-w-[168px] rounded-lg border bg-card px-3 py-2 shadow-sm transition ${
-        selected ? "border-primary ring-2 ring-primary/30" : "border-border"
+        selected
+          ? "border-cyan-400 shadow-[0_0_0_1px_rgb(34_211_238),0_0_22px_-2px_rgb(34_211_238/0.6)]"
+          : "border-border hover:border-muted-foreground/40"
       }`}
     >
       <div className="flex items-center gap-2">

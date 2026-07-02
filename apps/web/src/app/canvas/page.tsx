@@ -6,6 +6,7 @@ import {
   type Connection,
   Controls,
   type Edge,
+  MiniMap,
   type Node,
   ReactFlow,
   ReactFlowProvider,
@@ -16,7 +17,6 @@ import "@xyflow/react/dist/style.css";
 import "./canvas.css";
 import {
   Blocks,
-  Code2,
   LayoutTemplate,
   LogOut,
   type LucideIcon,
@@ -89,13 +89,15 @@ function CanvasInner() {
   const [showPlayground, setShowPlayground] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
-  // The single rail-driven side panel — one tab at a time (or null = closed). Clicking the
+  // The single rail-driven left panel — one tab at a time (or null = closed). Clicking the
   // active tab again closes it (full-width canvas).
   const [activePanel, setActivePanel] = useState<
-    "blocks" | "templates" | "code" | "ai" | null
+    "blocks" | "templates" | "ai" | null
   >("blocks");
-  const togglePanel = (p: "blocks" | "templates" | "code" | "ai") =>
+  const togglePanel = (p: "blocks" | "templates" | "ai") =>
     setActivePanel((cur) => (cur === p ? null : p));
+  // The persistent right panel switches between node Properties and generated Code.
+  const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -162,10 +164,10 @@ function CanvasInner() {
       ),
     [setEdges],
   );
-  const onNodeClick = useCallback(
-    (_: unknown, node: Node) => setSelectedId(node.id),
-    [],
-  );
+  const onNodeClick = useCallback((_: unknown, node: Node) => {
+    setSelectedId(node.id);
+    setRightTab("properties"); // reveal the clicked node's properties
+  }, []);
   const updateConfig = useCallback(
     (config: Record<string, unknown>) =>
       setNodes((nds) =>
@@ -258,7 +260,7 @@ function CanvasInner() {
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Slim icon rail: each tab drives the single side panel — one at a time. */}
+        {/* Slim icon rail: each tab drives the single left panel — one at a time. */}
         <aside className="flex w-11 shrink-0 flex-col items-center gap-1 border-r border-border py-2">
           <RailButton
             icon={Blocks}
@@ -276,13 +278,6 @@ function CanvasInner() {
           />
           <div className="my-1 h-px w-5 bg-border" />
           <RailButton
-            icon={Code2}
-            label="Code"
-            active={activePanel === "code"}
-            onClick={() => togglePanel("code")}
-            testid="toggle-code"
-          />
-          <RailButton
             icon={Sparkles}
             label="AI assistant"
             active={activePanel === "ai"}
@@ -291,7 +286,7 @@ function CanvasInner() {
           />
         </aside>
 
-        {/* The single rail-selected panel. */}
+        {/* The single rail-selected left panel. */}
         {activePanel === "blocks" || activePanel === "templates" ? (
           <aside className="w-52 shrink-0 overflow-auto border-r border-border p-3">
             {activePanel === "blocks" ? (
@@ -299,14 +294,6 @@ function CanvasInner() {
             ) : (
               <TemplatesPanel templates={templates} onLoad={loadTemplate} />
             )}
-          </aside>
-        ) : null}
-        {activePanel === "code" ? (
-          <aside
-            className="w-[30rem] shrink-0 border-r border-border"
-            data-testid="code-panel"
-          >
-            <CodeView getGraph={getGraph} />
           </aside>
         ) : null}
         {activePanel === "ai" ? (
@@ -332,18 +319,64 @@ function CanvasInner() {
           >
             <Background />
             <Controls />
+            <MiniMap
+              pannable
+              zoomable
+              className="rounded-md border border-border"
+              style={{ backgroundColor: "var(--card)" }}
+              maskColor="rgb(2 6 23 / 0.6)"
+              nodeColor="#22d3ee"
+              nodeStrokeColor="#0e7490"
+            />
           </ReactFlow>
         </div>
 
-        {/* Properties: shown only when a node is selected. */}
-        {selected ? (
-          <aside
-            className="w-72 shrink-0 overflow-auto border-l border-border p-3"
-            data-testid="config-panel"
-          >
-            <ConfigPanel node={selected} onChange={updateConfig} />
-          </aside>
-        ) : null}
+        {/* Persistent right panel: Properties (selected node) or generated Code. */}
+        <aside className="flex w-80 shrink-0 flex-col border-l border-border">
+          <div className="flex gap-1 border-b border-border px-3 pt-2">
+            <button
+              type="button"
+              data-testid="tab-properties"
+              onClick={() => setRightTab("properties")}
+              className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
+                rightTab === "properties"
+                  ? "border-cyan-400 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Properties
+            </button>
+            <button
+              type="button"
+              data-testid="toggle-code"
+              onClick={() => setRightTab("code")}
+              className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
+                rightTab === "code"
+                  ? "border-cyan-400 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              Code
+            </button>
+          </div>
+          <div className="min-h-0 flex-1">
+            {rightTab === "properties" ? (
+              selected ? (
+                <div className="h-full overflow-auto p-3" data-testid="config-panel">
+                  <ConfigPanel node={selected} onChange={updateConfig} />
+                </div>
+              ) : (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Select a node to edit its properties.
+                </div>
+              )
+            ) : (
+              <div className="h-full" data-testid="code-panel">
+                <CodeView getGraph={getGraph} />
+              </div>
+            )}
+          </div>
+        </aside>
 
         {showPlayground ? (
           <aside
