@@ -22,6 +22,7 @@ import {
   type LucideIcon,
   Play,
   Sparkles,
+  Square,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -250,11 +251,16 @@ function CanvasInner() {
           </Button>
           <Button
             size="sm"
+            variant={showPlayground ? "outline" : "default"}
             onClick={() => setShowPlayground((s) => !s)}
             data-testid="toggle-playground"
           >
-            <Play className="h-4 w-4" />
-            {showPlayground ? "Hide" : "Try it"}
+            {showPlayground ? (
+              <Square className="h-4 w-4 fill-current" />
+            ) : (
+              <Play className="h-4 w-4" />
+            )}
+            {showPlayground ? "Stop" : "Try it"}
           </Button>
         </div>
       </header>
@@ -331,7 +337,9 @@ function CanvasInner() {
           </ReactFlow>
         </div>
 
-        {/* Persistent right panel: Properties (selected node) or generated Code. */}
+        {/* Right panel: Properties (selected node) or generated Code — replaced by the
+            playground while it's running, rather than stacking alongside it. */}
+        {showPlayground ? null : (
         <aside className="flex w-80 shrink-0 flex-col border-l border-border">
           <div className="flex gap-1 border-b border-border px-3 pt-2">
             <button
@@ -377,6 +385,7 @@ function CanvasInner() {
             )}
           </div>
         </aside>
+        )}
 
         {showPlayground ? (
           <aside
