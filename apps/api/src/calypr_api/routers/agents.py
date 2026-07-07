@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 
 from calypr_api.db.models import Agent, Workspace
 from calypr_api.deps import Tenant, tenant
+from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
     AgentCreate,
     AgentDetail,
@@ -37,13 +38,29 @@ router = APIRouter()
 def compile_spec(graph: GraphSpec) -> CompileResponse:
     issues = validate_graph(graph)
     ok = not any(i.severity == "error" for i in issues)
+    posthog_client.capture(
+        "graph_compiled",
+        properties={
+            "ok": ok,
+            "error_count": sum(1 for i in issues if i.severity == "error"),
+            "warning_count": sum(1 for i in issues if i.severity == "warning"),
+            "node_count": len(graph.nodes) if graph.nodes else 0,
+        },
+    )
     return CompileResponse(ok=ok, issues=issues)
 
 
 @router.post("/codegen", response_model=CodegenResponse, tags=["engine"])
 def codegen_spec(graph: GraphSpec) -> CodegenResponse:
     """The 'code' altitude: render the graph as ownable Python (LangGraph)."""
-    return CodegenResponse(code=generate_python(graph))
+    code = generate_python(graph)
+    posthog_client.capture(
+        "graph_codegen_requested",
+        properties={
+            "node_count": len(graph.nodes) if graph.nodes else 0,
+        },
+    )
+    return CodegenResponse(code=code)
 
 
 @router.get("/templates", response_model=list[TemplateInfo], tags=["engine"])
@@ -77,6 +94,14 @@ def create_agent(body: AgentCreate, t: Tenant = Depends(tenant)) -> AgentDetail:
     t.session.add(agent)
     t.session.commit()
     t.session.refresh(agent)
+    posthog_client.capture(
+        "agent_created",
+        distinct_id=str(t.workspace_id),
+        properties={
+            "agent_id": str(agent.id),
+            "node_count": len(body.graph.nodes) if body.graph.nodes else 0,
+        },
+    )
     return AgentDetail(
         id=str(agent.id), name=agent.name, graph=GraphSpec.model_validate(agent.graph_spec)
     )
@@ -111,12 +136,23 @@ def update_agent(
     agent_id: str, body: AgentUpdate, t: Tenant = Depends(tenant)
 ) -> AgentDetail:
     a = _get_owned(t.session, t.workspace_id, agent_id)
+    changed: list[str] = []
     if body.name is not None:
         a.name = body.name
+        changed.append("name")
     if body.graph is not None:
         a.graph_spec = body.graph.model_dump()
+        changed.append("graph")
     t.session.commit()
     t.session.refresh(a)
+    posthog_client.capture(
+        "agent_updated",
+        distinct_id=str(t.workspace_id),
+        properties={
+            "agent_id": str(a.id),
+            "fields_changed": changed,
+        },
+    )
     return AgentDetail(
         id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec)
     )
@@ -129,6 +165,11 @@ def delete_agent(agent_id: str, t: Tenant = Depends(tenant)) -> Response:
     a = _get_owned(t.session, t.workspace_id, agent_id)
     t.session.delete(a)
     t.session.commit()
+    posthog_client.capture(
+        "agent_deleted",
+        distinct_id=str(t.workspace_id),
+        properties={"agent_id": agent_id},
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -149,4 +190,9 @@ def rename_workspace(
         raise HTTPException(status_code=404, detail="workspace not found")
     ws.name = body.name
     t.session.commit()
+    posthog_client.capture(
+        "workspace_renamed",
+        distinct_id=str(t.workspace_id),
+        properties={"workspace_id": str(t.workspace_id)},
+    )
     return WorkspaceInfo(id=str(ws.id), name=ws.name)

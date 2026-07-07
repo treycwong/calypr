@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     # Interim abuse guardrail before usage-based billing exists: max assist calls per
     # workspace per day, enforced in the router (AI-ASSISTANT-SPEC.md §8).
     assist_daily_cap: int = 50
+    # PostHog analytics. Token is empty in dev/CI (no-ops silently when unset).
+    posthog_project_token: str = ""
+    posthog_host: str = "https://us.i.posthog.com"
 
 
 settings = Settings()
