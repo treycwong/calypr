@@ -219,5 +219,6 @@ test("the right panel toggles Properties/Code; the rail AI panel is single-selec
   await page.getByTestId("toggle-assistant").click();
   await expect(page.getByTestId("assistant-panel")).toBeVisible();
   await expect(page.getByTestId("add-input")).toHaveCount(0);
-  await expect(page.getByTestId("assistant-input")).toBeDisabled(); // scaffold
+  // The assistant is functional: its input is enabled (Send stays disabled until you type).
+  await expect(page.getByTestId("assistant-input")).toBeEnabled();
 });
