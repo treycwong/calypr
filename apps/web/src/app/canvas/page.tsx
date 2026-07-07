@@ -27,7 +27,12 @@ import {
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { AssistantPanel } from "@/components/canvas/AssistantPanel";
+import type { GraphSpec } from "@calypr/dsl";
+
+import {
+  AssistantPanel,
+  type CanvasSnapshot,
+} from "@/components/canvas/AssistantPanel";
 import { CodeView } from "@/components/canvas/CodeView";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
@@ -199,6 +204,41 @@ function CanvasInner() {
 
   const getGraph = useCallback(() => buildGraphSpec(nodes, edges), [nodes, edges]);
 
+  // --- AI assistant wiring ---------------------------------------------------
+  // Refine context: the canvas is the source of truth, so hand-edits between prompts are
+  // respected. Empty canvas → null (first prompt is a fresh generate, not a refine).
+  const getCurrentGraph = useCallback(
+    (): GraphSpec | null => (nodes.length ? buildGraphSpec(nodes, edges, name) : null),
+    [nodes, edges, name],
+  );
+  const snapshotCanvas = useCallback(
+    (): CanvasSnapshot => ({ nodes, edges, name }),
+    [nodes, edges, name],
+  );
+  const restoreCanvas = useCallback(
+    (snap: CanvasSnapshot) => {
+      setNodes(snap.nodes);
+      setEdges(snap.edges);
+      setName(snap.name);
+      setSelectedId(null);
+    },
+    [setNodes, setEdges],
+  );
+  const applyAssistantGraph = useCallback(
+    (spec: GraphSpec) => {
+      const canvas = graphToCanvas(spec);
+      setNodes(canvas.nodes);
+      setEdges(canvas.edges);
+      counter.current = canvas.nodes.length;
+      lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
+      setSelectedId(null);
+      // Refining an open agent keeps its id/name (Save updates it); a fresh generate on an
+      // unsaved canvas adopts the generated graph's name (Save then creates a new agent).
+      if (!agentId) setName(spec.name || "Untitled Agent");
+    },
+    [agentId, setNodes, setEdges],
+  );
+
   const onSave = useCallback(async () => {
     setSaveMsg("Saving…");
     try {
@@ -307,7 +347,12 @@ function CanvasInner() {
             className="w-80 shrink-0 border-r border-border"
             data-testid="assistant"
           >
-            <AssistantPanel />
+            <AssistantPanel
+              getCurrentGraph={getCurrentGraph}
+              snapshot={snapshotCanvas}
+              applyGraph={applyAssistantGraph}
+              restore={restoreCanvas}
+            />
           </aside>
         ) : null}
 

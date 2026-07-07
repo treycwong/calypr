@@ -8,19 +8,20 @@ export type RunEvent =
   | { type: "usage"; [k: string]: unknown }
   | { type: "error"; message: string };
 
-/** Stream a run, yielding parsed SSE events until the stream closes. */
-export async function* runAgent(
-  graph: GraphSpec,
-  message: string,
-  threadId: string,
-): AsyncGenerator<RunEvent> {
-  const res = await fetch("/api/runs", {
+/** POST a JSON body to a same-origin SSE proxy and yield parsed `data:` events until the
+ * stream ends (`[DONE]`). Shared by `runAgent` and `assistAgent`. */
+async function* streamSSE<T>(
+  url: string,
+  body: unknown,
+  httpError: (status: number) => T,
+): AsyncGenerator<T> {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ graph, message, thread_id: threadId }),
+    body: JSON.stringify(body),
   });
   if (!res.ok || !res.body) {
-    yield { type: "error", message: `run failed (${res.status})` };
+    yield httpError(res.status);
     return;
   }
   const reader = res.body.getReader();
@@ -38,12 +39,49 @@ export async function* runAgent(
       const data = line.slice(5).trim();
       if (data === "[DONE]") return;
       try {
-        yield JSON.parse(data) as RunEvent;
+        yield JSON.parse(data) as T;
       } catch {
         // ignore malformed frame
       }
     }
   }
+}
+
+/** Stream a run, yielding parsed SSE events until the stream closes. */
+export async function* runAgent(
+  graph: GraphSpec,
+  message: string,
+  threadId: string,
+): AsyncGenerator<RunEvent> {
+  yield* streamSSE<RunEvent>(
+    "/api/runs",
+    { graph, message, thread_id: threadId },
+    (status) => ({ type: "error", message: `run failed (${status})` }),
+  );
+}
+
+/** One chat turn sent to the assistant. */
+export type AssistMessageInput = { role: "user" | "assistant"; content: string };
+
+/** Events the assistant streams while drafting a graph (mirror of `calypr_assistant`). */
+export type AssistEvent =
+  | { type: "status"; phase: "drafting" | "validating" | "repairing" }
+  | { type: "note"; text: string }
+  | { type: "graph"; spec: GraphSpec }
+  | { type: "usage"; input_tokens: number; output_tokens: number; model: string }
+  | { type: "error"; message: string; issues?: unknown[] };
+
+/** Ask the assistant to draft/refine a graph from natural language, streaming events. */
+export async function* assistAgent(
+  messages: AssistMessageInput[],
+  currentGraph: GraphSpec | null,
+  model?: string,
+): AsyncGenerator<AssistEvent> {
+  yield* streamSSE<AssistEvent>(
+    "/api/assist",
+    { messages, current_graph: currentGraph, model },
+    (status) => ({ type: "error", message: `assistant unavailable (${status})` }),
+  );
 }
 
 /** A saved agent ("project") with its full graph. */

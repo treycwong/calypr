@@ -30,6 +30,13 @@ class Settings(BaseSettings):
     # caller; when set, requests are scoped to the X-Calypr-User-Id's workspace. Unset (local/CI)
     # → every request falls back to the shared dev workspace.
     internal_key: str = ""
+    # Default model the AI assistant drafts graphs with. Unset → the keyless `fake` path, so
+    # dev/CI stay key-free (AI-ASSISTANT-SPEC.md §4). Set e.g. "kimi-k2" / "deepseek-chat" /
+    # "gpt-4.1-mini" in prod (provider base URLs + keys come from the model factory's env).
+    assistant_model: str = ""
+    # Interim abuse guardrail before usage-based billing exists: max assist calls per
+    # workspace per day, enforced in the router (AI-ASSISTANT-SPEC.md §8).
+    assist_daily_cap: int = 50
 
 
 settings = Settings()

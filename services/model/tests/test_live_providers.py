@@ -44,3 +44,33 @@ async def test_anthropic_streams_a_reply():
     ]
     assert isinstance(events[-1], Done)
     assert events[-1].text.strip() != ""
+
+
+@pytest.mark.skipif(
+    not (_LIVE and os.environ.get("MOONSHOT_API_KEY")),
+    reason="set CALYPR_RUN_LIVE_TESTS=1 and MOONSHOT_API_KEY",
+)
+async def test_moonshot_streams_a_reply():
+    from calypr_model import model_for
+
+    model = os.environ.get("CALYPR_TEST_MOONSHOT_MODEL", "kimi-k2-0711-preview")
+    events = [
+        e async for e in model_for(model).stream(model=model, messages=_PING, max_tokens=20)
+    ]
+    assert isinstance(events[-1], Done)
+    assert events[-1].text.strip() != ""
+
+
+@pytest.mark.skipif(
+    not (_LIVE and os.environ.get("DEEPSEEK_API_KEY")),
+    reason="set CALYPR_RUN_LIVE_TESTS=1 and DEEPSEEK_API_KEY",
+)
+async def test_deepseek_streams_a_reply():
+    from calypr_model import model_for
+
+    model = os.environ.get("CALYPR_TEST_DEEPSEEK_MODEL", "deepseek-chat")
+    events = [
+        e async for e in model_for(model).stream(model=model, messages=_PING, max_tokens=20)
+    ]
+    assert isinstance(events[-1], Done)
+    assert events[-1].text.strip() != ""

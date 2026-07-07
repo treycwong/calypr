@@ -13,6 +13,7 @@ dependencies = [
   "python-dotenv>=1.0",
   "calypr-runtime",
   "calypr-codegen",
+  "calypr-assistant",
 ]
 
 [dependency-groups]
@@ -24,6 +25,7 @@ dev = [
 [tool.uv.sources]
 calypr-runtime = { workspace = true }
 calypr-codegen = { workspace = true }
+calypr-assistant = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

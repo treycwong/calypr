@@ -62,10 +62,20 @@ def _to_openai_tools(tools: list[dict]) -> list[dict]:
 
 
 class OpenAIModelClient:
-    """Reads OPENAI_API_KEY from the environment unless a key is passed."""
+    """Reads OPENAI_API_KEY from the environment unless a key is passed.
 
-    def __init__(self, api_key: str | None = None) -> None:
-        self._client = AsyncOpenAI(api_key=api_key or os.environ.get("OPENAI_API_KEY"))
+    `base_url` points the OpenAI-compatible client at an alternate endpoint (Moonshot,
+    DeepSeek). When None, the client talks to OpenAI as before — default behavior is
+    unchanged.
+    """
+
+    def __init__(
+        self, api_key: str | None = None, base_url: str | None = None
+    ) -> None:
+        self._client = AsyncOpenAI(
+            api_key=api_key or os.environ.get("OPENAI_API_KEY"),
+            base_url=base_url,
+        )
 
     async def stream(
         self,

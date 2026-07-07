@@ -7,6 +7,7 @@ members = [
   "services/compiler",
   "services/runtime",
   "services/codegen",
+  "services/assistant",
 ]
 
 [dependency-groups]
@@ -34,4 +35,5 @@ testpaths = [
   "services/compiler/tests",
   "services/runtime/tests",
   "services/codegen/tests",
+  "services/assistant/tests",
 ]

@@ -2,13 +2,19 @@
 
 from __future__ import annotations
 
-from fastapi import FastAPI, Response, status
+import logging
+
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
+from sqlalchemy.exc import OperationalError
 
 from calypr_api.config import settings
 from calypr_api.db.session import engine
-from calypr_api.routers import agents, runs
+from calypr_api.routers import agents, assist, runs
+
+log = logging.getLogger("calypr_api")
 
 
 def create_app() -> FastAPI:
@@ -21,6 +27,17 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.exception_handler(OperationalError)
+    async def _db_unavailable(_request: Request, _exc: OperationalError) -> JSONResponse:
+        """Postgres unreachable → a quiet 503, not a wall-of-text 500 traceback. Lets DB-less
+        local dev (start.sh without Docker) stay usable: data routes return 503, which the web
+        app already tolerates, while compile/codegen/run/assist keep working without a DB."""
+        log.warning("database unavailable — returning 503")
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"detail": "database unavailable"},
+        )
 
     @app.get("/health", tags=["meta"])
     def health() -> dict[str, str]:
@@ -40,6 +57,7 @@ def create_app() -> FastAPI:
 
     app.include_router(agents.router)
     app.include_router(runs.router)
+    app.include_router(assist.router)
     return app
 
 
