@@ -1,13 +1,42 @@
-// Analytics stub. PostHog is wired in a later MVP week (see MVP-EXECUTION-PLAN.md); until
-// then `track` is a no-op so the call sites exist and can be lit up in one place.
+// PostHog analytics (MVP-EXECUTION-PLAN Week 1). Env-gated: without NEXT_PUBLIC_POSTHOG_KEY
+// every call is a no-op, so dev/CI/e2e stay network-free. The `code_*` events are THE ceiling
+// events — the thesis metric ("leave with the code you own") the Month gates read.
+import posthog from "posthog-js";
+
 export type AnalyticsEvent =
+  // ceiling events (CodeView)
+  | "code_view_opened"
+  | "code_copied"
+  | "code_downloaded"
+  // playground runs
+  | "run_started"
+  | "run_completed"
+  | "run_errored"
+  // starters
+  | "template_selected"
+  // AI assistant
   | "assistant_prompted"
   | "assistant_graph_applied"
   | "assistant_restore"
   | "assistant_error";
 
+let initialized = false;
+
+/** Initialize PostHog once, client-side. Safe to call repeatedly; no-op without a key. */
+export function initAnalytics(): boolean {
+  if (initialized) return true;
+  if (typeof window === "undefined") return false;
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
+  if (!key) return false;
+  posthog.init(key, {
+    api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
+    // SPA-aware pageviews: capture on history pushState/replaceState/popstate too.
+    capture_pageview: "history_change",
+  });
+  initialized = true;
+  return true;
+}
+
 export function track(event: AnalyticsEvent, props?: Record<string, unknown>): void {
-  // no-op until PostHog is configured; kept as a typed seam so call sites already exist.
-  void event;
-  void props;
+  if (initAnalytics()) posthog.capture(event, props);
 }

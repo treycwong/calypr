@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import type { GraphSpec } from "@calypr/dsl";
 
 import { Button } from "@/components/ui/button";
+import { track } from "@/lib/analytics";
 import { generateCode } from "@/lib/api";
 
 export function CodeView({ getGraph }: { getGraph: () => GraphSpec }) {
@@ -28,6 +29,7 @@ export function CodeView({ getGraph }: { getGraph: () => GraphSpec }) {
   // the effect body (React 19 set-state-in-effect rule).
   useEffect(() => {
     let active = true;
+    track("code_view_opened"); // ceiling event: the user looked at the code they own
     generateCode(getGraph())
       .then((c) => {
         if (active) setCode(c);
@@ -42,6 +44,7 @@ export function CodeView({ getGraph }: { getGraph: () => GraphSpec }) {
   }, []);
 
   function download() {
+    track("code_downloaded", { bytes: code.length }); // ceiling event
     const blob = new Blob([code], { type: "text/x-python" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -68,7 +71,10 @@ export function CodeView({ getGraph }: { getGraph: () => GraphSpec }) {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => void navigator.clipboard.writeText(code)}
+            onClick={() => {
+              track("code_copied", { bytes: code.length }); // ceiling event
+              void navigator.clipboard.writeText(code);
+            }}
             disabled={!code}
           >
             Copy

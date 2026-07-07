@@ -6,6 +6,7 @@ import type { GraphSpec } from "@calypr/dsl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { track } from "@/lib/analytics";
 import { runAgent } from "@/lib/api";
 
 type ChatMsg = { role: "user" | "assistant"; text: string };
@@ -38,11 +39,20 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
         copy[copy.length - 1] = { role: "assistant", text: last.text + chunk };
         return copy;
       });
+    const graph = getGraph();
+    track("run_started", { nodes: graph.nodes?.length ?? 0 });
+    let errored = false;
     try {
-      for await (const ev of runAgent(getGraph(), text, threadId)) {
+      for await (const ev of runAgent(graph, text, threadId)) {
         if (ev.type === "token") apply(ev.text);
-        else if (ev.type === "error") apply(`⚠️ ${ev.message}`);
+        else if (ev.type === "error") {
+          errored = true;
+          apply(`⚠️ ${ev.message}`);
+        }
       }
+      track(errored ? "run_errored" : "run_completed");
+    } catch {
+      track("run_errored");
     } finally {
       setBusy(false);
     }
