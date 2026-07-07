@@ -26,6 +26,20 @@ class RunRequest(BaseModel):
     thread_id: str | None = None
 
 
+class AssistMessage(BaseModel):
+    role: Literal["user", "assistant"]
+    content: str
+
+
+class AssistRequest(BaseModel):
+    """A prompt (with history) for the AI assistant. `current_graph` is the canvas's current
+    spec in refine mode; `model` overrides the server default."""
+
+    messages: list[AssistMessage]
+    current_graph: GraphSpec | None = None
+    model: str | None = None
+
+
 class AgentCreate(BaseModel):
     name: str
     graph: GraphSpec

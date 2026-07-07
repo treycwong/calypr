@@ -38,3 +38,23 @@
 .react-flow__controls-button svg {
   fill: var(--foreground);
 }
+
+/* Shimmering "Thinking…" text for the AI assistant while it drafts a graph. A moving
+   light band sweeps across the text (background-clip: text). No shadcn primitive for this. */
+@keyframes assistant-shimmer {
+  0% { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+.assistant-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--muted-foreground) 70%, transparent) 0%,
+    var(--foreground) 50%,
+    color-mix(in srgb, var(--muted-foreground) 70%, transparent) 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: assistant-shimmer 1.8s linear infinite;
+}

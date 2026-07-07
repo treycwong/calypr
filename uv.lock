@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 [manifest]
 members = [
     "calypr-api",
+    "calypr-assistant",
     "calypr-codegen",
     "calypr-compiler",
     "calypr-dsl",
@@ -89,6 +90,7 @@ version = "0.0.0"
 source = { editable = "apps/api" }
 dependencies = [
     { name = "alembic" },
+    { name = "calypr-assistant" },
     { name = "calypr-codegen" },
     { name = "calypr-runtime" },
     { name = "fastapi" },
@@ -108,6 +110,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.13" },
+    { name = "calypr-assistant", editable = "services/assistant" },
     { name = "calypr-codegen", editable = "services/codegen" },
     { name = "calypr-runtime", editable = "services/runtime" },
     { name = "fastapi", specifier = ">=0.115" },
@@ -122,6 +125,25 @@ requires-dist = [
 dev = [
     { name = "httpx", specifier = ">=0.27" },
     { name = "pytest", specifier = ">=8" },
+]
+
+[[package]]
+name = "calypr-assistant"
+version = "0.0.0"
+source = { editable = "services/assistant" }
+dependencies = [
+    { name = "calypr-compiler" },
+    { name = "calypr-dsl" },
+    { name = "calypr-model" },
+    { name = "calypr-nodes" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "calypr-compiler", editable = "services/compiler" },
+    { name = "calypr-dsl", editable = "packages/dsl" },
+    { name = "calypr-model", editable = "services/model" },
+    { name = "calypr-nodes", editable = "packages/nodes" },
 ]
 
 [[package]]

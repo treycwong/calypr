@@ -44,6 +44,10 @@ export default defineConfig({
       command: `uv run uvicorn calypr_api.main:app --port ${API_PORT}`,
       url: `${API_URL}/health`,
       cwd: root,
+      // Pin the AI assistant to the keyless deterministic "fake" path so the suite never
+      // depends on a provider key (a developer's .env may set CALYPR_ASSISTANT_MODEL to a
+      // real model). load_dotenv(override=False) won't clobber this.
+      env: { CALYPR_ASSISTANT_MODEL: "fake" },
       reuseExistingServer: false,
       timeout: 120_000,
     },
