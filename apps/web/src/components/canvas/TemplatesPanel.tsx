@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@/lib/analytics";
 import type { Template } from "@/lib/api";
 
 // The Templates sidebar panel (the icon-rail "Templates" tab): frameworks + use-case templates,
@@ -33,7 +34,10 @@ export function TemplatesPanel({
                 type="button"
                 aria-label={t.name}
                 title={t.description}
-                onClick={() => onLoad(t.id)}
+                onClick={() => {
+                  track("template_selected", { id: t.id, name: t.name, kind: t.kind });
+                  onLoad(t.id);
+                }}
                 className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-left text-xs font-medium transition hover:border-foreground/20 hover:bg-muted/50"
               >
                 {t.name}

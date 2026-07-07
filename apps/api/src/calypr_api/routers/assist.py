@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from calypr_api.config import settings
 from calypr_api.deps import assist_workspace
+from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import AssistRequest
 
 router = APIRouter()
@@ -51,6 +52,14 @@ async def create_assist(
 
     async def event_stream() -> AsyncIterator[str]:
         if _over_daily_cap(workspace_id):
+            posthog_client.capture(
+                "assist_daily_cap_reached",
+                distinct_id=str(workspace_id),
+                properties={
+                    "daily_cap": settings.assist_daily_cap,
+                    "model": model_id,
+                },
+            )
             yield _sse(
                 {
                     "type": "error",
@@ -61,6 +70,18 @@ async def create_assist(
             )
             yield "data: [DONE]\n\n"
             return
+
+        posthog_client.capture(
+            "assist_requested",
+            distinct_id=str(workspace_id),
+            properties={
+                "model": model_id,
+                "message_count": len(messages),
+                "has_current_graph": req.current_graph is not None,
+                "is_refinement": req.current_graph is not None,
+            },
+        )
+
         try:
             if provider_of(model_id) == "fake":
                 gen = FakeAssistant().draft(messages, req.current_graph)

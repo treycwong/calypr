@@ -12,6 +12,7 @@ from sqlalchemy.exc import OperationalError
 
 from calypr_api.config import settings
 from calypr_api.db.session import engine
+from calypr_api.middleware import PostHogMiddleware
 from calypr_api.routers import agents, assist, runs
 
 log = logging.getLogger("calypr_api")
@@ -20,6 +21,7 @@ log = logging.getLogger("calypr_api")
 def create_app() -> FastAPI:
     app = FastAPI(title="Calypr API", version="0.0.0")
 
+    app.add_middleware(PostHogMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

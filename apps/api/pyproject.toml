@@ -14,6 +14,7 @@ dependencies = [
   "calypr-runtime",
   "calypr-codegen",
   "calypr-assistant",
+  "posthog>=7.22.0",
 ]
 
 [dependency-groups]
