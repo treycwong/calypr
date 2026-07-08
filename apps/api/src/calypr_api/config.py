@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3100"]
     # Postgres + pgvector. Wired to docker-compose in the DB task.
     database_url: str = "postgresql+psycopg://calypr:calypr@localhost:5432/calypr"
+    # Connection for the LangGraph durable checkpointer. Falls back to `database_url` when
+    # unset. MUST be a *direct* (non-pooler) endpoint: the checkpointer opens its own psycopg
+    # connection with prepared statements enabled, which a transaction pooler (Neon `-pooler`,
+    # pgBouncer) can't hold across checkouts (WEEK2 plan §C3).
+    checkpoint_database_url: str = ""
     # Auth seam: "dev" (local cookie) or "clerk" (JWT). See CLAUDE-PLAN.md Phase 0.
     auth_provider: str = "dev"
     # Shared secret the Next proxy presents (X-Calypr-Internal-Key) to prove it's the trusted
@@ -40,6 +45,9 @@ class Settings(BaseSettings):
     # PostHog analytics. Token is empty in dev/CI (no-ops silently when unset).
     posthog_project_token: str = ""
     posthog_host: str = "https://us.i.posthog.com"
+    # Platform-wide loss firewall (PRICING-SPEC §9): if the sum of this month's `run.cost_usd`
+    # reaches this many USD, new runs/assists are refused with an SSE error. 0/unset ⇒ disabled.
+    platform_spend_cap_usd: float = 0.0
 
 
 settings = Settings()

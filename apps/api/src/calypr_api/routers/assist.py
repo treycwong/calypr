@@ -17,6 +17,7 @@ from calypr_model import provider_of
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from calypr_api import spend
 from calypr_api.config import settings
 from calypr_api.deps import request_workspace
 from calypr_api.metering import RunRecorder
@@ -67,6 +68,19 @@ async def create_assist(
                     "type": "error",
                     "message": f"Daily assistant limit reached ({settings.assist_daily_cap}). "
                     "Try again tomorrow.",
+                    "issues": [],
+                }
+            )
+            yield "data: [DONE]\n\n"
+            return
+
+        # Platform-wide loss firewall (supersedes the per-workspace daily cap above).
+        if await asyncio.to_thread(spend.over_spend_cap):
+            posthog_client.capture("assist_spend_capped", distinct_id=str(workspace_id))
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": "Service temporarily unavailable. Try again later.",
                     "issues": [],
                 }
             )
