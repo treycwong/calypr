@@ -15,7 +15,7 @@ from calypr_runtime import run_stream
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api.deps import request_workspace
+from calypr_api.deps import run_workspace
 from calypr_api.engine import checkpointer, context_for
 from calypr_api.metering import RunRecorder
 from calypr_api.posthog_client import posthog_client
@@ -30,7 +30,7 @@ def _sse(payload: dict) -> str:
 
 @router.post("/runs", tags=["engine"])
 async def create_run(
-    req: RunRequest, workspace_id: uuid.UUID = Depends(request_workspace)
+    req: RunRequest, workspace_id: uuid.UUID = Depends(run_workspace)
 ) -> StreamingResponse:
     posthog_client.capture(
         "agent_run_started",
