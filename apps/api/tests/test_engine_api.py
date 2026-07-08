@@ -50,6 +50,20 @@ def test_run_streams_tokens_with_fake_model():
     assert '"type": "final"' in body
 
 
+def test_runs_stays_public_when_internal_key_is_set(monkeypatch):
+    """Regression: with an internal key set (prod), an unauthenticated /runs call must still
+    stream — the playground proxy is not tenant-scoped, so run_workspace falls back to the dev
+    workspace instead of 401-ing. (PR-2 briefly broke this by requiring request_workspace.)"""
+    from calypr_api.config import settings
+
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    graph = input_agent_output(model="fake").model_dump()
+    r = client.post("/runs", json={"graph": graph, "message": "hello world"})
+    assert r.status_code == 200
+    assert "Echo:" in r.text
+    assert '"type": "error"' not in r.text
+
+
 def test_codegen_returns_ownable_python():
     graph = input_agent_output(model="gpt-4o-mini").model_dump()
     r = client.post("/codegen", json=graph)

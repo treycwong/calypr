@@ -70,3 +70,28 @@ def request_workspace(request: Request) -> uuid.UUID:
 
 # It's no longer assist-specific (metering now uses it too); keep the old name as an alias.
 assist_workspace = request_workspace
+
+
+def run_workspace(request: Request) -> uuid.UUID:
+    """Workspace id for `/runs` — the public playground. Unlike `request_workspace` this NEVER
+    401s: the playground is anonymous by design (the web `/api/runs` proxy is intentionally not
+    tenant-scoped). An authenticated proxy call (internal key + user id) resolves to that user's
+    workspace so metering attributes correctly; anonymous calls, a missing/invalid key, a
+    missing user, or any DB error all fall back to the shared dev workspace so runs always
+    stream (start.sh's DB-less promise)."""
+    dev = uuid.UUID(DEV_WORKSPACE_ID)
+    if not settings.internal_key:
+        return dev
+    if request.headers.get("x-calypr-internal-key") != settings.internal_key:
+        return dev
+    user_id = request.headers.get("x-calypr-user-id")
+    if not user_id:
+        return dev
+    try:
+        with SessionLocal() as session:
+            resolved = session.execute(
+                text("SELECT resolve_workspace(:uid)"), {"uid": user_id}
+            ).scalar_one()
+        return uuid.UUID(str(resolved))
+    except Exception:
+        return dev
