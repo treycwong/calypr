@@ -6,15 +6,38 @@ registry, wire control-flow edges, and route Output nodes to END.
 
 from __future__ import annotations
 
+import functools
 from dataclasses import replace
 
 from calypr_dsl import GraphSpec
-from calypr_nodes import NodeContext, get_node, graph_channels, has_node
+from calypr_nodes import NodeContext, NodeFn, current_node_id, get_node, graph_channels, has_node
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from calypr_compiler.state import build_state_type
 from calypr_compiler.validate import Issue, validate_graph
+
+
+def _with_node_id(node_id: str, fn: NodeFn) -> NodeFn:
+    """Wrap a compiled node fn so the node's id is task-locally visible during execution.
+
+    Deep helpers (the LLM streaming writers) read `current_node_id` to tag usage events
+    without any change to node signatures. ContextVars are task-local, so parallel fan-out
+    nodes each set/reset their own id.
+
+    `functools.wraps` preserves the wrapped fn's `__wrapped__`, so LangGraph's signature
+    inspection still injects `config`/`writer`/`store` into nodes that declare them; we
+    forward every arg through unchanged."""
+
+    @functools.wraps(fn)
+    async def wrapped(*args, **kwargs):
+        token = current_node_id.set(node_id)
+        try:
+            return await fn(*args, **kwargs)
+        finally:
+            current_node_id.reset(token)
+
+    return wrapped
 
 
 def _tools_bound_to(spec: GraphSpec) -> dict[str, list[dict]]:
@@ -73,7 +96,7 @@ def compile_graph(
         # Inject the node's bound tools (if any) so it binds + routes like the generated code.
         node_ctx = replace(ctx, tools=bound_tools[node.id]) if node.id in bound_tools else ctx
         compiled[node.id] = (node_cls, cfg, node_ctx)
-        builder.add_node(node.id, node_cls.compile(cfg, node_ctx))
+        builder.add_node(node.id, _with_node_id(node.id, node_cls.compile(cfg, node_ctx)))
 
     builder.add_edge(START, spec.entry)
 
@@ -87,9 +110,7 @@ def compile_graph(
             continue
         routing_sources.add(node.id)
         path_map = {
-            e.condition: e.target
-            for e in spec.edges
-            if e.source == node.id and e.condition
+            e.condition: e.target for e in spec.edges if e.source == node.id and e.condition
         }
         builder.add_conditional_edges(node.id, path_fn, path_map)
 

@@ -3,6 +3,7 @@
 Importing this package registers the built-in node types as a side effect.
 """
 
+from calypr_nodes._context import current_node_id
 from calypr_nodes.agent import AgentConfig, AgentNode
 from calypr_nodes.code import CodeConfig, CodeNode
 from calypr_nodes.evaluator import EvaluatorConfig, EvaluatorNode
@@ -31,6 +32,8 @@ from calypr_nodes.router import Branch, RouterConfig, RouterNode
 from calypr_nodes.tool import ToolConfig, ToolsNode
 
 __all__ = [
+    # execution context
+    "current_node_id",
     # registry
     "BaseNode",
     "CodeFragment",

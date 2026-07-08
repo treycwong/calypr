@@ -21,6 +21,22 @@ async def test_golden_graph_runs_and_streams_tokens():
     assert final.output == "Hello from Calypr"
 
 
+async def test_usage_events_carry_node_id_and_model():
+    """Phase A gate: usage events emitted during a run carry the enriching `node_id`
+    (the compiler's contextvar wrapper) and `model` keys, so metering can attribute cost."""
+    spec = input_agent_output(model="fake")
+    ctx = NodeContext(model=FakeModelClient(reply="Hello from Calypr"))
+
+    events = [ev async for ev in run_stream(spec, ctx, "hi there")]
+
+    usage = [e.state for e in events if e.type == "usage"]
+    assert usage, "expected at least one usage event"
+    for u in usage:
+        assert u["node_id"] == "agent"  # the golden spec's agent node id
+        assert u["model"] == "fake"
+        assert "input_tokens" in u and "output_tokens" in u
+
+
 async def test_checkpointer_persists_state_across_turns():
     spec = input_agent_output(model="fake")
     ctx = NodeContext(model=FakeModelClient(reply="ok"))

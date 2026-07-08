@@ -19,6 +19,7 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
 from calypr_nodes._codegen import assign_str
+from calypr_nodes._context import current_node_id
 from calypr_nodes._convert import lc_to_msgs, render_template, safe_stream_writer
 from calypr_nodes.registry import (
     BaseNode,
@@ -185,6 +186,8 @@ class AgentNode(BaseNode):
                     writer(
                         {
                             "type": "usage",
+                            "node_id": current_node_id.get(None),
+                            "model": cfg.model,
                             "input_tokens": ev.input_tokens,
                             "output_tokens": ev.output_tokens,
                         }

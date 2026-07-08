@@ -9,6 +9,7 @@ from __future__ import annotations
 from calypr_model import Done, Msg, TextDelta, ToolCall, Usage
 from langchain_core.messages import AIMessage
 
+from calypr_nodes._context import current_node_id
 from calypr_nodes._convert import safe_stream_writer
 
 
@@ -44,6 +45,8 @@ async def actor_message(
             writer(
                 {
                     "type": "usage",
+                    "node_id": current_node_id.get(None),
+                    "model": model_id,
                     "input_tokens": ev.input_tokens,
                     "output_tokens": ev.output_tokens,
                 }
@@ -83,6 +86,8 @@ async def collect_text(
             writer(
                 {
                     "type": "usage",
+                    "node_id": current_node_id.get(None),
+                    "model": model_id,
                     "input_tokens": ev.input_tokens,
                     "output_tokens": ev.output_tokens,
                 }
