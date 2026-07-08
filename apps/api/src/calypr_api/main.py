@@ -10,6 +10,7 @@ from calypr_runtime.checkpoint import postgres_checkpointer
 from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from langgraph.checkpoint.memory import InMemorySaver
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
@@ -72,14 +73,26 @@ def create_app() -> FastAPI:
 
     @app.get("/readyz", tags=["meta"])
     def readyz(response: Response) -> dict[str, str]:
-        """Readiness: returns 503 if the database is unreachable."""
+        """Readiness: returns 503 if the database is unreachable. Also reports which
+        checkpointer the lifespan installed — `postgres` (durable) vs `memory` (fallback) —
+        so durable-vs-fallback is queryable in prod instead of buried in an INFO log."""
+        checkpointer = (
+            "memory"
+            if isinstance(engine_mod.checkpointer, InMemorySaver)
+            else "postgres"
+        )
         try:
             with engine.connect() as conn:
                 conn.execute(text("SELECT 1"))
         except Exception:
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-            return {"status": "degraded", "db": "unreachable"}
-        return {"status": "ready", "environment": settings.environment, "db": "ok"}
+            return {"status": "degraded", "db": "unreachable", "checkpointer": checkpointer}
+        return {
+            "status": "ready",
+            "environment": settings.environment,
+            "db": "ok",
+            "checkpointer": checkpointer,
+        }
 
     app.include_router(agents.router)
     app.include_router(runs.router)
