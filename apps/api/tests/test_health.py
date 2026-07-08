@@ -16,4 +16,7 @@ def test_readyz_responds():
     # 200 when the DB is reachable, 503 when not — both valid (DB-less CI unit runs).
     r = client.get("/readyz")
     assert r.status_code in (200, 503)
-    assert "status" in r.json()
+    body = r.json()
+    assert "status" in body
+    # Surfaces which checkpointer is live so durable-vs-fallback is queryable in prod.
+    assert body["checkpointer"] in ("memory", "postgres")
