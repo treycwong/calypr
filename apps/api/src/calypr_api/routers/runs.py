@@ -15,8 +15,9 @@ from calypr_runtime import run_stream
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from calypr_api import engine, spend
 from calypr_api.deps import run_workspace
-from calypr_api.engine import checkpointer, context_for
+from calypr_api.engine import context_for
 from calypr_api.metering import RunRecorder
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import RunRequest
@@ -42,6 +43,15 @@ async def create_run(
     agent_id = uuid.UUID(req.agent_id) if req.agent_id else None
 
     async def event_stream() -> AsyncIterator[str]:
+        # Platform loss firewall: refuse before running if the monthly spend cap is hit.
+        if await asyncio.to_thread(spend.over_spend_cap):
+            posthog_client.capture("agent_run_spend_capped")
+            yield _sse(
+                {"type": "error", "message": "Service temporarily unavailable. Try again later."}
+            )
+            yield "data: [DONE]\n\n"
+            return
+
         # Best-effort metering: self-disables if the DB is unreachable (start.sh's DB-less
         # promise holds). Off-loop so the INSERT never delays the first token.
         recorder = await asyncio.to_thread(
@@ -59,7 +69,9 @@ async def create_run(
                 ctx,
                 req.message,
                 thread_id=req.thread_id,
-                checkpointer=checkpointer,
+                # Read at call time (not import time) so a lifespan swap to the durable
+                # Postgres checkpointer is visible here (WEEK2 plan §C1).
+                checkpointer=engine.checkpointer,
             ):
                 if ev.type == "token":
                     yield _sse({"type": "token", "text": ev.text})
