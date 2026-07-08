@@ -6,6 +6,7 @@ write — so the injection surface is a schema, not a shell (AI-ASSISTANT-SPEC.m
 
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -17,7 +18,8 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from calypr_api.config import settings
-from calypr_api.deps import assist_workspace
+from calypr_api.deps import request_workspace
+from calypr_api.metering import RunRecorder
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import AssistRequest
 
@@ -45,7 +47,7 @@ def _over_daily_cap(workspace_id: uuid.UUID) -> bool:
 
 @router.post("/assist", tags=["engine"])
 async def create_assist(
-    req: AssistRequest, workspace_id: uuid.UUID = Depends(assist_workspace)
+    req: AssistRequest, workspace_id: uuid.UUID = Depends(request_workspace)
 ) -> StreamingResponse:
     model_id = req.model or settings.assistant_model or "fake"
     messages = [m.model_dump() for m in req.messages]
@@ -82,15 +84,23 @@ async def create_assist(
             },
         )
 
+        # This is the moment the assistant becomes metered (PRICING-SPEC): same best-effort
+        # recorder as `/runs`, tagged source="assist". Self-disables with no DB.
+        recorder = await asyncio.to_thread(RunRecorder.start, workspace_id, source="assist")
         try:
             if provider_of(model_id) == "fake":
                 gen = FakeAssistant().draft(messages, req.current_graph)
             else:
                 gen = draft_graph(messages, req.current_graph, model_id)
             async for ev in gen:
-                yield _sse(ev.payload())
+                payload = ev.payload()
+                if payload.get("type") == "usage":
+                    recorder.add_usage(payload)
+                yield _sse(payload)
+            await asyncio.to_thread(recorder.finish, "completed")
             yield "data: [DONE]\n\n"
         except Exception as exc:  # missing provider key, provider outage, etc.
+            await asyncio.to_thread(recorder.fail)
             yield _sse({"type": "error", "message": str(exc), "issues": []})
             yield "data: [DONE]\n\n"
 

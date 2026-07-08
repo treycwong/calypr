@@ -52,15 +52,21 @@ def tenant(request: Request, session: Session = Depends(get_session)) -> Tenant:
     return Tenant(session=session, workspace_id=ws)
 
 
-def assist_workspace(request: Request) -> uuid.UUID:
-    """Workspace id for a compute-only assist call, WITHOUT requiring a DB session in dev/CI.
+def request_workspace(request: Request) -> uuid.UUID:
+    """Workspace id for a compute route (`/runs`, `/assist`) WITHOUT requiring a DB session in
+    dev/CI.
 
-    The assistant persists nothing in v1 (metering is deferred, §8), so unlike the data
-    routes it doesn't need `tenant`'s session + RLS — it only needs the workspace id to scope
-    the daily cap. In dev/CI that's the shared dev workspace, resolved with no DB, so the
-    assistant works in DB-less local dev (matching `/runs` and start.sh's promise). When
-    assist usage starts persisting, switch this back to the full `tenant` dep."""
+    Unlike the data routes, the streaming routes don't hold `tenant`'s session for the whole
+    request — they only need the workspace id up front (to scope the assist daily cap, and to
+    tag best-effort metering rows the `RunRecorder` writes on its *own* session). In dev/CI
+    that's the shared dev workspace, resolved with no DB, so both routes work in DB-less local
+    dev (matching start.sh's promise). With an internal key set, the trusted proxy must present
+    it plus the user id, mapped to a workspace via SQL."""
     if not settings.internal_key:
         return uuid.UUID(DEV_WORKSPACE_ID)
     with SessionLocal() as session:
         return _resolve_workspace_id(request, session)
+
+
+# It's no longer assist-specific (metering now uses it too); keep the old name as an alias.
+assist_workspace = request_workspace

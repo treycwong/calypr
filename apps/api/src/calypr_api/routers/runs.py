@@ -6,14 +6,18 @@ terminated by `data: [DONE]`. The web app proxies this stream to the browser.
 
 from __future__ import annotations
 
+import asyncio
 import json
+import uuid
 from collections.abc import AsyncIterator
 
 from calypr_runtime import run_stream
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
+from calypr_api.deps import request_workspace
 from calypr_api.engine import checkpointer, context_for
+from calypr_api.metering import RunRecorder
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import RunRequest
 
@@ -25,7 +29,9 @@ def _sse(payload: dict) -> str:
 
 
 @router.post("/runs", tags=["engine"])
-async def create_run(req: RunRequest) -> StreamingResponse:
+async def create_run(
+    req: RunRequest, workspace_id: uuid.UUID = Depends(request_workspace)
+) -> StreamingResponse:
     posthog_client.capture(
         "agent_run_started",
         properties={
@@ -33,8 +39,18 @@ async def create_run(req: RunRequest) -> StreamingResponse:
             "has_thread": req.thread_id is not None,
         },
     )
+    agent_id = uuid.UUID(req.agent_id) if req.agent_id else None
 
     async def event_stream() -> AsyncIterator[str]:
+        # Best-effort metering: self-disables if the DB is unreachable (start.sh's DB-less
+        # promise holds). Off-loop so the INSERT never delays the first token.
+        recorder = await asyncio.to_thread(
+            RunRecorder.start,
+            workspace_id,
+            source="playground",
+            agent_id=agent_id,
+            thread_id=req.thread_id,
+        )
         completed = False
         try:
             ctx = context_for(req.graph)  # may raise if a provider key is missing
@@ -48,6 +64,7 @@ async def create_run(req: RunRequest) -> StreamingResponse:
                 if ev.type == "token":
                     yield _sse({"type": "token", "text": ev.text})
                 elif ev.type == "usage":
+                    recorder.add_usage(ev.state or {})
                     yield _sse({"type": "usage", **(ev.state or {})})
                 elif ev.type == "final":
                     completed = True
@@ -56,6 +73,7 @@ async def create_run(req: RunRequest) -> StreamingResponse:
                 "agent_run_completed",
                 properties={"node_count": len(req.graph.nodes) if req.graph.nodes else 0},
             )
+            await asyncio.to_thread(recorder.finish, "completed")
             yield "data: [DONE]\n\n"
         except Exception as exc:  # surface engine errors to the client stream
             if not completed:
@@ -63,6 +81,7 @@ async def create_run(req: RunRequest) -> StreamingResponse:
                     "agent_run_failed",
                     properties={"error": type(exc).__name__},
                 )
+            await asyncio.to_thread(recorder.fail)
             yield _sse({"type": "error", "message": str(exc)})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -24,6 +24,8 @@ class RunRequest(BaseModel):
     graph: GraphSpec
     message: str
     thread_id: str | None = None
+    # Optional: when the playground runs a saved agent, its id lets metering attribute the run.
+    agent_id: str | None = None
 
 
 class AssistMessage(BaseModel):
