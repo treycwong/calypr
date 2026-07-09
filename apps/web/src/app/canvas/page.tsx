@@ -460,7 +460,8 @@ function CanvasInner() {
             nodeTypes={nodeTypes}
             fitView
           >
-            <Background />
+            {/* Subtle dark-grey dots so the grid reads as texture, not bright specks. */}
+            <Background gap={22} size={1} color="#2c2c33" />
             <Controls />
             <MiniMap
               pannable
