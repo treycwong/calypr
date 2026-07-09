@@ -209,10 +209,9 @@ function CanvasInner() {
       counter.current = canvas.nodes.length;
       lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
       setSelectedId(null);
-      // Loading a starter begins a fresh project: Save will create a new agent.
-      setAgentId(null);
-      setName(tpl.name);
-      setSaveMsg(`Loaded ${tpl.name}`);
+      // Applying a template only swaps the canvas nodes — it keeps the project's name and id,
+      // so Save updates the same agent (it does not fork a new one or rename it).
+      setSaveMsg(`Applied ${tpl.name}`);
     },
     [record, templates, setNodes, setEdges],
   );

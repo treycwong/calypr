@@ -16,6 +16,8 @@ async function openCanvas(page: Page) {
 async function loadTemplate(page: Page, name: string) {
   await page.getByTestId("tab-templates").click();
   await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+  // A preview modal opens first; Apply swaps the canvas nodes.
+  await page.getByTestId("template-apply").click();
 }
 
 test("a Router projects to add_conditional_edges", async ({ page }) => {

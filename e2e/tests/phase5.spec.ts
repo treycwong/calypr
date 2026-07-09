@@ -16,6 +16,8 @@ async function openCanvas(page: Page) {
 async function loadTemplate(page: Page, name: string) {
   await page.getByTestId("tab-templates").click();
   await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+  // A preview modal opens first; Apply swaps the canvas nodes.
+  await page.getByTestId("template-apply").click();
 }
 
 test("the ReAct template projects to the canonical ToolNode + tools_condition loop", async ({
@@ -201,6 +203,29 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
   // each specialist + the synthesizer becomes its own function
   await expect(code).toContainText("def node_flights");
   await expect(code).toContainText("def node_synthesizer");
+});
+
+test("a template previews in a modal; Apply swaps nodes without renaming the project", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  // Name the project, then open a template — a preview modal appears (not an instant load).
+  await page.getByTestId("agent-name").fill("My Project");
+  await page.getByTestId("tab-templates").click();
+  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct" }).click();
+  await expect(page.getByTestId("template-modal")).toBeVisible();
+
+  // Cancel leaves the canvas untouched.
+  await page.getByTestId("template-cancel").click();
+  await expect(page.getByTestId("template-modal")).toHaveCount(0);
+  await expect(page.getByTestId("node-agent")).toHaveCount(0);
+
+  // Apply swaps in the template's nodes but keeps the project name.
+  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct" }).click();
+  await page.getByTestId("template-apply").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+  await expect(page.getByTestId("agent-name")).toHaveValue("My Project");
 });
 
 test("undo and redo step the canvas through add-node history", async ({ page }) => {
