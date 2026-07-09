@@ -202,7 +202,10 @@ function CanvasInner() {
     [templates, setNodes, setEdges],
   );
 
-  const getGraph = useCallback(() => buildGraphSpec(nodes, edges), [nodes, edges]);
+  const getGraph = useCallback(
+    () => buildGraphSpec(nodes, edges, name.trim() || "Untitled Agent"),
+    [nodes, edges, name],
+  );
 
   // --- AI assistant wiring ---------------------------------------------------
   // Refine context: the canvas is the source of truth, so hand-edits between prompts are
@@ -425,7 +428,7 @@ function CanvasInner() {
               )
             ) : (
               <div className="h-full" data-testid="code-panel">
-                <CodeView getGraph={getGraph} />
+                <CodeView getGraph={getGraph} name={name} />
               </div>
             )}
           </div>
