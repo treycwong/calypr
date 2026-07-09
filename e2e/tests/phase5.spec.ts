@@ -203,6 +203,34 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
   await expect(code).toContainText("def node_synthesizer");
 });
 
+test("undo and redo step the canvas through add-node history", async ({ page }) => {
+  await openCanvas(page);
+
+  // Undo/redo start disabled (no history yet).
+  await expect(page.getByTestId("undo")).toBeDisabled();
+  await expect(page.getByTestId("redo")).toBeDisabled();
+
+  await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("add-agent").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+
+  // Undo removes the agent, then the input.
+  await page.getByTestId("undo").click();
+  await expect(page.getByTestId("node-agent")).toHaveCount(0);
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("undo").click();
+  await expect(page.getByTestId("node-input")).toHaveCount(0);
+  await expect(page.getByTestId("undo")).toBeDisabled();
+
+  // Redo brings them back in order.
+  await page.getByTestId("redo").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("redo").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+  await expect(page.getByTestId("redo")).toBeDisabled();
+});
+
 test("the right panel toggles Properties/Code; the rail AI panel is single-select", async ({
   page,
 }) => {

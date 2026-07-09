@@ -21,8 +21,10 @@ import {
   LogOut,
   type LucideIcon,
   Play,
+  Redo2,
   Sparkles,
   Square,
+  Undo2,
 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -110,6 +112,15 @@ function CanvasInner() {
   const [name, setName] = useState("Untitled Agent");
   const counter = useRef(0);
   const lastNodeId = useRef<string | null>(null);
+  // Undo/redo history: `past` holds prior canvases, `future` holds undone ones. `record()` is
+  // called right before each mutation to snapshot the pre-change canvas (and clears the redo
+  // stack, since a new edit forks history).
+  const [past, setPast] = useState<CanvasSnapshot[]>([]);
+  const [future, setFuture] = useState<CanvasSnapshot[]>([]);
+  const record = useCallback(() => {
+    setPast((p) => [...p.slice(-49), { nodes, edges, name }]);
+    setFuture([]);
+  }, [nodes, edges, name]);
 
   useEffect(() => {
     listTemplates()
@@ -137,6 +148,7 @@ function CanvasInner() {
 
   const addNode = useCallback(
     (type: CalyprNodeType) => {
+      record();
       const index = ++counter.current;
       const id = `${type}-${index}`;
       const node: Node<NodeData> = {
@@ -158,36 +170,39 @@ function CanvasInner() {
       lastNodeId.current = id;
       setSelectedId(id);
     },
-    [setNodes, setEdges],
+    [record, setNodes, setEdges],
   );
 
   // A connection dragged from a Router's named handle carries the branch name as the edge
   // label, which becomes the edge `condition` in the GraphSpec.
   const onConnect = useCallback(
-    (c: Connection) =>
-      setEdges((eds) =>
-        addEdge({ ...c, label: c.sourceHandle ?? undefined }, eds),
-      ),
-    [setEdges],
+    (c: Connection) => {
+      record();
+      setEdges((eds) => addEdge({ ...c, label: c.sourceHandle ?? undefined }, eds));
+    },
+    [record, setEdges],
   );
   const onNodeClick = useCallback((_: unknown, node: Node) => {
     setSelectedId(node.id);
     setRightTab("properties"); // reveal the clicked node's properties
   }, []);
   const updateConfig = useCallback(
-    (config: Record<string, unknown>) =>
+    (config: Record<string, unknown>) => {
+      record();
       setNodes((nds) =>
         nds.map((n) =>
           n.id === selectedId ? { ...n, data: { ...n.data, config } } : n,
         ),
-      ),
-    [selectedId, setNodes],
+      );
+    },
+    [record, selectedId, setNodes],
   );
 
   const loadTemplate = useCallback(
     (id: string) => {
       const tpl = templates.find((t) => t.id === id);
       if (!tpl) return;
+      record();
       const canvas = graphToCanvas(tpl.graph);
       setNodes(canvas.nodes);
       setEdges(canvas.edges);
@@ -199,7 +214,7 @@ function CanvasInner() {
       setName(tpl.name);
       setSaveMsg(`Loaded ${tpl.name}`);
     },
-    [templates, setNodes, setEdges],
+    [record, templates, setNodes, setEdges],
   );
 
   const getGraph = useCallback(
@@ -227,8 +242,60 @@ function CanvasInner() {
     },
     [setNodes, setEdges],
   );
+
+  // Undo/redo: move the current canvas onto the opposite stack, then restore the neighbour.
+  const undo = useCallback(() => {
+    if (!past.length) return;
+    const prev = past[past.length - 1];
+    setPast((p) => p.slice(0, -1));
+    setFuture((f) => [...f, { nodes, edges, name }]);
+    restoreCanvas(prev);
+  }, [past, nodes, edges, name, restoreCanvas]);
+  const redo = useCallback(() => {
+    if (!future.length) return;
+    const next = future[future.length - 1];
+    setFuture((f) => f.slice(0, -1));
+    setPast((p) => [...p, { nodes, edges, name }]);
+    restoreCanvas(next);
+  }, [future, nodes, edges, name, restoreCanvas]);
+
+  // Snapshot before a drag (once per drag, not per pixel) and before a delete, so those are
+  // undoable too. React Flow applies position/remove changes through onNodesChange.
+  const onNodeDragStart = useCallback(() => record(), [record]);
+  const handleNodesChange = useCallback<typeof onNodesChange>(
+    (changes) => {
+      if (changes.some((c) => c.type === "remove")) record();
+      onNodesChange(changes);
+    },
+    [record, onNodesChange],
+  );
+  const handleEdgesChange = useCallback<typeof onEdgesChange>(
+    (changes) => {
+      if (changes.some((c) => c.type === "remove")) record();
+      onEdgesChange(changes);
+    },
+    [record, onEdgesChange],
+  );
+
+  // Keyboard: ⌘/Ctrl+Z undo, ⌘/Ctrl+Shift+Z (or Ctrl+Y) redo — ignored while typing in a field.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "z") {
+        if (!((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y")) return;
+      }
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+      e.preventDefault();
+      const redoCombo = e.key.toLowerCase() === "y" || (e.key.toLowerCase() === "z" && e.shiftKey);
+      if (redoCombo) redo();
+      else undo();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
   const applyAssistantGraph = useCallback(
     (spec: GraphSpec) => {
+      record();
       const canvas = graphToCanvas(spec);
       setNodes(canvas.nodes);
       setEdges(canvas.edges);
@@ -239,7 +306,7 @@ function CanvasInner() {
       // unsaved canvas adopts the generated graph's name (Save then creates a new agent).
       if (!agentId) setName(spec.name || "Untitled Agent");
     },
-    [agentId, setNodes, setEdges],
+    [record, agentId, setNodes, setEdges],
   );
 
   const onSave = useCallback(async () => {
@@ -289,6 +356,28 @@ function CanvasInner() {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={undo}
+            disabled={past.length === 0}
+            aria-label="Undo"
+            title="Undo (⌘Z)"
+            data-testid="undo"
+          >
+            <Undo2 className="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={redo}
+            disabled={future.length === 0}
+            aria-label="Redo"
+            title="Redo (⌘⇧Z)"
+            data-testid="redo"
+          >
+            <Redo2 className="h-4 w-4" />
+          </Button>
           <Button variant="outline" size="sm" onClick={onSave} data-testid="save-agent">
             Save
           </Button>
@@ -363,8 +452,9 @@ function CanvasInner() {
           <ReactFlow
             nodes={nodes}
             edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
+            onNodesChange={handleNodesChange}
+            onEdgesChange={handleEdgesChange}
+            onNodeDragStart={onNodeDragStart}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
             onPaneClick={() => setSelectedId(null)}
