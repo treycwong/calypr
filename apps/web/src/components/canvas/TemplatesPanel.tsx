@@ -38,7 +38,7 @@ function TemplateDiagram({ template }: { template: Template }) {
           zoomOnDoubleClick={false}
           proOptions={{ hideAttribution: true }}
         >
-          <Background gap={22} size={1} color="#2c2c33" />
+          <Background gap={22} size={1} color="#4a4a52" />
         </ReactFlow>
       </ReactFlowProvider>
     </div>

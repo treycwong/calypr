@@ -18,7 +18,6 @@ import "./canvas.css";
 import {
   Blocks,
   LayoutTemplate,
-  LogOut,
   type LucideIcon,
   Play,
   Redo2,
@@ -334,11 +333,13 @@ function CanvasInner() {
         <div className="flex items-center gap-2">
           <Link
             href="/dashboard"
-            aria-label="Back to dashboard"
+            aria-label="Calypr — back to dashboard"
             title="Back to dashboard"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            className="transition hover:opacity-90"
           >
-            <LogOut className="h-4 w-4" />
+            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-cyan-400 to-cyan-600 text-sm font-bold text-black">
+              C
+            </span>
           </Link>
           <input
             data-testid="agent-name"
@@ -460,8 +461,8 @@ function CanvasInner() {
             nodeTypes={nodeTypes}
             fitView
           >
-            {/* Subtle dark-grey dots so the grid reads as texture, not bright specks. */}
-            <Background gap={22} size={1} color="#2c2c33" />
+            {/* Subtle grey dots — visible as texture (Railway-style), not bright specks. */}
+            <Background gap={22} size={1} color="#4a4a52" />
             <Controls />
             <MiniMap
               pannable
