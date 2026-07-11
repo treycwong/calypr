@@ -79,6 +79,14 @@ class ShareInfo(BaseModel):
     revoked_at: datetime | None
 
 
+class ShareRunRequest(BaseModel):
+    """A run against a share link. Spec-free by design — the graph is loaded server-side from
+    the token; anonymous callers only send a message (+ optional client-chosen thread id)."""
+
+    message: str
+    thread_id: str | None = None
+
+
 class WorkspaceInfo(BaseModel):
     id: str
     name: str

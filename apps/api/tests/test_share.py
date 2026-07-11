@@ -232,6 +232,88 @@ def test_claim_share_run_cap_gate_is_atomic():
 
 
 @pytest_db
+def test_mint_then_public_run_streams_and_meters():
+    """End-to-end: mint via the authenticated route, then run the link anonymously (no headers).
+    The stream delivers tokens + [DONE] and a `run` row lands with source='share' + the owner's
+    workspace."""
+    agent_id = _make_agent(DEV_WORKSPACE_ID)
+    token = client.post(f"/agents/{agent_id}/share", json={}).json()["token"]
+
+    r = client.post(f"/share/{token}/runs", json={"message": "hello", "thread_id": "t1"})
+    assert r.status_code == 200
+    assert "Echo:" in r.text and "[DONE]" in r.text
+    assert '"type": "error"' not in r.text
+
+    with SessionLocal() as s:
+        set_tenant(s, DEV_WORKSPACE_ID)
+        from calypr_api.db.models import Run
+
+        run = s.execute(
+            select(Run).where(Run.thread_id == f"share:{token}:t1")
+        ).scalar_one()
+        assert run.source == "share"
+        assert str(run.workspace_id) == DEV_WORKSPACE_ID
+        assert run.agent_id == agent_id
+        assert run.status == "completed"
+
+
+@pytest_db
+def test_get_share_returns_name_only_never_spec():
+    """The core promise: the public GET exposes the agent name and nothing that could
+    reconstruct the graph."""
+    agent_id = _make_agent(DEV_WORKSPACE_ID)
+    token = client.post(f"/agents/{agent_id}/share", json={}).json()["token"]
+
+    r = client.get(f"/share/{token}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {"agent_name": "Shared"}
+    raw = r.text
+    for leaked in ("graph_spec", "nodes", "edges", "system_prompt"):
+        assert leaked not in raw
+
+
+@pytest_db
+def test_get_share_unknown_or_revoked_404():
+    assert client.get(f"/share/{uuid.uuid4().hex}").status_code == 404
+    agent_id = _make_agent(DEV_WORKSPACE_ID)
+    token = client.post(f"/agents/{agent_id}/share", json={}).json()["token"]
+    client.delete(f"/agents/{agent_id}/share/{token}")
+    assert client.get(f"/share/{token}").status_code == 404
+
+
+@pytest_db
+def test_public_run_refused_when_cap_reached():
+    agent_id = _make_agent(DEV_WORKSPACE_ID)
+    token = client.post(f"/agents/{agent_id}/share", json={"run_cap": 1}).json()["token"]
+    # First run consumes the only slot.
+    assert "[DONE]" in client.post(f"/share/{token}/runs", json={"message": "a"}).text
+    # Second run is refused in-stream (200 SSE, but an error envelope, no tokens).
+    r = client.post(f"/share/{token}/runs", json={"message": "b"})
+    assert r.status_code == 200
+    assert "run limit" in r.text and "[DONE]" in r.text
+    assert "Echo:" not in r.text
+
+
+@pytest_db
+def test_public_run_refused_when_revoked():
+    agent_id = _make_agent(DEV_WORKSPACE_ID)
+    token = client.post(f"/agents/{agent_id}/share", json={}).json()["token"]
+    client.delete(f"/agents/{agent_id}/share/{token}")
+    r = client.post(f"/share/{token}/runs", json={"message": "a"})
+    assert r.status_code == 200
+    assert "revoked" in r.text and "Echo:" not in r.text
+
+
+@pytest_db
+def test_public_run_unknown_token_errors_in_stream():
+    r = client.post(f"/share/{uuid.uuid4().hex}/runs", json={"message": "a"})
+    assert r.status_code == 200
+    assert '"type": "error"' in r.text and "[DONE]" in r.text
+    assert "Echo:" not in r.text
+
+
+@pytest_db
 def test_share_link_has_rls_enabled():
     with engine.connect() as conn:
         rls_on = conn.execute(
