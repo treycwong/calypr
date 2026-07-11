@@ -7,16 +7,17 @@ RLS policy as defense-in-depth.
 
 from __future__ import annotations
 
+import secrets
 import uuid
 
 from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from calypr_api.db.models import Agent, Workspace
+from calypr_api.db.models import Agent, ShareLink, Workspace
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -26,12 +27,18 @@ from calypr_api.schemas import (
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
+    ShareCreate,
+    ShareInfo,
     TemplateInfo,
     WorkspaceInfo,
     WorkspaceUpdate,
 )
 
 router = APIRouter()
+
+# Default per-link run cap when the owner doesn't specify one. Share links are public and
+# unauthenticated, so we fail safe with a finite cap; owners can raise it per link.
+DEFAULT_SHARE_RUN_CAP = 25
 
 
 @router.post("/compile", response_model=CompileResponse, tags=["engine"])
@@ -171,6 +178,85 @@ def delete_agent(agent_id: str, t: Tenant = Depends(tenant)) -> Response:
         properties={"agent_id": agent_id},
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+def _share_info(s: ShareLink) -> ShareInfo:
+    return ShareInfo(
+        token=s.token,
+        run_cap=s.run_cap,
+        run_count=s.run_count,
+        created_at=s.created_at,
+        revoked_at=s.revoked_at,
+    )
+
+
+@router.post("/agents/{agent_id}/share", response_model=ShareInfo, tags=["share"])
+def create_share(
+    agent_id: str, body: ShareCreate, t: Tenant = Depends(tenant)
+) -> ShareInfo:
+    _get_owned(t.session, t.workspace_id, agent_id)  # 404s if not the tenant's agent
+    cap = body.run_cap if body.run_cap is not None else DEFAULT_SHARE_RUN_CAP
+    link = ShareLink(
+        token=secrets.token_urlsafe(16),  # 128-bit, unguessable
+        agent_id=uuid.UUID(agent_id),
+        workspace_id=t.workspace_id,
+        run_cap=cap,
+    )
+    t.session.add(link)
+    t.session.commit()
+    t.session.refresh(link)
+    posthog_client.capture(
+        "share_created",
+        distinct_id=str(t.workspace_id),
+        properties={"agent_id": agent_id, "run_cap": cap},
+    )
+    return _share_info(link)
+
+
+@router.get("/agents/{agent_id}/shares", response_model=list[ShareInfo], tags=["share"])
+def list_shares(agent_id: str, t: Tenant = Depends(tenant)) -> list[ShareInfo]:
+    _get_owned(t.session, t.workspace_id, agent_id)
+    rows = (
+        t.session.execute(
+            select(ShareLink)
+            .where(
+                ShareLink.agent_id == uuid.UUID(agent_id),
+                ShareLink.workspace_id == t.workspace_id,
+            )
+            .order_by(ShareLink.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+    return [_share_info(s) for s in rows]
+
+
+@router.delete("/agents/{agent_id}/share/{token}", response_model=ShareInfo, tags=["share"])
+def revoke_share(agent_id: str, token: str, t: Tenant = Depends(tenant)) -> ShareInfo:
+    _get_owned(t.session, t.workspace_id, agent_id)
+    link = (
+        t.session.execute(
+            select(ShareLink).where(
+                ShareLink.token == token,
+                ShareLink.agent_id == uuid.UUID(agent_id),
+                ShareLink.workspace_id == t.workspace_id,
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if link is None:
+        raise HTTPException(status_code=404, detail="share link not found")
+    if link.revoked_at is None:  # idempotent: re-revoking keeps the original timestamp
+        link.revoked_at = func.now()
+        t.session.commit()
+        t.session.refresh(link)
+        posthog_client.capture(
+            "share_revoked",
+            distinct_id=str(t.workspace_id),
+            properties={"agent_id": agent_id},
+        )
+    return _share_info(link)
 
 
 @router.get("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
