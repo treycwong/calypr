@@ -21,6 +21,7 @@ import {
   type LucideIcon,
   Play,
   Redo2,
+  Share2,
   Sparkles,
   Square,
   Undo2,
@@ -43,6 +44,7 @@ import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button } from "@/components/ui/button";
 import {
   createAgent,
+  createShare,
   getAgent,
   listTemplates,
   type Template,
@@ -325,6 +327,26 @@ function CanvasInner() {
     }
   }, [agentId, name, getGraph]);
 
+  // Share: mint an unguessable /s/{token} link for this saved agent + copy it to the clipboard.
+  // Only offered once the agent has an id (a share needs a persisted agent to run server-side).
+  const [shareMsg, setShareMsg] = useState<string | null>(null);
+  const onShare = useCallback(async () => {
+    if (!agentId) return;
+    setShareMsg("Creating link…");
+    try {
+      const { token } = await createShare(agentId);
+      const url = `${window.location.origin}/s/${token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareMsg("Link copied ✓");
+      } catch {
+        setShareMsg(url); // clipboard blocked (e.g. insecure context) — show the URL to copy
+      }
+    } catch {
+      setShareMsg("Couldn't create link");
+    }
+  }, [agentId]);
+
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
   return (
@@ -381,6 +403,26 @@ function CanvasInner() {
           <Button variant="outline" size="sm" onClick={onSave} data-testid="save-agent">
             Save
           </Button>
+          {agentId ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onShare}
+              data-testid="share-agent"
+              title="Create a public link to test this agent"
+            >
+              <Share2 className="h-4 w-4" />
+              Share
+            </Button>
+          ) : null}
+          {shareMsg ? (
+            <span
+              className="max-w-[16rem] truncate text-xs text-muted-foreground"
+              data-testid="share-msg"
+            >
+              {shareMsg}
+            </span>
+          ) : null}
           <Button
             size="sm"
             variant={showPlayground ? "outline" : "default"}
