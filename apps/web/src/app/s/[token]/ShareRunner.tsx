@@ -2,16 +2,18 @@
 
 import { useEffect, useState } from "react";
 
-import { Playground } from "@/components/canvas/Playground";
+import { AsciiField } from "./AsciiField";
+import { ShareChat } from "./ShareChat";
 
 type State =
   | { status: "loading" }
   | { status: "ready"; name: string }
   | { status: "unavailable" };
 
-// The public, view+run-only surface for a share link. Fetches the agent NAME (never the spec)
-// from the anonymous proxy, then runs the agent through `Playground` in share mode. A 404 means
-// the link is unknown or revoked → an "unavailable" state.
+// The public surface for a share link. Fetches the agent NAME (never the spec) from the
+// anonymous proxy, then floats a glass chat terminal over an interactive ASCII field. A 404
+// (unknown/revoked token) resolves to a tasteful "unavailable" state. Everything sits on a
+// single full-height, mobile-first stage.
 export function ShareRunner({ token }: { token: string }) {
   const [state, setState] = useState<State>({ status: "loading" });
 
@@ -30,41 +32,41 @@ export function ShareRunner({ token }: { token: string }) {
     };
   }, [token]);
 
-  if (state.status === "loading") {
-    return (
-      <main className="flex h-screen items-center justify-center text-sm text-muted-foreground">
-        Loading…
-      </main>
-    );
-  }
-
-  if (state.status === "unavailable") {
-    return (
-      <main
-        className="flex h-screen flex-col items-center justify-center gap-2"
-        data-testid="share-unavailable"
-      >
-        <h1 className="text-lg font-medium">This link is unavailable</h1>
-        <p className="text-sm text-muted-foreground">
-          It may have been revoked or never existed.
-        </p>
-      </main>
-    );
-  }
-
   return (
-    <main className="flex h-screen flex-col">
-      <header className="flex items-center gap-2 border-b border-border px-4 py-2">
-        <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-cyan-400 to-cyan-600 text-sm font-bold text-black">
-          C
-        </span>
-        <span className="text-sm font-medium" data-testid="share-agent-name">
-          {state.name}
-        </span>
-        <span className="text-xs text-muted-foreground">· shared agent</span>
-      </header>
-      <div className="mx-auto flex w-full max-w-2xl flex-1 flex-col overflow-hidden">
-        <Playground shareToken={token} />
+    <main className="relative flex h-[100dvh] w-full flex-col overflow-hidden bg-[#04060a] text-white">
+      <AsciiField />
+      {/* Vignette: darken the edges so the chat reads clearly over the field. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 90% at 50% 45%, transparent 30%, rgba(4,6,10,0.85) 100%)",
+        }}
+      />
+
+      <div className="relative z-10 flex h-full w-full items-center justify-center p-4 sm:p-6">
+        {state.status === "loading" ? (
+          <p className="animate-pulse font-mono text-sm text-cyan-200/70">
+            {"> connecting"}
+            <span className="ml-0.5 inline-block animate-pulse">▋</span>
+          </p>
+        ) : state.status === "unavailable" ? (
+          <div
+            className="flex max-w-sm flex-col items-center gap-3 rounded-2xl border border-white/10 bg-black/40 px-8 py-10 text-center backdrop-blur-xl"
+            data-testid="share-unavailable"
+          >
+            <span className="font-mono text-3xl text-cyan-300/50">⌁</span>
+            <h1 className="text-lg font-medium">This link is unavailable</h1>
+            <p className="text-sm text-white/50">
+              It may have been revoked, or it never existed.
+            </p>
+          </div>
+        ) : (
+          <div className="h-full max-h-[720px] w-full max-w-2xl">
+            <ShareChat token={token} agentName={state.name} />
+          </div>
+        )}
       </div>
     </main>
   );

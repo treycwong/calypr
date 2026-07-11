@@ -7,19 +7,11 @@ import type { GraphSpec } from "@calypr/dsl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { track } from "@/lib/analytics";
-import { runAgent, runShare } from "@/lib/api";
+import { runAgent } from "@/lib/api";
 
 type ChatMsg = { role: "user" | "assistant"; text: string };
 
-// Owner mode passes `getGraph` (runs the live canvas). Public share mode passes `shareToken`
-// (runs the agent behind the token — no spec on the client). Exactly one is set.
-export function Playground({
-  getGraph,
-  shareToken,
-}: {
-  getGraph?: () => GraphSpec;
-  shareToken?: string;
-}) {
+export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -47,14 +39,11 @@ export function Playground({
         copy[copy.length - 1] = { role: "assistant", text: last.text + chunk };
         return copy;
       });
-    const graph = shareToken ? null : getGraph?.();
-    track("run_started", { nodes: graph?.nodes?.length ?? 0, share: shareToken != null });
-    const stream = shareToken
-      ? runShare(shareToken, text, threadId)
-      : runAgent(graph!, text, threadId);
+    const graph = getGraph();
+    track("run_started", { nodes: graph.nodes?.length ?? 0 });
     let errored = false;
     try {
-      for await (const ev of stream) {
+      for await (const ev of runAgent(graph, text, threadId)) {
         if (ev.type === "token") apply(ev.text);
         else if (ev.type === "error") {
           errored = true;
