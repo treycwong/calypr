@@ -28,14 +28,18 @@ async function buildAndSaveAgent(page: Page): Promise<string> {
 
   // The Share button only appears once the agent has an id (i.e. after Save).
   await expect(page.getByTestId("share-agent")).toBeVisible();
-  // Mint the link and capture the token from the proxied response.
+  // Opening the popover mints the link; capture the token from the proxied response.
   const [res] = await Promise.all([
     page.waitForResponse((r) => r.url().includes("/share") && r.request().method() === "POST"),
     page.getByTestId("share-agent").click(),
   ]);
   const { token } = (await res.json()) as { token: string };
   expect(token).toBeTruthy();
-  await expect(page.getByTestId("share-msg")).toBeVisible();
+  // The popover shows the link URL + a Copy button.
+  await expect(page.getByTestId("share-panel")).toBeVisible();
+  await expect(page.getByTestId("share-url")).toHaveValue(new RegExp(`/s/${token}$`));
+  await page.getByTestId("share-copy").click();
+  await expect(page.getByTestId("share-copy")).toContainText("Copied");
   return token;
 }
 

@@ -327,25 +327,61 @@ function CanvasInner() {
     }
   }, [agentId, name, getGraph]);
 
-  // Share: mint an unguessable /s/{token} link for this saved agent + copy it to the clipboard.
-  // Only offered once the agent has an id (a share needs a persisted agent to run server-side).
-  const [shareMsg, setShareMsg] = useState<string | null>(null);
-  const onShare = useCallback(async () => {
+  // Share: a popover under the Share button showing the /s/{token} link + a Copy button. The
+  // link is minted once (lazily, when the popover first opens) and reused — it always runs the
+  // agent's latest saved graph, so it stays valid across edits. Only offered once the agent has
+  // an id (a share needs a persisted agent to run server-side).
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+  const sharePanelRef = useRef<HTMLDivElement>(null);
+  const shareUrl = shareToken ? `${window.location.origin}/s/${shareToken}` : "";
+
+  const toggleShare = useCallback(async () => {
     if (!agentId) return;
-    setShareMsg("Creating link…");
-    try {
-      const { token } = await createShare(agentId);
-      const url = `${window.location.origin}/s/${token}`;
-      try {
-        await navigator.clipboard.writeText(url);
-        setShareMsg("Link copied ✓");
-      } catch {
-        setShareMsg(url); // clipboard blocked (e.g. insecure context) — show the URL to copy
-      }
-    } catch {
-      setShareMsg("Couldn't create link");
+    if (shareOpen) {
+      setShareOpen(false);
+      return;
     }
-  }, [agentId]);
+    setShareOpen(true);
+    setShareCopied(false);
+    if (!shareToken) {
+      setShareBusy(true);
+      setShareError(false);
+      try {
+        const { token } = await createShare(agentId);
+        setShareToken(token);
+      } catch {
+        setShareError(true);
+      } finally {
+        setShareBusy(false);
+      }
+    }
+  }, [agentId, shareOpen, shareToken]);
+
+  const copyShareLink = useCallback(async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      // clipboard blocked (e.g. insecure context) — the URL is visible to copy manually
+    }
+    setShareCopied(true);
+  }, [shareUrl]);
+
+  // Close the popover on an outside click.
+  useEffect(() => {
+    if (!shareOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (sharePanelRef.current && !sharePanelRef.current.contains(e.target as globalThis.Node)) {
+        setShareOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [shareOpen]);
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
@@ -404,24 +440,53 @@ function CanvasInner() {
             Save
           </Button>
           {agentId ? (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onShare}
-              data-testid="share-agent"
-              title="Create a public link to test this agent"
-            >
-              <Share2 className="h-4 w-4" />
-              Share
-            </Button>
-          ) : null}
-          {shareMsg ? (
-            <span
-              className="max-w-[16rem] truncate text-xs text-muted-foreground"
-              data-testid="share-msg"
-            >
-              {shareMsg}
-            </span>
+            <div className="relative" ref={sharePanelRef}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleShare}
+                data-testid="share-agent"
+                title="Get a public link to test this agent"
+              >
+                <Share2 className="h-4 w-4" />
+                Share
+              </Button>
+              {shareOpen ? (
+                <div
+                  className="absolute right-0 top-full z-50 mt-2 w-80 rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-md"
+                  data-testid="share-panel"
+                >
+                  <p className="text-sm font-medium">Share this agent</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Anyone with the link can run it — they won&apos;t see your canvas.
+                  </p>
+                  {shareError ? (
+                    <p className="mt-3 text-sm text-destructive" data-testid="share-error">
+                      Couldn&apos;t create a link. Try again.
+                    </p>
+                  ) : (
+                    <div className="mt-3 flex gap-2">
+                      <input
+                        readOnly
+                        value={shareBusy ? "Creating link…" : shareUrl}
+                        onFocus={(e) => e.currentTarget.select()}
+                        aria-label="Share link"
+                        data-testid="share-url"
+                        className="h-8 min-w-0 flex-1 rounded-md border border-border bg-muted px-2 text-xs outline-none"
+                      />
+                      <Button
+                        size="sm"
+                        onClick={copyShareLink}
+                        disabled={shareBusy || !shareToken}
+                        data-testid="share-copy"
+                      >
+                        {shareCopied ? "Copied ✓" : "Copy"}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+            </div>
           ) : null}
           <Button
             size="sm"
