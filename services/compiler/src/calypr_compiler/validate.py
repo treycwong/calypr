@@ -114,6 +114,60 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                 )
             )
 
+    # Infinite-loop guard: a cycle reachable via only *unconditional* edges can never exit,
+    # so the graph would run to the recursion limit (a wall of repeated calls). Legitimate
+    # loops — a ReAct agent↔Tool loop, a Router — always traverse a conditional edge to get
+    # back, so they don't appear in this unconditional-edge subgraph; the runtime
+    # recursion_limit backstops those. Report the first such cycle found.
+    plain_adj: dict[str, list[str]] = {}
+    for e in spec.edges:
+        if not e.condition and e.source in id_set and e.target in id_set:
+            plain_adj.setdefault(e.source, []).append(e.target)
+
+    color: dict[str, int] = {}  # 0 = visiting (on stack), 1 = done
+
+    def _find_cycle(start: str) -> list[str] | None:
+        # Iterative DFS tracking the current path so a back-edge yields the cycle nodes.
+        stack: list[tuple[str, int]] = [(start, 0)]
+        path: list[str] = []
+        while stack:
+            node, i = stack[-1]
+            if i == 0:
+                color[node] = 0
+                path.append(node)
+            neighbours = plain_adj.get(node, [])
+            if i < len(neighbours):
+                stack[-1] = (node, i + 1)
+                nxt = neighbours[i]
+                if color.get(nxt) == 0:  # back-edge into the current path → cycle
+                    return path[path.index(nxt):]
+                if nxt not in color:
+                    stack.append((nxt, 0))
+            else:
+                color[node] = 1
+                path.pop()
+                stack.pop()
+        return None
+
+    for n in spec.nodes:
+        if n.id not in color:
+            cycle = _find_cycle(n.id)
+            if cycle:
+                loop = " → ".join(cycle + [cycle[0]])
+                issues.append(
+                    Issue(
+                        severity="error",
+                        code="cyclic_graph",
+                        message=(
+                            f"Nodes form a loop with no exit ({loop}). A run would repeat "
+                            "until it errors. Remove the back-edge, or route through a "
+                            "Router/Tool step that can break out of the loop."
+                        ),
+                        node_id=cycle[0],
+                    )
+                )
+                break
+
     # Router branch coverage: a router branches by edge `condition`, so every branch (and
     # the default) must have a matching conditional out-edge. This keeps both the compiled
     # graph and the generated code from ever routing to a missing branch.
