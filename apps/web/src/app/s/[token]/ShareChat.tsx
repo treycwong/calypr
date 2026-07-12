@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
 import { Markdown } from "@/components/Markdown";
+import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
 import { runShare } from "@/lib/api";
 
@@ -19,6 +20,7 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
   const newThread = () => `share-${Math.random().toString(36).slice(2)}`;
   const [threadId] = useState(newThread);
   const logRef = useRef<HTMLDivElement>(null);
+  const { toast } = useToast();
 
   // Keep the newest message in view as tokens stream in.
   useEffect(() => {
@@ -46,6 +48,7 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
         else if (ev.type === "error") {
           errored = true;
           apply(`⚠️ ${ev.message}`);
+          toast(ev.message, "error");
         }
       }
       track(errored ? "run_errored" : "run_completed");
