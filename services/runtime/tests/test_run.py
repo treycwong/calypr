@@ -1,7 +1,9 @@
+import pytest
 from calypr_compiler.golden import input_agent_output
+from calypr_dsl import EdgeSpec
 from calypr_model import FakeModelClient
 from calypr_nodes import NodeContext
-from calypr_runtime import run, run_stream
+from calypr_runtime import RunError, run, run_stream
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -48,3 +50,19 @@ async def test_checkpointer_persists_state_across_turns():
 
     # The same thread accumulates history across runs (durable memory).
     assert len(second["messages"]) > len(first["messages"])
+
+
+async def test_recursion_limit_becomes_a_friendly_run_error():
+    """A loop that slips past static cycle validation — its back-edge carries a condition, so it
+    isn't an all-unconditional cycle — runs to the recursion limit. That must surface as a clean
+    `RunError`, not LangGraph's raw `GraphRecursionError`."""
+    spec = input_agent_output(model="fake")
+    agent = next(n.id for n in spec.nodes if n.type == "agent")
+    out = next(n.id for n in spec.nodes if n.type == "output")
+    spec.edges.append(EdgeSpec(id="loop", source=out, target=agent, condition="again"))
+    ctx = NodeContext(model=FakeModelClient(reply="hi"))
+
+    with pytest.raises(RunError) as exc_info:
+        async for _ in run_stream(spec, ctx, "go"):
+            pass
+    assert "loop" in str(exc_info.value).lower()

@@ -2,11 +2,12 @@
 
 from calypr_runtime.checkpoint import memory_checkpointer, postgres_checkpointer
 from calypr_runtime.events import RunEvent
-from calypr_runtime.run import run, run_stream
+from calypr_runtime.run import RunError, run, run_stream
 
 __all__ = [
     "run",
     "run_stream",
+    "RunError",
     "RunEvent",
     "memory_checkpointer",
     "postgres_checkpointer",
