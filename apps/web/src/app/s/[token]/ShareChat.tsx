@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
+import { Markdown } from "@/components/Markdown";
 import { track } from "@/lib/analytics";
 import { runShare } from "@/lib/api";
 
@@ -94,11 +95,17 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
                 className={
                   m.role === "user"
                     ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-cyan-400/20 bg-cyan-500/15 px-3.5 py-2 text-sm text-cyan-50"
-                    : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm text-white/90"
+                    : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm leading-relaxed text-white/90"
                 }
               >
-                {m.text || (
-                  <span className="inline-block animate-pulse text-cyan-300/80">▋</span>
+                {m.role === "assistant" ? (
+                  m.text ? (
+                    <Markdown text={m.text} />
+                  ) : (
+                    <span className="inline-block animate-pulse text-cyan-300/80">▋</span>
+                  )
+                ) : (
+                  m.text
                 )}
               </div>
             </div>
