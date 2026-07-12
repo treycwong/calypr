@@ -60,6 +60,40 @@ export async function* runAgent(
   );
 }
 
+/** Stream a run against a share link — spec-free: the graph lives server-side behind the token.
+ * Mirrors `runAgent`, but the anonymous `/api/s/{token}/runs` proxy forwards no identity. */
+export async function* runShare(
+  token: string,
+  message: string,
+  threadId: string,
+): AsyncGenerator<RunEvent> {
+  yield* streamSSE<RunEvent>(
+    `/api/s/${token}/runs`,
+    { message, thread_id: threadId },
+    (status) => ({ type: "error", message: `run failed (${status})` }),
+  );
+}
+
+/** A minted share link (mirror of the API's `ShareInfo`). */
+export type ShareInfo = {
+  token: string;
+  run_cap: number | null;
+  run_count: number;
+  created_at: string;
+  revoked_at: string | null;
+};
+
+/** Mint a share link for a saved agent. `runCap` omitted ⇒ the API's default cap. */
+export async function createShare(agentId: string, runCap?: number): Promise<ShareInfo> {
+  const res = await fetch(`/api/agents/${agentId}/share`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(runCap != null ? { run_cap: runCap } : {}),
+  });
+  if (!res.ok) throw new Error(`share failed (${res.status})`);
+  return res.json();
+}
+
 /** One chat turn sent to the assistant. */
 export type AssistMessageInput = { role: "user" | "assistant"; content: string };
 

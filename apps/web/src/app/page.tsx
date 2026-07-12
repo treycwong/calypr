@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+import { HeroAscii } from "@/components/landing/HeroAscii";
 import { buttonVariants } from "@/components/ui/button";
 
 // ── small building blocks ───────────────────────────────────────────────────
@@ -227,7 +228,15 @@ export default function Home() {
       </header>
 
       {/* hero */}
-      <section className="mx-auto w-full max-w-6xl px-5 pt-20 pb-10 sm:pt-28">
+      <section className="relative">
+        {/* generative agent-graph backdrop, framed away from the text by a radial mask */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(105%_75%_at_50%_42%,transparent_18%,black_60%)]"
+        >
+          <HeroAscii />
+        </div>
+        <div className="relative mx-auto w-full max-w-6xl px-5 pt-20 pb-10 sm:pt-28">
         <div className="flex flex-col items-center text-center">
           <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
             <Eyebrow>
@@ -260,6 +269,7 @@ export default function Home() {
         <p className="mt-8 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
           compiles to langgraph · openai · anthropic · postgres + pgvector
         </p>
+        </div>
       </section>
 
       {/* pillars */}

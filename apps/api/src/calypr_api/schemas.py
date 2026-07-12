@@ -64,6 +64,29 @@ class AgentDetail(BaseModel):
     graph: GraphSpec
 
 
+class ShareCreate(BaseModel):
+    """Mint a share link. `run_cap` omitted ⇒ the endpoint applies the default cap; an explicit
+    `null` would mean unlimited, but the endpoint only reads a positive int or the default."""
+
+    run_cap: int | None = None
+
+
+class ShareInfo(BaseModel):
+    token: str
+    run_cap: int | None
+    run_count: int
+    created_at: datetime
+    revoked_at: datetime | None
+
+
+class ShareRunRequest(BaseModel):
+    """A run against a share link. Spec-free by design — the graph is loaded server-side from
+    the token; anonymous callers only send a message (+ optional client-chosen thread id)."""
+
+    message: str
+    thread_id: str | None = None
+
+
 class WorkspaceInfo(BaseModel):
     id: str
     name: str

@@ -116,3 +116,33 @@ class RunUsage(Base):
     model: Mapped[str | None] = mapped_column(String, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+class ShareLink(Base):
+    """An unguessable, revocable link that lets a logged-out visitor run one agent without
+    receiving its GraphSpec (WEEK3 plan §A). The anonymous run path resolves this table via
+    the `share_agent_name` / `claim_share_run` SECURITY DEFINER functions, not the ORM."""
+
+    __tablename__ = "share_link"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    agent_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # NULL ⇒ unlimited; the mint endpoint defaults to a finite cap for anonymous spend safety.
+    run_cap: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    run_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
