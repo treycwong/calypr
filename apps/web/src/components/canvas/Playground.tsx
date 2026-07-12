@@ -6,6 +6,7 @@ import type { GraphSpec } from "@calypr/dsl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Markdown } from "@/components/Markdown";
 import { track } from "@/lib/analytics";
 import { runAgent } from "@/lib/api";
 
@@ -81,11 +82,23 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
           <div key={i} className={m.role === "user" ? "text-right" : "text-left"}>
             <div
               data-testid={`msg-${m.role}`}
-              className={`inline-block max-w-[90%] whitespace-pre-wrap rounded-lg px-3 py-2 text-sm ${
-                m.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+              className={`inline-block max-w-[90%] rounded-lg px-3 py-2 text-left text-sm ${
+                m.role === "user"
+                  ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+                  : "bg-muted leading-relaxed"
               }`}
             >
-              {m.text || (busy ? "…" : "")}
+              {m.role === "assistant" ? (
+                m.text ? (
+                  <Markdown text={m.text} />
+                ) : busy ? (
+                  "…"
+                ) : (
+                  ""
+                )
+              ) : (
+                m.text
+              )}
             </div>
           </div>
         ))}
