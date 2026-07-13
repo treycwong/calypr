@@ -42,6 +42,7 @@ import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
 import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
 import {
   createAgent,
   createShare,
@@ -97,6 +98,7 @@ function CanvasInner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showPlayground, setShowPlayground] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  const { toast } = useToast();
   const [templates, setTemplates] = useState<Template[]>([]);
   // The single rail-driven left panel — one tab at a time (or null = closed). Clicking the
   // active tab again closes it (full-width canvas).
@@ -144,8 +146,11 @@ function CanvasInner() {
         setAgentId(a.id);
         setName(a.name);
       })
-      .catch(() => setSaveMsg("Couldn't load that agent"));
-  }, [setNodes, setEdges]);
+      .catch(() => {
+        setSaveMsg("Couldn't load that agent");
+        toast("Couldn't load that agent.", "error");
+      });
+  }, [setNodes, setEdges, toast]);
 
   const addNode = useCallback(
     (type: CalyprNodeType) => {
@@ -324,8 +329,9 @@ function CanvasInner() {
       setSaveMsg("Saved ✓");
     } catch {
       setSaveMsg("Save failed");
+      toast("Couldn't save your agent — please try again.", "error");
     }
-  }, [agentId, name, getGraph]);
+  }, [agentId, name, getGraph, toast]);
 
   // Share: a popover under the Share button showing the /s/{token} link + a Copy button. The
   // link is minted once (lazily, when the popover first opens) and reused — it always runs the
@@ -355,11 +361,12 @@ function CanvasInner() {
         setShareToken(token);
       } catch {
         setShareError(true);
+        toast("Couldn't create a share link — please try again.", "error");
       } finally {
         setShareBusy(false);
       }
     }
-  }, [agentId, shareOpen, shareToken]);
+  }, [agentId, shareOpen, shareToken, toast]);
 
   const copyShareLink = useCallback(async () => {
     if (!shareUrl) return;

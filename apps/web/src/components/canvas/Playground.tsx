@@ -7,6 +7,7 @@ import type { GraphSpec } from "@calypr/dsl";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Markdown } from "@/components/Markdown";
+import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
 import { runAgent } from "@/lib/api";
 
@@ -18,6 +19,7 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
   const [busy, setBusy] = useState(false);
   const newThread = () => `web-${Math.random().toString(36).slice(2)}`;
   const [threadId, setThreadId] = useState(newThread);
+  const { toast } = useToast();
 
   // Start a fresh conversation thread — clears history (and recovers a thread that a tool
   // error may have left mid-tool-call).
@@ -49,6 +51,7 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
         else if (ev.type === "error") {
           errored = true;
           apply(`⚠️ ${ev.message}`);
+          toast(ev.message, "error");
         }
       }
       track(errored ? "run_errored" : "run_completed");
