@@ -12,7 +12,7 @@ import json
 import re
 import subprocess
 
-from calypr_dsl import GraphSpec, Reducer, StateChannel
+from calypr_dsl import SCHEMA_VERSION, GraphSpec, Reducer, StateChannel
 from calypr_nodes import CodegenContext, get_node, graph_channels, has_node
 
 _PYTYPE: dict[str, str] = {
@@ -124,6 +124,26 @@ def _ruff_format(code: str) -> str:
         return code
 
 
+def _metadata_trailer(graph: GraphSpec) -> str:
+    """A single-line `# calypr: {...}` comment carrying what the code itself can't express —
+    canvas layout, the graph's identity, and its human name/description. The reverse parser
+    (`calypr_roundtrip`) restores these; if the user deletes the line, parsing still succeeds and
+    the canvas auto-layout applies. Emitted *after* ruff formatting (a machine data line ruff
+    would otherwise flag E501) and marked `noqa` so a later `ruff` run leaves it intact.
+    """
+    layout = {
+        node.id: {"x": node.position["x"], "y": node.position["y"]}
+        for node in graph.nodes
+        if node.position and "x" in node.position and "y" in node.position
+    }
+    meta = {
+        "schema_version": graph.schema_version or SCHEMA_VERSION,
+        "graph": {"id": graph.id, "name": graph.name, "description": graph.description},
+        "layout": layout,
+    }
+    return f"# calypr: {json.dumps(meta, separators=(',', ':'))}  # noqa: E501"
+
+
 def _tool_refs(graph: GraphSpec) -> dict[str, list[str]]:
     """LLM node id → tool variable names to bind (resolved from edges to Tool nodes)."""
     if not has_node("tool"):
@@ -224,4 +244,7 @@ def generate_python(graph: GraphSpec) -> str:
             "\n".join(build),
         ]
     )
-    return _ruff_format(module + "\n")
+    # Append the metadata trailer after formatting: it's a single machine-data line ruff would
+    # otherwise reflow/flag. Two blank lines precede it — ruff's canonical spacing after a
+    # top-level function — so the result is already `ruff format`-stable (idempotent).
+    return _ruff_format(module + "\n") + "\n\n" + _metadata_trailer(graph) + "\n"
