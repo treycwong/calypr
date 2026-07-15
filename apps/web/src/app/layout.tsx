@@ -16,9 +16,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  // Lets route metadata (blog posts, OG urls) use relative paths that resolve to prod.
+  metadataBase: new URL("https://www.calypr.co"),
   title: "Calypr — design AI agents on a canvas, leave with the code",
   description:
     "A no-ceiling agent builder. Drag nodes onto a canvas, run them live, and export idiomatic LangGraph you own.",
+  openGraph: {
+    siteName: "Calypr",
+    type: "website",
+    url: "/",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default function RootLayout({
