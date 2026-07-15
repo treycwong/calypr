@@ -1,0 +1,78 @@
+export const metadata = {
+  title: "Build a RAG agent on the canvas — and leave with the Python",
+  description:
+    "From a blank canvas to a retrieval-grounded agent in three moves: load the RAG framework, run it in the playground, and export LangGraph code you actually own.",
+  date: "2026-07-15",
+  category: "tutorial",
+  tags: ["rag", "canvas", "codegen", "langgraph"],
+};
+
+Calypr's whole promise is *no ceiling*: everything you draw on the canvas compiles to
+standalone Python you can read, edit, and run anywhere. This tutorial walks the shortest
+path to seeing that end-to-end with a retrieval-augmented (RAG) agent.
+
+## 1. Start from the RAG framework
+
+Open the [canvas](/canvas) and pick **RAG (retrieval)** from the templates rail. You'll get
+a four-node graph:
+
+| Node | What it does |
+| --- | --- |
+| Input | Writes your message into the shared state |
+| Knowledge | Retrieves the top-k chunks for the query |
+| Agent | Answers, grounded in the retrieved context |
+| Output | Exposes the final reply |
+
+The Knowledge node ships with a built-in demo knowledge base, so there's nothing to
+provision — and the fake model means you don't need an API key to try it.
+
+## 2. Run it in the playground
+
+Hit **Try it** and ask something the demo KB knows about. You'll see the reply stream in,
+turn by turn. Behind the scenes the graph compiled to a LangGraph `StateGraph` and ran
+server-side with the same engine that powers the generated code.
+
+Want a real model? Set the Agent node's model to `gpt-4o-mini` or a Claude model in the
+node config — each agent carries its own model choice.
+
+## 3. Open the Code view
+
+This is the part that matters. Switch to the **Code** tab and you'll find a complete,
+standalone module — grouped imports, a typed `State`, one function per node, and a
+`build_graph()` that wires it all up:
+
+```python title="agent.py"
+def node_agent(state: State) -> dict:
+    """Answer grounded in the retrieved context."""
+    model = init_chat_model("gpt-4o-mini", temperature=0.7)
+    context = "\n\n".join(state.get("context") or [])
+    reply = model.invoke([SystemMessage(content=system.format(context=context)), *messages])
+    return {"messages": [reply]}
+
+
+def build_graph():
+    graph = StateGraph(State)
+    graph.add_node("in", node_in)
+    graph.add_node("knowledge", node_knowledge)
+    graph.add_node("agent", node_agent)
+    graph.add_node("out", node_out)
+    graph.add_edge(START, "in")
+    graph.add_edge("in", "knowledge")
+    graph.add_edge("knowledge", "agent")
+    graph.add_edge("agent", "out")
+    return graph.compile()
+```
+
+Copy it. It imports only `langgraph` and `langchain` — **zero Calypr dependency**. A
+round-trip test in our CI proves the generated module produces the same output as the
+canvas run, for every template we ship.
+
+## Where the ceiling would be — and why it isn't
+
+Hit something the visual nodes can't express? Drop a **Custom Code** node and write the
+Python inline: it round-trips verbatim into the generated module. And the code itself now
+carries a small `# calypr:` trailer, part of the reverse round-trip work that lets edited
+code come *back* to the canvas — more on that in the changelog.
+
+*Questions or a template you wish existed? Open an issue on
+[GitHub](https://github.com/treycwong/calypr).*
