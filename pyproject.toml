@@ -7,6 +7,7 @@ members = [
   "services/compiler",
   "services/runtime",
   "services/codegen",
+  "services/roundtrip",
   "services/assistant",
 ]
 
@@ -35,5 +36,6 @@ testpaths = [
   "services/compiler/tests",
   "services/runtime/tests",
   "services/codegen/tests",
+  "services/roundtrip/tests",
   "services/assistant/tests",
 ]
