@@ -1,0 +1,57 @@
+export const metadata = {
+  title: "Changelog: the first five weeks",
+  description:
+    "Analytics, real usage metering, share-to-test links, friendlier errors, and the start of the reverse round-trip — everything that shipped in Calypr's first five weeks.",
+  date: "2026-07-14",
+  category: "update",
+  tags: ["changelog", "share-links", "roundtrip"],
+};
+
+A quick tour of what's landed on [calypr.co](https://www.calypr.co) since the MVP push
+started — five weeks, five themes.
+
+## Week 1 — Measurement
+
+Product analytics wired end to end, because you can't improve what you can't see. Every
+run, template load, and code export is now an event — including the ones that matter most
+to us: when you open the **Code** view and take the Python with you.
+
+## Week 2 — Metering & durability
+
+- **Real usage accounting**: every run records its tokens and cost, per node and per model.
+- **Durable conversations**: playground threads now survive server restarts — checkpoints
+  moved from memory to Postgres.
+- A platform-wide spend kill-switch, so a runaway loop can't run up a bill.
+
+## Week 3 — Share-to-test links
+
+The first way to put your agent in front of someone else. Mint an unguessable link and
+anyone can chat with your agent — logged out, streamed, and capped per link. The graph
+itself never leaves the server: visitors get the conversation, not your design.
+
+```text
+https://www.calypr.co/s/<token>   →  chat with the agent, nothing else
+```
+
+Markdown rendering landed in the shared chat too, so replies with lists and code read the
+way they should.
+
+## Week 4 — Fail gracefully
+
+Partner-readiness polish: friendly, leak-safe error messages (no more raw stack traces in
+chat), toasts on failed saves and runs, and error boundaries so a crash degrades to a card
+instead of a blank page. A cyclic-graph validator now catches infinite loops *before* any
+model call burns tokens.
+
+## Week 5 — The reverse round-trip begins
+
+The existential feature. Calypr has always compiled canvas → code; now the reverse parser
+has landed: `parse_python(code)` recovers the graph — topology, state channels, and layout
+— from generated (even hand-edited) Python. Every shipped template round-trips in CI.
+
+This is the foundation for **editing code and applying it back to the canvas**, coming in
+the next few weeks. No ceiling, in both directions.
+
+---
+
+*Want to try any of this? [Open the canvas](/canvas) — the fake model needs no API key.*

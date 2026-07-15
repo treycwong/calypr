@@ -6,30 +6,16 @@ import {
   Play,
   ShieldCheck,
   Sparkles,
-  Star,
   Workflow,
 } from "lucide-react";
 import Link from "next/link";
 
 import { HeroAscii } from "@/components/landing/HeroAscii";
+import { SiteFooter } from "@/components/site/Footer";
+import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
 
 // ── small building blocks ───────────────────────────────────────────────────
-
-function Wordmark({ className = "" }: { className?: string }) {
-  return (
-    <span className={`flex items-center gap-2 ${className}`}>
-      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden className="text-foreground">
-        <line x1="5" y1="5" x2="5" y2="15" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-        <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-        <circle cx="5" cy="5" r="2.4" fill="currentColor" />
-        <circle cx="5" cy="15" r="2.4" fill="currentColor" opacity="0.55" />
-        <circle cx="15" cy="15" r="2.4" fill="currentColor" opacity="0.8" />
-      </svg>
-      <span className="font-mono text-sm font-medium tracking-tight">calypr</span>
-    </span>
-  );
-}
 
 function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
@@ -199,33 +185,7 @@ export default function Home() {
       />
 
       {/* nav */}
-      <header className="sticky top-0 z-20 border-b border-border/60 bg-background/70 backdrop-blur">
-        <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-5">
-          <Wordmark />
-          <nav className="hidden items-center gap-7 font-mono text-xs text-muted-foreground md:flex">
-            <a href="#how" className="transition-colors hover:text-foreground">
-              How it works
-            </a>
-            <a href="#templates" className="transition-colors hover:text-foreground">
-              Templates
-            </a>
-            <a href="#code" className="transition-colors hover:text-foreground">
-              The code
-            </a>
-          </nav>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/sign-in"
-              className={buttonVariants({ variant: "ghost", size: "sm" })}
-            >
-              Sign in
-            </Link>
-            <Link href="/canvas" className={buttonVariants({ size: "sm" })}>
-              Open canvas
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader />
 
       {/* hero */}
       <section className="relative">
@@ -391,30 +351,7 @@ export default function Home() {
       </section>
 
       {/* footer */}
-      <footer className="mt-auto border-t border-border">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-6 px-5 py-10 sm:flex-row sm:items-center">
-          <div className="space-y-2">
-            <Wordmark />
-            <p className="font-mono text-[11px] text-muted-foreground">
-              prompt → canvas → code · {new Date().getFullYear()}
-            </p>
-          </div>
-          <div className="flex items-center gap-6 font-mono text-xs text-muted-foreground">
-            <Link href="/canvas" className="transition-colors hover:text-foreground">
-              Canvas
-            </Link>
-            <a href="#templates" className="transition-colors hover:text-foreground">
-              Templates
-            </a>
-            <a
-              href="https://github.com/treycwong/calypr"
-              className="inline-flex items-center gap-1.5 transition-colors hover:text-foreground"
-            >
-              <Star className="h-3.5 w-3.5" /> GitHub
-            </a>
-          </div>
-        </div>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
