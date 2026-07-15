@@ -1,3 +1,4 @@
+import { dash } from "@better-auth/infra";
 import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { Pool } from "pg";
@@ -16,6 +17,8 @@ export const auth = betterAuth({
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
     },
   },
-  // nextCookies() must be last — lets Better Auth set cookies through Next server actions.
-  plugins: [nextCookies()],
+  // dash() connects this server to the Better Auth hosted dashboard; it reads its key from
+  // BETTER_AUTH_API_KEY (set in the deployed env). nextCookies() must stay last — it lets Better
+  // Auth set cookies through Next server actions.
+  plugins: [dash(), nextCookies()],
 });
