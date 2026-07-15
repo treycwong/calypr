@@ -25,7 +25,24 @@ async function loadPost(slug: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const { meta } = await loadPost(slug);
-  return { title: `${meta.title} — Calypr`, description: meta.description };
+  return {
+    title: `${meta.title} — Calypr`,
+    description: meta.description,
+    alternates: { canonical: `/blog/${slug}` },
+    openGraph: {
+      title: meta.title,
+      description: meta.description,
+      type: "article",
+      url: `/blog/${slug}`,
+      publishedTime: `${meta.date}T00:00:00.000Z`,
+      tags: meta.tags,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: meta.title,
+      description: meta.description,
+    },
+  };
 }
 
 export default async function BlogPost({ params }: Props) {
