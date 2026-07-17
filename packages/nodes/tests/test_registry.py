@@ -1,12 +1,20 @@
-from calypr_model import FakeModelClient
+from calypr_model import (
+    FakeImageClient,
+    FakeModelClient,
+    FakeTTSClient,
+    OpenAIImageClient,
+    OpenAITTSClient,
+)
 from calypr_nodes import (
     AgentConfig,
     InputConfig,
     NodeContext,
     OutputConfig,
     all_node_types,
+    image_model_for_node,
     model_for_node,
     parse_config,
+    tts_model_for_node,
 )
 from calypr_nodes.agent import AgentNode
 from calypr_nodes.input import InputNode
@@ -51,3 +59,22 @@ def test_model_for_node_prefers_injected_then_resolves_own():
     assert model_for_node(NodeContext(model=spy), "gpt-4o") is spy
     # otherwise each node resolves its own provider from its model id
     assert isinstance(model_for_node(NodeContext(), "fake"), FakeModelClient)
+
+
+def test_image_model_for_node_prefers_injected_then_resolves_own(monkeypatch):
+    spy = FakeImageClient()
+    assert image_model_for_node(NodeContext(image_model=spy), "gpt-image-2") is spy
+    # no override + a real model id -> the real (billed) client, not Fake — this is the
+    # production default the Image node falls through to when nothing injects a test double.
+    # (A dummy key only satisfies the SDK's client construction check — no network call is made.)
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-construction-only")
+    assert isinstance(image_model_for_node(NodeContext(), "gpt-image-2"), OpenAIImageClient)
+    assert isinstance(image_model_for_node(NodeContext(), "fake"), FakeImageClient)
+
+
+def test_tts_model_for_node_prefers_injected_then_resolves_own(monkeypatch):
+    spy = FakeTTSClient()
+    assert tts_model_for_node(NodeContext(tts_model=spy), "gpt-4o-mini-tts") is spy
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-construction-only")
+    assert isinstance(tts_model_for_node(NodeContext(), "gpt-4o-mini-tts"), OpenAITTSClient)
+    assert isinstance(tts_model_for_node(NodeContext(), "fake"), FakeTTSClient)

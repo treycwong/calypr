@@ -17,7 +17,6 @@ from __future__ import annotations
 from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
-from calypr_model import image_model_for
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 
@@ -31,6 +30,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    image_model_for_node,
     register,
 )
 
@@ -101,7 +101,7 @@ class ImageNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: ImageConfig, ctx: NodeContext) -> NodeFn:
-        client = image_model_for(cfg.model)
+        client = image_model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             raw = _prompt_from(state.get(cfg.prompt_channel))

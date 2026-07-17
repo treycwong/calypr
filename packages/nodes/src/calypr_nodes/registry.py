@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from calypr_dsl import StateChannel
-from calypr_model import ModelClient, model_for
+from calypr_model import ModelClient, image_model_for, model_for, tts_model_for
 from pydantic import BaseModel
 
 # A compiled node: reads the graph state, returns a partial state update.
@@ -40,11 +40,16 @@ class NodeContext:
 
     Carries the model client and, for an LLM node wired to Tool nodes, the bound tool
     schemas (`{name, description, input_schema}`) the compiler resolves from the graph.
+    `image_model`/`tts_model` are the same injection seam for the Image/Voice nodes (tests
+    inject a Fake client so the starter/template test matrix never makes a real, billed API
+    call regardless of the node's configured model — see `image_model_for_node`).
     KB retrievers and a credential vault are added in later phases.
     """
 
     model: ModelClient | None = None
     tools: list[dict] | None = None
+    image_model: Any | None = None
+    tts_model: Any | None = None
 
 
 @dataclass
@@ -169,3 +174,15 @@ def model_for_node(ctx: NodeContext, model_id: str) -> ModelClient:
     the node's *own* provider from its `model` id. This lets each LLM node use its own model
     (e.g. a cheap Responder + a strong Revisor), instead of one model for the whole graph."""
     return ctx.model if ctx.model is not None else model_for(model_id)
+
+
+def image_model_for_node(ctx: NodeContext, model_id: str):
+    """Resolve the image client for an Image node: the injected client (tests) if present,
+    otherwise the node's own provider from its `model` id. Mirrors `model_for_node`."""
+    return ctx.image_model if ctx.image_model is not None else image_model_for(model_id)
+
+
+def tts_model_for_node(ctx: NodeContext, model_id: str):
+    """Resolve the TTS client for a Voice node: the injected client (tests) if present,
+    otherwise the node's own provider from its `model` id. Mirrors `model_for_node`."""
+    return ctx.tts_model if ctx.tts_model is not None else tts_model_for(model_id)

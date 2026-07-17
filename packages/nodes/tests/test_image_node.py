@@ -31,7 +31,7 @@ async def test_image_node_no_prompt_is_noop():
     assert await run({"messages": []}) == {}
 
 
-async def test_image_node_style_specializes_prompt(monkeypatch):
+async def test_image_node_style_specializes_prompt():
     """`style` fixes the look: the model receives style+prompt, but the caption stays the raw
     request. This is what makes a specialized (e.g. anime) generator."""
     seen: dict = {}
@@ -43,16 +43,14 @@ async def test_image_node_style_specializes_prompt(monkeypatch):
 
             return ImageResult(images=[b"x"], usage=Usage(0, 0), b64=["eA=="])
 
-    monkeypatch.setattr("calypr_nodes.image.image_model_for", lambda _m: _Capture())
-    run = ImageNode.compile(
-        ImageConfig(model="fake", style="anime style, cel shading"), NodeContext()
-    )
+    ctx = NodeContext(image_model=_Capture())  # injected client (mirrors model_for_node)
+    run = ImageNode.compile(ImageConfig(model="gpt-image-2", style="anime style, cel shading"), ctx)
     update = await run({"messages": [HumanMessage(content="a dog")]})
     assert seen["prompt"] == "anime style, cel shading, a dog"  # style folded in for the model
     assert update["messages"][0].content.startswith("![a dog](")  # caption is the raw request
 
 
-async def test_image_node_style_placeholder(monkeypatch):
+async def test_image_node_style_placeholder():
     seen: dict = {}
 
     class _Capture:
@@ -62,10 +60,8 @@ async def test_image_node_style_placeholder(monkeypatch):
 
             return ImageResult(images=[b"x"], usage=Usage(0, 0), b64=["eA=="])
 
-    monkeypatch.setattr("calypr_nodes.image.image_model_for", lambda _m: _Capture())
-    run = ImageNode.compile(
-        ImageConfig(model="fake", style="a {prompt} in watercolor"), NodeContext()
-    )
+    ctx = NodeContext(image_model=_Capture())
+    run = ImageNode.compile(ImageConfig(model="gpt-image-2", style="a {prompt} in watercolor"), ctx)
     await run({"messages": [HumanMessage(content="fox")]})
     assert seen["prompt"] == "a fox in watercolor"
 

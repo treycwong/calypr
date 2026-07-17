@@ -22,9 +22,11 @@ from calypr_nodes.registry import (
     get_node,
     graph_channels,
     has_node,
+    image_model_for_node,
     model_for_node,
     parse_config,
     register,
+    tts_model_for_node,
 )
 from calypr_nodes.responder import ResponderConfig, ResponderNode
 from calypr_nodes.retriever import RetrieverConfig, RetrieverNode
@@ -50,6 +52,8 @@ __all__ = [
     "parse_config",
     "graph_channels",
     "model_for_node",
+    "image_model_for_node",
+    "tts_model_for_node",
     # node types + configs
     "InputNode",
     "InputConfig",

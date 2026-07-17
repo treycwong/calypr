@@ -8,7 +8,7 @@ import subprocess
 import pytest
 from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, STARTERS, TEMPLATES, validate_graph
-from calypr_model import FakeModelClient
+from calypr_model import FakeImageClient, FakeModelClient, FakeTTSClient
 from calypr_nodes import NodeContext
 from calypr_runtime import run
 
@@ -59,7 +59,12 @@ def test_starter_validates(graph):
 
 @pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
 async def test_starter_runs_with_fake_model(graph):
-    result = await run(graph, NodeContext(model=FakeModelClient()), "hello there")
+    # Image/TTS templates default to real (billed) models in production; inject Fake clients here
+    # so the whole starter matrix stays keyless/offline in CI regardless of each node's `model`.
+    ctx = NodeContext(
+        model=FakeModelClient(), image_model=FakeImageClient(), tts_model=FakeTTSClient()
+    )
+    result = await run(graph, ctx, "hello there")
     assert isinstance(result.get("output"), str)
     assert result["output"]
 

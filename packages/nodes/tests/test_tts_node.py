@@ -58,7 +58,7 @@ async def test_tts_node_meters_by_characters(monkeypatch):
     assert tokens and tokens[0]["text"].strip().startswith("[▶ abcdef](")
 
 
-async def test_tts_node_passes_instructions(monkeypatch):
+async def test_tts_node_passes_instructions():
     seen: dict = {}
 
     class _Capture:
@@ -70,10 +70,9 @@ async def test_tts_node_passes_instructions(monkeypatch):
                 audio=b"RIFF....", chars=len(text), content_type="audio/wav", b64="eA=="
             )
 
-    monkeypatch.setattr("calypr_nodes.tts.tts_model_for", lambda _m: _Capture())
+    ctx = NodeContext(tts_model=_Capture())  # injected client (mirrors model_for_node)
     run = TTSNode.compile(
-        TTSConfig(model="gpt-4o-mini-tts", voice="verse", instructions="calm and slow"),
-        NodeContext(),
+        TTSConfig(model="gpt-4o-mini-tts", voice="verse", instructions="calm and slow"), ctx
     )
     await run({"messages": [HumanMessage(content="hi")]})
     assert seen == {"voice": "verse", "instructions": "calm and slow"}
