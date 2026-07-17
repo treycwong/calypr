@@ -5,35 +5,42 @@ context. The visual canvas → LangGraph compile → ownable-Python round-trip i
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
 production** and the **RAG ingestion** next pass.
 
-## 🟡 Image + Voice (TTS) blocks — built (2026-07-17), NOT YET COMMITTED/MERGED
+## 🟢 Image + Voice (TTS) blocks — DONE (2026-07-18), merged + live in prod
 
-New media node type, generalized to two blocks + shared plumbing. All backend tests green (284
-passed, 4 skipped), ruff clean, web typecheck/lint clean. Uncommitted on `main` as of today.
+New media node type, generalized to two blocks + shared plumbing. Merged via PR #18 (squash,
+`b0342d5`) — Vercel + Railway both auto-deployed clean (no build/runtime errors; `/templates`
+verified end-to-end through `www.calypr.co` in prod).
 
-- [x] **Image node** (`packages/nodes/src/calypr_nodes/image.py`) — prompt → image via OpenAI
-  (`gpt-image-2` default; gpt-image-1/-1-mini/1.5 also selectable). `style` field lets a block be
-  specialized (e.g. always-anime) without an extra Agent node.
-- [x] **Voice/TTS node** (`packages/nodes/src/calypr_nodes/tts.py`) — text → speech via OpenAI
-  (`gpt-4o-mini-tts` default; tts-1/-hd also selectable). `instructions` field steers tone/pacing.
-  Metered by input character count (API returns no token usage).
+- [x] **Image node** (`packages/nodes/src/calypr_nodes/image.py`) — prompt → image via OpenAI,
+  defaults to **`gpt-image-2`** (real, billed — needs `OPENAI_API_KEY`); gpt-image-1/-1-mini/1.5
+  and a keyless `fake` preview also selectable. `style` field lets a block be specialized (e.g.
+  always-anime) without an extra Agent node.
+- [x] **Voice/TTS node** (`packages/nodes/src/calypr_nodes/tts.py`) — text → speech via OpenAI,
+  defaults to **`gpt-4o-mini-tts`** (real, billed); tts-1/-hd and `fake` also selectable.
+  `instructions` field steers tone/pacing. Metered by input character count (API returns no token
+  usage).
+- [x] **Templates now default to real models** (2026-07-18): the "Image generation" and "Text to
+  speech" starters use `gpt-image-2`/`gpt-4o-mini-tts` out of the box (switch to `fake` for a
+  keyless preview). To keep CI offline/free despite this, `NodeContext` gained injectable
+  `image_model`/`tts_model` fields (mirrors the existing chat-model seam) + `image_model_for_node`/
+  `tts_model_for_node` resolvers; the starter-matrix test injects Fake clients regardless of each
+  template's configured model.
 - [x] **Shared plumbing**: `calypr_storage` package (Vercel Blob upload, `data:` URI fallback when
   `BLOB_READ_WRITE_TOKEN` unset) + `packages/nodes/src/calypr_nodes/_assets.py::store_asset`
   (used by both nodes). `services/model` gained `image_client.py` / `tts_client.py` +
   `image_model_for` / `tts_model_for` factories, each with a keyless `Fake*Client` for CI.
 - [x] **Pricing**: `apps/api/src/calypr_api/pricing.py` — gpt-image-* (per-1M image-output tokens)
   and tts-1/-1-hd/gpt-4o-mini-tts (per-1M characters, proxied through `input_tokens`). Rates are
-  best-effort — **verify against OpenAI's live price page** before trusting margins.
+  best-effort — **verify against OpenAI's live price page** before trusting margins (open item).
 - [x] **Rendering**: `apps/web/src/components/Markdown.tsx` gained image (`![alt](url)`) and audio
   (`[label](audio-url)`) inline rules. New `ChatImage.tsx` (image + download) and `ChatAudio.tsx`
   (slim inline pill player — play/pause, scrubber, time, download). Both nodes emit **single-line**
-  captions (multi-line breaks the line-based Markdown parser — hit and fixed today).
-- [x] **Templates**: "Image generation" and "Text to speech" starters (keyless `fake` model,
-  Input→Image/TTS→Output). AI-assistant few-shots teach it the `style` and `instructions →
-  Agent-then-Voice` patterns.
-- [ ] **Commit + PR** this work (currently only in the working tree).
+  captions (multi-line breaks the line-based Markdown parser — hit and fixed pre-merge).
 - [ ] **Provision `BLOB_READ_WRITE_TOKEN`** (Vercel Blob store, public access) in Railway + local
-  `.env` — until then every image/audio asset falls back to inline `data:` URIs (bloats run state
-  and share-link persistence). See `apps/api/.env.example` for the exact vars.
+  `.env` — until then, since the templates now default to *real* models, every generated
+  image/audio asset falls back to inline `data:` URIs in prod (bloats run state and share-link
+  persistence). See `apps/api/.env.example` for the exact vars. **Now higher priority** than
+  before, since real generation is the out-of-the-box default.
 - [ ] **Verify gpt-image-2 / tts-1 / gpt-4o-mini-tts pricing** against OpenAI's current price page
   — `gpt-image-1` is already legacy/dropped from the page; rates were set fail-safe-high but
   unconfirmed.
