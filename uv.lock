@@ -13,6 +13,7 @@ members = [
     "calypr-nodes",
     "calypr-roundtrip",
     "calypr-runtime",
+    "calypr-storage",
 ]
 
 [manifest.dependency-groups]
@@ -231,6 +232,7 @@ source = { editable = "packages/nodes" }
 dependencies = [
     { name = "calypr-dsl" },
     { name = "calypr-model" },
+    { name = "calypr-storage" },
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "numpy" },
@@ -241,6 +243,7 @@ dependencies = [
 requires-dist = [
     { name = "calypr-dsl", editable = "packages/dsl" },
     { name = "calypr-model", editable = "services/model" },
+    { name = "calypr-storage", editable = "services/storage" },
     { name = "langchain-core", specifier = ">=0.3" },
     { name = "langgraph", specifier = ">=0.2" },
     { name = "numpy", specifier = ">=1.26" },
@@ -276,6 +279,17 @@ requires-dist = [
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
 ]
+
+[[package]]
+name = "calypr-storage"
+version = "0.0.0"
+source = { editable = "services/storage" }
+dependencies = [
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "httpx", specifier = ">=0.27" }]
 
 [[package]]
 name = "certifi"

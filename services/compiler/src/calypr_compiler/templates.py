@@ -453,6 +453,44 @@ def contract_review() -> GraphSpec:
     )
 
 
+def image_generation() -> GraphSpec:
+    """The thinnest image pipeline: a prompt in, a generated image out. The Image node streams a
+    Markdown image the playground renders inline. Defaults to `gpt-image-2` (needs
+    OPENAI_API_KEY) — switch the Image block to `fake` for a keyless 1×1 preview."""
+    return GraphSpec(
+        id="tpl-image-generation",
+        name="Image generation",
+        description="Turn each prompt into an image with gpt-image-2.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="image", type="image", config={"model": "gpt-image-2"}),
+            _output(),
+        ],
+        edges=_chain("in", "image", "out"),
+        entry="in",
+    )
+
+
+def text_to_speech() -> GraphSpec:
+    """The thinnest voice pipeline: text in, spoken audio out. The Voice node streams a Markdown
+    audio link the playground renders as a player. Defaults to `gpt-4o-mini-tts` (needs
+    OPENAI_API_KEY) — switch the Voice block to `fake` for a keyless silent-clip preview."""
+    return GraphSpec(
+        id="tpl-text-to-speech",
+        name="Text to speech",
+        description="Speak each message aloud with gpt-4o-mini-tts.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="tts", type="tts", config={"model": "gpt-4o-mini-tts"}),
+            _output(),
+        ],
+        edges=_chain("in", "tts", "out"),
+        entry="in",
+    )
+
+
 def trip_planner() -> GraphSpec:
     """Orchestrator–Worker: an orchestrator frames the trip, four specialists work in parallel
     (fan-out), and a synthesizer merges their suggestions into one itinerary (fan-in). Workers
@@ -532,6 +570,8 @@ TEMPLATES: list[GraphSpec] = [
     contract_review(),
     routing(),
     trip_planner(),
+    image_generation(),
+    text_to_speech(),
 ]
 
 # Everything the canvas gallery offers.

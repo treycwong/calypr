@@ -51,6 +51,23 @@ MODEL_PRICES: dict[str, ModelPrice] = {
     "o3": ModelPrice(2.00, 8.00),
     "o1-mini": ModelPrice(1.10, 4.40),
     "o1": ModelPrice(15.00, 60.00),
+    # --- OpenAI image models (verify against https://developers.openai.com/api/docs/pricing) ---
+    # Image generation is token-billed: input_per_1m = text-input tokens, output_per_1m = image
+    # OUTPUT tokens (image-INPUT tokens, used only for edits, aren't modelled here — v1 is
+    # generation-only). gpt-image-1 is legacy (dropped from the current price page); rate below is
+    # its historical image-output tier, kept fail-safe-high. Prefer gpt-image-1.5 / gpt-image-2.
+    "gpt-image-1-mini": ModelPrice(2.00, 8.00),
+    "gpt-image-1.5": ModelPrice(5.00, 32.00),
+    "gpt-image-2": ModelPrice(5.00, 30.00),
+    "gpt-image-1": ModelPrice(5.00, 40.00),
+    # --- OpenAI text-to-speech (verify against https://developers.openai.com/api/docs/pricing) ---
+    # TTS is billed per CHARACTER; the speech API returns no token usage, so the TTS node records
+    # the input character count in the `input_tokens` field and we price per 1M characters here
+    # (output rate 0). gpt-4o-mini-tts is token-billed upstream — the rate below is an approximate
+    # per-character proxy; re-check before relying on it for margins.
+    "tts-1-hd": ModelPrice(30.00, 0.00),
+    "tts-1": ModelPrice(15.00, 0.00),
+    "gpt-4o-mini-tts": ModelPrice(15.00, 0.00),
     # --- Moonshot / Kimi (verify against https://platform.moonshot.ai/docs/pricing) ---
     "kimi": ModelPrice(0.60, 2.50),
     "moonshot": ModelPrice(0.60, 2.50),

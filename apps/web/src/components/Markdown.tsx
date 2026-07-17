@@ -1,12 +1,19 @@
 import { Fragment, type ReactNode } from "react";
 
-// A tiny, dependency-free markdown renderer for chat output — bold, italic, inline code,
-// headings, and ordered/unordered lists. It builds React nodes (never dangerouslySetInnerHTML),
-// so it's XSS-safe by construction. Covers what agents typically emit; not a full CommonMark
-// implementation (no tables/blockquotes/links).
+import { ChatAudio } from "@/components/ChatAudio";
+import { ChatImage } from "@/components/ChatImage";
 
-// Inline: **bold**, `code`, *italic* / _italic_.
-const INLINE = /(\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_)/g;
+// A tiny, dependency-free markdown renderer for chat output — images, audio players, bold, italic,
+// inline code, headings, and ordered/unordered lists. It builds React nodes (never
+// dangerouslySetInnerHTML), so it's XSS-safe by construction. Covers what agents emit — including
+// the Image node's `![alt](url)` and the Voice node's `[label](audio-url)`; not full CommonMark.
+
+// Inline, in order: ![alt](url) image, [label](audio-url) audio player, **bold**, `code`,
+// *italic* / _italic_. The image (http/data:image) and audio (data:audio / audio-extension URL)
+// alternatives only accept media URLs, so nothing else slips into an <img>/<audio> src, and plain
+// text links stay untouched.
+const INLINE =
+  /(!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)|\[([^\]]*)\]\((data:audio\/[^)\s]+|https?:\/\/[^)\s]+\.(?:mp3|wav|opus|aac|flac|ogg|m4a)(?:\?[^)\s]*)?)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_)/g;
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -17,14 +24,17 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   while ((m = INLINE.exec(text)) !== null) {
     if (m.index > last) nodes.push(text.slice(last, m.index));
     const key = `${keyPrefix}-${i++}`;
-    if (m[2] !== undefined) nodes.push(<strong key={key}>{m[2]}</strong>);
-    else if (m[3] !== undefined)
+    if (m[3] !== undefined) nodes.push(<ChatImage key={key} src={m[3]} alt={m[2] ?? ""} />);
+    else if (m[5] !== undefined)
+      nodes.push(<ChatAudio key={key} src={m[5]} label={(m[4] ?? "").replace(/^▶\s*/, "")} />);
+    else if (m[6] !== undefined) nodes.push(<strong key={key}>{m[6]}</strong>);
+    else if (m[7] !== undefined)
       nodes.push(
         <code key={key} className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.85em]">
-          {m[3]}
+          {m[7]}
         </code>,
       );
-    else nodes.push(<em key={key}>{m[4] ?? m[5]}</em>);
+    else nodes.push(<em key={key}>{m[8] ?? m[9]}</em>);
     last = m.index + m[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));

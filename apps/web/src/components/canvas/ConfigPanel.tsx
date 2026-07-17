@@ -10,12 +10,17 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   type Branch,
   type CalyprNodeType,
+  IMAGE_MODEL_OPTIONS,
+  IMAGE_QUALITY_OPTIONS,
+  IMAGE_SIZE_OPTIONS,
   KNOWLEDGE_SOURCE_OPTIONS,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
   ROUTER_KIND_OPTIONS,
   TOOL_PROVIDER_OPTIONS,
+  TTS_MODEL_OPTIONS,
+  TTS_VOICE_OPTIONS,
 } from "@/lib/graph";
 
 type Setter = (patch: Record<string, unknown>) => void;
@@ -411,6 +416,121 @@ function RevisorFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function ImageFields({ config, set }: { config: Config; set: Setter }) {
+  const model = String(config.model ?? "gpt-image-2");
+  return (
+    <>
+      <SelectField
+        id="cfg-model"
+        label="Image model"
+        value={model}
+        options={IMAGE_MODEL_OPTIONS}
+        onChange={(v) => set({ model: v })}
+      />
+      <Field id="cfg-style" label="Style (applied to every prompt)">
+        <Textarea
+          id="cfg-style"
+          data-testid="cfg-style"
+          rows={2}
+          placeholder="e.g. anime style illustration, vibrant colors, cel shading"
+          value={String(config.style ?? "")}
+          onChange={(e) => set({ style: e.target.value })}
+        />
+        <p className="text-xs text-muted-foreground">
+          A fixed look prepended to whatever the user asks — so “a dog” comes out in this style.
+          Leave empty to use the prompt as-is; use <code>{"{prompt}"}</code> to place the user’s
+          text yourself.
+        </p>
+      </Field>
+      <SelectField
+        id="cfg-size"
+        label="Size"
+        value={String(config.size ?? "1024x1024")}
+        options={IMAGE_SIZE_OPTIONS}
+        onChange={(v) => set({ size: v })}
+      />
+      <SelectField
+        id="cfg-quality"
+        label="Quality"
+        value={String(config.quality ?? "auto")}
+        options={IMAGE_QUALITY_OPTIONS}
+        onChange={(v) => set({ quality: v })}
+      />
+      <Field id="cfg-n" label="Number of images">
+        <Input
+          id="cfg-n"
+          data-testid="cfg-n"
+          type="number"
+          min={1}
+          max={4}
+          value={Number(config.n ?? 1)}
+          onChange={(e) => set({ n: Number(e.target.value) })}
+        />
+      </Field>
+      <p className="text-xs text-muted-foreground">
+        Generates an image from the incoming prompt and shows it inline. The{" "}
+        <code>fake</code> model is keyless (a tiny preview); gpt-image-* call OpenAI and are
+        billed per run.
+      </p>
+    </>
+  );
+}
+
+function TTSFields({ config, set }: { config: Config; set: Setter }) {
+  const model = String(config.model ?? "gpt-4o-mini-tts");
+  const instructable = model === "gpt-4o-mini-tts";
+  return (
+    <>
+      <SelectField
+        id="cfg-model"
+        label="Voice model"
+        value={model}
+        options={TTS_MODEL_OPTIONS}
+        onChange={(v) => set({ model: v })}
+      />
+      <SelectField
+        id="cfg-voice"
+        label="Voice"
+        value={String(config.voice ?? "alloy")}
+        options={TTS_VOICE_OPTIONS}
+        onChange={(v) => set({ voice: v })}
+      />
+      {instructable ? (
+        <Field id="cfg-instructions" label="Voice instructions (tone, pacing)">
+          <Textarea
+            id="cfg-instructions"
+            data-testid="cfg-instructions"
+            rows={2}
+            placeholder="e.g. cheerful and upbeat, speaking quickly"
+            value={String(config.instructions ?? "")}
+            onChange={(e) => set({ instructions: e.target.value })}
+          />
+          <p className="text-xs text-muted-foreground">
+            Steers how every line is read. Only gpt-4o-mini-tts supports this.
+          </p>
+        </Field>
+      ) : (
+        <Field id="cfg-speed" label="Speed">
+          <Input
+            id="cfg-speed"
+            data-testid="cfg-speed"
+            type="number"
+            min={0.25}
+            max={4}
+            step={0.25}
+            value={Number(config.speed ?? 1)}
+            onChange={(e) => set({ speed: Number(e.target.value) })}
+          />
+        </Field>
+      )}
+      <p className="text-xs text-muted-foreground">
+        Speaks the incoming text and shows an audio player. The <code>fake</code> model is keyless
+        (a silent preview); the OpenAI voices call the API and are billed per run.
+      </p>
+    </>
+  );
+}
+
 export function ConfigPanel({
   node,
   onChange,
@@ -442,6 +562,8 @@ export function ConfigPanel({
       {type === "router" ? <RouterFields config={config} set={set} /> : null}
       {type === "evaluator" ? <EvaluatorFields config={config} set={set} /> : null}
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}
+      {type === "image" ? <ImageFields config={config} set={set} /> : null}
+      {type === "tts" ? <TTSFields config={config} set={set} /> : null}
 
       {type === "code" ? (
         <Field id="cfg-code" label="Python — a function body over `state`">

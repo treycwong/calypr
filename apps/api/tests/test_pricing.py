@@ -43,3 +43,24 @@ def test_unknown_model_fails_closed_to_most_expensive():
 def test_fake_model_is_free():
     assert pricing.cost_usd("fake", 1_000_000, 1_000_000) == 0.0
     assert pricing.price_for("fake").input_per_1m == 0.0
+
+
+def test_image_models_priced_not_fail_closed():
+    # gpt-image-1 must resolve to its own entry (image-output tier), not the fail-closed default.
+    assert pricing.price_for("gpt-image-1") is pricing.MODEL_PRICES["gpt-image-1"]
+    # 1M image-output tokens on gpt-image-1 = its output rate.
+    assert pricing.cost_usd("gpt-image-1", 0, 1_000_000) == pytest.approx(
+        pricing.MODEL_PRICES["gpt-image-1"].output_per_1m
+    )
+    # Longest-prefix: the mini id must not collapse onto the base gpt-image-1 entry.
+    assert pricing.price_for("gpt-image-1-mini") is pricing.MODEL_PRICES["gpt-image-1-mini"]
+    assert pricing.price_for("gpt-image-1.5") is pricing.MODEL_PRICES["gpt-image-1.5"]
+
+
+def test_tts_models_priced_per_character():
+    # TTS records the input character count in `input_tokens`; priced per 1M characters, output 0.
+    assert pricing.cost_usd("tts-1", 1_000_000, 0) == pytest.approx(15.0)
+    assert pricing.cost_usd("tts-1-hd", 1_000_000, 0) == pytest.approx(30.0)
+    assert pricing.price_for("gpt-4o-mini-tts") is pricing.MODEL_PRICES["gpt-4o-mini-tts"]
+    # tts-1-hd must win over tts-1 by longest-prefix.
+    assert pricing.price_for("tts-1-hd") is pricing.MODEL_PRICES["tts-1-hd"]
