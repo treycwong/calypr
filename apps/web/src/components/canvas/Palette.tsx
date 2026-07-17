@@ -8,6 +8,8 @@ const ITEMS: { type: CalyprNodeType; label: string; hint: string }[] = [
   { type: "agent", label: "Agent", hint: "LLM" },
   { type: "tool", label: "Tools", hint: "search" },
   { type: "retriever", label: "Knowledge", hint: "RAG" },
+  { type: "image", label: "Image", hint: "gpt-image" },
+  { type: "tts", label: "Voice", hint: "text→speech" },
   { type: "responder", label: "Responder", hint: "draft" },
   { type: "revisor", label: "Revisor", hint: "revise" },
   { type: "router", label: "Router", hint: "route" },

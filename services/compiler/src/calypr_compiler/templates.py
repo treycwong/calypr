@@ -453,6 +453,48 @@ def contract_review() -> GraphSpec:
     )
 
 
+def image_generation() -> GraphSpec:
+    """The thinnest image pipeline: a prompt in, a generated image out. The Image node streams a
+    Markdown image the playground renders inline. Defaults to the keyless `fake` model (a 1×1
+    preview) so it runs on the canvas without a key — switch the Image block to `gpt-image-2` for
+    real images (needs OPENAI_API_KEY)."""
+    return GraphSpec(
+        id="tpl-image-generation",
+        name="Image generation",
+        description="Turn each prompt into an image. Keyless preview — switch to gpt-image-2 "
+        "for real output.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="image", type="image", config={"model": "fake"}),
+            _output(),
+        ],
+        edges=_chain("in", "image", "out"),
+        entry="in",
+    )
+
+
+def text_to_speech() -> GraphSpec:
+    """The thinnest voice pipeline: text in, spoken audio out. The Voice node streams a Markdown
+    audio link the playground renders as a player. Defaults to the keyless `fake` model (a short
+    silent clip) so it runs on the canvas without a key — switch the Voice block to
+    `gpt-4o-mini-tts` for real speech (needs OPENAI_API_KEY)."""
+    return GraphSpec(
+        id="tpl-text-to-speech",
+        name="Text to speech",
+        description="Speak each message aloud. Keyless preview — switch to gpt-4o-mini-tts "
+        "for real audio.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="tts", type="tts", config={"model": "fake"}),
+            _output(),
+        ],
+        edges=_chain("in", "tts", "out"),
+        entry="in",
+    )
+
+
 def trip_planner() -> GraphSpec:
     """Orchestrator–Worker: an orchestrator frames the trip, four specialists work in parallel
     (fan-out), and a synthesizer merges their suggestions into one itinerary (fan-in). Workers
@@ -532,6 +574,8 @@ TEMPLATES: list[GraphSpec] = [
     contract_review(),
     routing(),
     trip_planner(),
+    image_generation(),
+    text_to_speech(),
 ]
 
 # Everything the canvas gallery offers.

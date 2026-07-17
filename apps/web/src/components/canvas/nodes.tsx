@@ -238,6 +238,32 @@ export function RevisorNodeView({ selected }: NodeProps) {
   );
 }
 
+export function ImageNodeView({ data, selected }: NodeProps) {
+  const config = (data as NodeData).config;
+  return (
+    <>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell title="Image" accent="bg-pink-500" selected={selected} testid="node-image">
+        {String(config.model ?? "gpt-image-2")} · {String(config.size ?? "1024x1024")}
+      </Shell>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </>
+  );
+}
+
+export function TTSNodeView({ data, selected }: NodeProps) {
+  const config = (data as NodeData).config;
+  return (
+    <>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell title="Voice" accent="bg-purple-500" selected={selected} testid="node-tts">
+        {String(config.model ?? "gpt-4o-mini-tts")} · {String(config.voice ?? "alloy")}
+      </Shell>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </>
+  );
+}
+
 export const nodeTypes = {
   input: InputNodeView,
   agent: AgentNodeView,
@@ -250,4 +276,6 @@ export const nodeTypes = {
   responder: ResponderNodeView,
   revisor: RevisorNodeView,
   retriever: RetrieverNodeView,
+  image: ImageNodeView,
+  tts: TTSNodeView,
 };

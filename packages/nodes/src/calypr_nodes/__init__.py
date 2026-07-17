@@ -7,6 +7,7 @@ from calypr_nodes._context import current_node_id
 from calypr_nodes.agent import AgentConfig, AgentNode
 from calypr_nodes.code import CodeConfig, CodeNode
 from calypr_nodes.evaluator import EvaluatorConfig, EvaluatorNode
+from calypr_nodes.image import ImageConfig, ImageNode
 from calypr_nodes.input import InputConfig, InputNode
 from calypr_nodes.memory import MemoryConfig, MemoryNode
 from calypr_nodes.output import OutputConfig, OutputNode
@@ -30,6 +31,7 @@ from calypr_nodes.retriever import RetrieverConfig, RetrieverNode
 from calypr_nodes.revisor import RevisorConfig, RevisorNode
 from calypr_nodes.router import Branch, RouterConfig, RouterNode
 from calypr_nodes.tool import ToolConfig, ToolsNode
+from calypr_nodes.tts import TTSConfig, TTSNode
 
 __all__ = [
     # execution context
@@ -62,10 +64,14 @@ __all__ = [
     "Branch",
     "EvaluatorNode",
     "EvaluatorConfig",
+    "ImageNode",
+    "ImageConfig",
     "MemoryNode",
     "MemoryConfig",
     "ToolsNode",
     "ToolConfig",
+    "TTSNode",
+    "TTSConfig",
     "ResponderNode",
     "ResponderConfig",
     "RevisorNode",

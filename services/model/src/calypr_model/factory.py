@@ -15,7 +15,9 @@ import os
 from calypr_model.anthropic_client import AnthropicModelClient
 from calypr_model.base import ModelClient
 from calypr_model.fake import FakeModelClient
+from calypr_model.image_client import FakeImageClient, OpenAIImageClient
 from calypr_model.openai_client import OpenAIModelClient
+from calypr_model.tts_client import FakeTTSClient, OpenAITTSClient
 
 # Current defaults (verify against provider docs; override via env if they move).
 _MOONSHOT_BASE_URL = "https://api.moonshot.ai/v1"
@@ -54,3 +56,22 @@ def model_for(model_id: str) -> ModelClient:
             base_url=os.environ.get("DEEPSEEK_BASE_URL", _DEEPSEEK_BASE_URL),
         )
     return OpenAIModelClient()
+
+
+def image_model_for(model_id: str) -> OpenAIImageClient | FakeImageClient:
+    """Resolve an image-generation model id to a client — the image-modality sibling of
+    `model_for`. `fake` → keyless deterministic client (tests/CI); everything else → OpenAI
+    (gpt-image-1). Kept separate from `model_for` because image generation is a different
+    provider surface (bytes + per-image usage), not the chat/stream protocol."""
+    if model_id.lower().strip() == "fake":
+        return FakeImageClient()
+    return OpenAIImageClient()
+
+
+def tts_model_for(model_id: str) -> OpenAITTSClient | FakeTTSClient:
+    """Resolve a text-to-speech model id to a client — the audio sibling of `image_model_for`.
+    `fake` → keyless deterministic client (tests/CI); everything else → OpenAI (gpt-4o-mini-tts,
+    tts-1, tts-1-hd). Separate seam because TTS returns bytes, not the chat/stream protocol."""
+    if model_id.lower().strip() == "fake":
+        return FakeTTSClient()
+    return OpenAITTSClient()

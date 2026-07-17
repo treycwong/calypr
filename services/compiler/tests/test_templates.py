@@ -36,6 +36,8 @@ def test_use_case_templates_present():
         "tpl-contract-review",
         "tpl-routing",
         "tpl-trip-planner",
+        "tpl-image-generation",
+        "tpl-text-to-speech",
     ]
 
 

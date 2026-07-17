@@ -15,7 +15,9 @@ export type CalyprNodeType =
   | "tool"
   | "responder"
   | "revisor"
-  | "retriever";
+  | "retriever"
+  | "image"
+  | "tts";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -33,6 +35,8 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   responder: "Responder",
   revisor: "Revisor",
   retriever: "Knowledge",
+  image: "Image",
+  tts: "Voice",
 };
 
 // 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
@@ -62,6 +66,51 @@ export const MODEL_OPTIONS = [
   { value: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini" },
   { value: "gpt-4o", label: "OpenAI · gpt-4o" },
   { value: "claude-sonnet-4-5", label: "Anthropic · claude-sonnet-4-5" },
+];
+
+// Image-generation models for the Image node. `fake` is key-free (a 1×1 PNG) for previewing the
+// wiring; the gpt-image-* models call OpenAI and are token-billed.
+export const IMAGE_MODEL_OPTIONS = [
+  { value: "fake", label: "Fake (no key, 1×1 preview)" },
+  { value: "gpt-image-2", label: "OpenAI · gpt-image-2" },
+  { value: "gpt-image-1.5", label: "OpenAI · gpt-image-1.5" },
+  { value: "gpt-image-1-mini", label: "OpenAI · gpt-image-1-mini" },
+  { value: "gpt-image-1", label: "OpenAI · gpt-image-1 (legacy)" },
+];
+
+// Sizes the gpt-image models support (plus `auto`). Portrait/landscape mirror the API's values.
+export const IMAGE_SIZE_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "1024x1024", label: "Square · 1024×1024" },
+  { value: "1024x1536", label: "Portrait · 1024×1536" },
+  { value: "1536x1024", label: "Landscape · 1536×1024" },
+];
+
+export const IMAGE_QUALITY_OPTIONS = [
+  { value: "auto", label: "Auto" },
+  { value: "low", label: "Low" },
+  { value: "medium", label: "Medium" },
+  { value: "high", label: "High" },
+];
+
+// Text-to-speech models for the Voice node. `fake` is key-free (a short silent clip) for previewing
+// the wiring; gpt-4o-mini-tts adds tone steering (`instructions`); tts-1/-hd are the classic voices.
+export const TTS_MODEL_OPTIONS = [
+  { value: "fake", label: "Fake (no key, silent preview)" },
+  { value: "gpt-4o-mini-tts", label: "OpenAI · gpt-4o-mini-tts" },
+  { value: "tts-1", label: "OpenAI · tts-1" },
+  { value: "tts-1-hd", label: "OpenAI · tts-1-hd" },
+];
+
+export const TTS_VOICE_OPTIONS = [
+  { value: "alloy", label: "Alloy" },
+  { value: "ash", label: "Ash" },
+  { value: "ballad", label: "Ballad" },
+  { value: "coral", label: "Coral" },
+  { value: "echo", label: "Echo" },
+  { value: "sage", label: "Sage" },
+  { value: "shimmer", label: "Shimmer" },
+  { value: "verse", label: "Verse" },
 ];
 
 // The Russell & Norvig agent ladder — a preset that scaffolds the prompt and (for
@@ -131,6 +180,24 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     embedding_model: "text-embedding-3-small",
     input_channel: "messages",
     output_channel: "context",
+  },
+  image: {
+    model: "gpt-image-2",
+    prompt_channel: "messages",
+    output_channel: "messages",
+    size: "1024x1024",
+    quality: "auto",
+    n: 1,
+    style: "",
+  },
+  tts: {
+    model: "gpt-4o-mini-tts",
+    voice: "alloy",
+    instructions: "",
+    speed: 1,
+    response_format: "mp3",
+    input_channel: "messages",
+    output_channel: "messages",
   },
 };
 

@@ -10,8 +10,14 @@ from __future__ import annotations
 import json
 from functools import lru_cache
 
-from calypr_compiler.templates import market_research, rag, routing
-from calypr_dsl import GraphSpec
+from calypr_compiler.templates import (
+    image_generation,
+    market_research,
+    rag,
+    routing,
+    text_to_speech,
+)
+from calypr_dsl import EdgeSpec, GraphSpec, NodeSpec
 from calypr_nodes import all_node_types
 
 #: Node types the assistant must never place on a user's canvas in v1 (§5.1): generated
@@ -23,7 +29,9 @@ MAX_REPAIRS = 2
 
 
 def _node_catalog() -> str:
-    """One line per registered node type: id, description, and its config fields.
+    """Per registered node type: id, description, and its config fields — each with its own
+    description when the schema carries one, so the model knows what a field is *for* (e.g. the
+    Image node's `style`), not just its type.
 
     Registry-derived so it always lists every node type (the `code` type included, then
     forbidden by rule)."""
@@ -33,17 +41,67 @@ def _node_catalog() -> str:
         schema = node_cls.config_model.model_json_schema()
         props = schema.get("properties", {})
         required = set(schema.get("required", []))
-        fields = []
+        field_lines = []
         for name, info in props.items():
             tag = "" if name in required else "?"
             typ = info.get("type", info.get("anyOf", info.get("$ref", "any")))
             if isinstance(typ, list):
                 typ = "/".join(str(t.get("type", "any")) for t in typ)
-            fields.append(f"{name}{tag}:{typ}")
+            line = f"      - {name}{tag}: {typ}"
+            field_desc = info.get("description")
+            if field_desc:
+                line += f" — {field_desc}"
+            field_lines.append(line)
         forbidden = " [FORBIDDEN in v1 — never use]" if type_id in FORBIDDEN_NODE_TYPES else ""
-        field_str = ", ".join(fields) if fields else "(no config)"
-        lines.append(f"- {type_id}: {desc}{forbidden}\n    config: {field_str}")
+        block = "\n".join(field_lines) if field_lines else "      (no config)"
+        lines.append(f"- {type_id}: {desc}{forbidden}\n    config:\n{block}")
     return "\n".join(lines)
+
+
+def _anime_image() -> GraphSpec:
+    """The image_generation template with the Image node's `style` set — the few-shot's worked
+    example of a specialized generator."""
+    spec = image_generation()
+    for node in spec.nodes:
+        if node.type == "image":
+            node.config["style"] = "anime style illustration, vibrant colors, cel shading"
+    return spec
+
+
+def _spoken_assistant() -> GraphSpec:
+    """Answer, then read the answer aloud: Input → Agent → Voice(TTS) → Output. Teaches the model
+    to chain a TTS node after an agent and to set `instructions` for a consistent voice."""
+    base = text_to_speech()
+    return GraphSpec(
+        id="tpl-spoken-assistant",
+        name="Spoken assistant",
+        description="Answer the user, then speak the answer aloud.",
+        state=base.state,
+        nodes=[
+            NodeSpec(id="in", type="input", config={"target_channel": "messages"}),
+            NodeSpec(
+                id="agent",
+                type="agent",
+                config={"model": "gpt-4o-mini", "system_prompt": "Answer concisely."},
+            ),
+            NodeSpec(
+                id="tts",
+                type="tts",
+                config={
+                    "model": "gpt-4o-mini-tts",
+                    "voice": "alloy",
+                    "instructions": "warm and friendly, natural pacing",
+                },
+            ),
+            NodeSpec(id="out", type="output", config={"source_channel": "messages"}),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tts"),
+            EdgeSpec(id="e3", source="tts", target="out"),
+        ],
+        entry="in",
+    )
 
 
 def _few_shots() -> str:
@@ -60,6 +118,12 @@ def _few_shots() -> str:
             "Research a market and write a report using a team of specialist agents.",
             market_research(),
         ),
+        # A *specialized* image generator: the Image node's `style` fixes the look, so any prompt
+        # ("a dog") comes out in that style — this teaches the model to set `style`, not add an
+        # Agent, when the user wants a consistent visual style.
+        ("Make an image generator that always produces anime-style art.", _anime_image()),
+        # Audio out: chain a Voice (TTS) node after an agent, with `instructions` for the voice.
+        ("Build an assistant that answers me and reads the answer out loud.", _spoken_assistant()),
     ]
     blocks = []
     for request, spec in pairs:
