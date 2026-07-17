@@ -36,11 +36,15 @@ verified end-to-end through `www.calypr.co` in prod).
   (`[label](audio-url)`) inline rules. New `ChatImage.tsx` (image + download) and `ChatAudio.tsx`
   (slim inline pill player — play/pause, scrubber, time, download). Both nodes emit **single-line**
   captions (multi-line breaks the line-based Markdown parser — hit and fixed pre-merge).
-- [ ] **Provision `BLOB_READ_WRITE_TOKEN`** (Vercel Blob store, public access) in Railway + local
-  `.env` — until then, since the templates now default to *real* models, every generated
-  image/audio asset falls back to inline `data:` URIs in prod (bloats run state and share-link
-  persistence). See `apps/api/.env.example` for the exact vars. **Now higher priority** than
-  before, since real generation is the out-of-the-box default.
+- [x] **Provision `BLOB_READ_WRITE_TOKEN`** (2026-07-18) — Vercel Blob store `calypr-media`
+  (public, Portland/PDX1, base URL `https://pr7homsjyvqypjew.public.blob.vercel-storage.com`)
+  created; token set in Railway `calypr-api` + redeployed. Verified in prod: Image + Voice runs on
+  the playground now return real blob URLs (not `data:` URIs).
+- [ ] **Blob lifecycle / garbage collection — NOT built.** Every generation writes a permanent
+  object (`runs/{png,mp3}/<uuid>.<ext>`); nothing ever deletes them — not on run/agent/share-link
+  deletion, and there's no TTL. Files (and Vercel Blob storage cost) accumulate indefinitely and
+  orphan on delete. Needs a cleanup story: e.g. delete blobs when their run/agent is deleted
+  (`calypr_storage` would grow a `delete_blob`), and/or a periodic sweep of unreferenced objects.
 - [ ] **Verify gpt-image-2 / tts-1 / gpt-4o-mini-tts pricing** against OpenAI's current price page
   — `gpt-image-1` is already legacy/dropped from the page; rates were set fail-safe-high but
   unconfirmed.
