@@ -491,6 +491,50 @@ def text_to_speech() -> GraphSpec:
     )
 
 
+def translate_and_speak() -> GraphSpec:
+    """Translate English into Chinese, then speak it: Input → Agent (translator) → Voice → Output.
+    The agent streams the 中文 transcript into the chat; the Voice node speaks that same
+    translation and renders a player below it — two outputs from one pass. The translator prompt
+    is output-only (no pinyin/explanations) because whatever the agent emits is exactly what gets
+    spoken."""
+    return GraphSpec(
+        id="tpl-translate-speak",
+        name="Translate & speak (EN → 中文)",
+        description="Translate each message into Chinese, show the transcript, and speak it aloud.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(
+                id="translator",
+                type="agent",
+                config={
+                    "model": "gpt-4o-mini",
+                    "label": "Translator",
+                    "system_prompt": (
+                        "You are a professional English→Chinese translator. Translate the user's "
+                        "message into Simplified Chinese (Mandarin). Output ONLY the translation "
+                        "— no pinyin, no explanations, no quotes."
+                    ),
+                },
+            ),
+            NodeSpec(
+                id="tts",
+                type="tts",
+                config={
+                    "model": "gpt-4o-mini-tts",
+                    "voice": "alloy",
+                    "instructions": (
+                        "native Mandarin Chinese pronunciation, clear and natural pacing"
+                    ),
+                },
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "translator", "tts", "out"),
+        entry="in",
+    )
+
+
 def trip_planner() -> GraphSpec:
     """Orchestrator–Worker: an orchestrator frames the trip, four specialists work in parallel
     (fan-out), and a synthesizer merges their suggestions into one itinerary (fan-in). Workers
@@ -572,6 +616,7 @@ TEMPLATES: list[GraphSpec] = [
     trip_planner(),
     image_generation(),
     text_to_speech(),
+    translate_and_speak(),
 ]
 
 # Everything the canvas gallery offers.

@@ -38,6 +38,7 @@ def test_use_case_templates_present():
         "tpl-trip-planner",
         "tpl-image-generation",
         "tpl-text-to-speech",
+        "tpl-translate-speak",
     ]
 
 
