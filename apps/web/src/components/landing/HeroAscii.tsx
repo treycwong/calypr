@@ -51,16 +51,17 @@ export function HeroAscii() {
       nodes = Array.from({ length: n }, () => ({
         x: Math.random(),
         y: Math.random(),
-        vx: (Math.random() - 0.5) * 0.02,
-        vy: (Math.random() - 0.5) * 0.02,
+        // Slow, calm drift — subtle enough to sit behind the headline without drawing the eye.
+        vx: (Math.random() - 0.5) * 0.008,
+        vy: (Math.random() - 0.5) * 0.008,
         z: 0.4 + Math.random() * 0.6,
       }));
-      pulses = Array.from({ length: Math.max(3, Math.floor(n / 6)) }, () => spawnPulse());
+      pulses = Array.from({ length: Math.max(2, Math.floor(n / 12)) }, () => spawnPulse());
     };
 
     const spawnPulse = (): Pulse => {
       const a = Math.floor(Math.random() * Math.max(1, nodes.length));
-      return { a, b: a, t: 1, speed: 0.15 + Math.random() * 0.35 };
+      return { a, b: a, t: 1, speed: 0.05 + Math.random() * 0.12 };
     };
 
     const resize = () => {
@@ -68,7 +69,8 @@ export function HeroAscii() {
       const rect = parent.getBoundingClientRect();
       width = Math.max(1, rect.width);
       height = Math.max(1, rect.height);
-      cell = width < 640 ? 20 : 16;
+      // Smaller monospace cells → finer, less chunky ASCII texture.
+      cell = width < 640 ? 17 : 13;
       canvas.width = Math.floor(width * dpr);
       canvas.height = Math.floor(height * dpr);
       canvas.style.width = `${width}px`;
@@ -103,7 +105,16 @@ export function HeroAscii() {
       }
     };
 
-    const render = () => {
+    let lastTime = performance.now();
+
+    const render = (now: number = performance.now()) => {
+      // Frame-rate independent: normalize to ~60fps units so a 120Hz display doesn't run the
+      // field twice as fast. Clamp the gap so returning to a backgrounded tab doesn't jump.
+      const dtMs = Math.min(Math.max(now - lastTime, 0), 50);
+      lastTime = now;
+      const dt = dtMs / 16.6667;
+      const dtSec = dtMs / 1000;
+
       intensity.fill(0);
       ctx.clearRect(0, 0, width, height);
 
@@ -147,23 +158,26 @@ export function HeroAscii() {
       // ASCII (not a few dots) while the graph edges/nodes sit brighter on top.
       for (let gy = 0; gy < rows; gy++) {
         for (let gx = 0; gx < cols; gx++) {
+          // Larger wavelength (smaller multipliers) → a slower, calmer shimmer.
           const ambient =
-            (Math.sin(gx * 0.18 + t) + Math.cos(gy * 0.2 - t * 0.7) + 2) / 4; // 0..1, slow
-          const v = intensity[gy * cols + gx] + ambient * 0.22;
+            (Math.sin(gx * 0.1 + t) + Math.cos(gy * 0.11 - t * 0.7) + 2) / 4; // 0..1, slow
+          const v = intensity[gy * cols + gx] + ambient * 0.16;
           if (v < 0.12) continue;
           const clamped = Math.min(1, v);
           const char = MESH[Math.min(MESH.length - 1, Math.floor(clamped * MESH.length))];
-          // Cool slate mesh; brighter cores (graph nodes/edges) tend toward white.
-          const a = 0.05 + clamped * 0.42;
-          const tone = 150 + Math.floor(clamped * 85);
+          // Cool slate mesh, kept subtle so it never competes with the headline; brighter cores
+          // (graph nodes/edges) tend toward white.
+          const a = 0.04 + clamped * 0.3;
+          const tone = 150 + Math.floor(clamped * 70);
           ctx.fillStyle = `rgba(${tone}, ${tone + 12}, ${tone + 30}, ${a})`;
           ctx.fillText(char, gx * cell, gy * cell);
         }
       }
 
-      // Signal pulses along edges — the "agentic" message-passing, in cyan on top.
+      // Signal pulses along edges — the "agentic" message-passing, in cyan on top. Fewer, slower,
+      // and dimmer than a plain particle demo so they read as an occasional flicker, not traffic.
       for (const p of pulses) {
-        p.t += p.speed * 0.016;
+        p.t += p.speed * dtSec;
         if (p.t >= 1 || p.a >= nodes.length) {
           // Pick a new edge: a random node → a nearby neighbor.
           const a = Math.floor(Math.random() * nodes.length);
@@ -189,12 +203,12 @@ export function HeroAscii() {
         const gx = gxOf(a) + (gxOf(b) - gxOf(a)) * p.t;
         const gy = gyOf(a) + (gyOf(b) - gyOf(a)) * p.t;
         const fade = Math.sin(p.t * Math.PI); // fade in/out along the trip
-        ctx.fillStyle = `rgba(34, 211, 238, ${0.2 + fade * 0.7})`;
+        ctx.fillStyle = `rgba(34, 211, 238, ${0.1 + fade * 0.45})`;
         ctx.fillText("+", gx * cell, gy * cell);
       }
 
-      t += reduced ? 0.002 : 0.01;
-      if (!reduced) step(1);
+      t += (reduced ? 0.001 : 0.005) * dt;
+      if (!reduced) step(dt);
       raf = requestAnimationFrame(render);
     };
 
