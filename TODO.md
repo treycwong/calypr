@@ -5,11 +5,12 @@ context. The visual canvas → LangGraph compile → ownable-Python round-trip i
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
 production** and the **RAG ingestion** next pass.
 
-## 🟢 Image + Voice (TTS) blocks — DONE (2026-07-18), merged + live in prod
+## 🟢 Image + Voice (TTS) + Upload blocks — DONE (2026-07-18), merged + confirmed live in prod
 
-New media node type, generalized to two blocks + shared plumbing. Merged via PR #18 (squash,
-`b0342d5`) — Vercel + Railway both auto-deployed clean (no build/runtime errors; `/templates`
-verified end-to-end through `www.calypr.co` in prod).
+Three new media/vision node types shipped in one day, each via its own PR, each auto-deployed by
+Vercel + Railway on merge. **User-confirmed working in production**, not just automated checks:
+Image + Voice tested live on the playground; Upload/vision tested live end-to-end (attach → real
+gpt-4o-mini review) after the blob-token incident below was fixed.
 
 - [x] **Image node** (`packages/nodes/src/calypr_nodes/image.py`) — prompt → image via OpenAI,
   defaults to **`gpt-image-2`** (real, billed — needs `OPENAI_API_KEY`); gpt-image-1/-1-mini/1.5
@@ -29,14 +30,14 @@ verified end-to-end through `www.calypr.co` in prod).
   composition, no new node types — Input → Agent (output-only Simplified-Chinese translator,
   gpt-4o-mini) → Voice (gpt-4o-mini-tts, Mandarin-pronunciation `instructions`) → Output. One run
   yields two outputs: the streamed 中文 transcript and the spoken translation's player below it.
-- [x] **Upload block + vision loopback** (2026-07-18): users attach an image (≤5MB, playground +
-  share page) and a vision Agent reviews it. `Msg.images` + OpenAI-adapter multimodal content
-  (Anthropic drops images — v1 limitation), `upload` node (state.images → image_url
-  HumanMessage), `POST /uploads` + `/share/{token}/uploads` (5MB cap, type allowlist, magic-byte
-  sniff; blob `uploads/` prefix), attach UI (paperclip + thumbnail chip) in both chats,
-  `RunRequest.images` (≤4, blob/data-URI-only — anti-SSRF). Templates: `tpl-label-reader` +
-  `tpl-alt-text` (Input → Upload → Agent → Output; the Agent prompt is the specialization).
-  Verified with a real gpt-4o-mini vision call locally.
+- [x] **Upload block + vision loopback** (2026-07-18, PR #20) — users attach an image (≤5MB,
+  playground + share page) and a vision Agent reviews it. `Msg.images` + OpenAI-adapter
+  multimodal content (Anthropic drops images — v1 limitation), `upload` node (state.images →
+  image_url HumanMessage), `POST /uploads` + `/share/{token}/uploads` (5MB cap, type allowlist,
+  magic-byte sniff; blob `uploads/` prefix), attach UI (paperclip + thumbnail chip) in both
+  chats, `RunRequest.images` (≤4, blob/data-URI-only — anti-SSRF). Templates: `tpl-label-reader`
+  + `tpl-alt-text` (Input → Upload → Agent → Output; the Agent prompt is the specialization).
+  **Confirmed working in production** by the user after the blob-token fix below.
 - [ ] **Vision/upload follow-ups**: Anthropic image blocks; per-token rate limiting on share
   uploads (abuse guard — currently only token-gated + 5MB); blob GC now also covers `uploads/`;
   non-image files (PDF receipts); multi-image attach UX.
