@@ -34,6 +34,7 @@ from calypr_nodes.revisor import RevisorConfig, RevisorNode
 from calypr_nodes.router import Branch, RouterConfig, RouterNode
 from calypr_nodes.tool import ToolConfig, ToolsNode
 from calypr_nodes.tts import TTSConfig, TTSNode
+from calypr_nodes.upload import UploadConfig, UploadNode
 
 __all__ = [
     # execution context
@@ -76,6 +77,8 @@ __all__ = [
     "ToolConfig",
     "TTSNode",
     "TTSConfig",
+    "UploadNode",
+    "UploadConfig",
     "ResponderNode",
     "ResponderConfig",
     "RevisorNode",

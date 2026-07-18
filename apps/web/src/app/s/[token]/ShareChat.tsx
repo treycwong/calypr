@@ -3,12 +3,18 @@
 import { useEffect, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
+import {
+  AttachButton,
+  AttachmentChip,
+  SentImages,
+  useAttachment,
+} from "@/components/AttachImage";
 import { Markdown } from "@/components/Markdown";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
-import { runShare } from "@/lib/api";
+import { runShare, uploadShareImage } from "@/lib/api";
 
-type ChatMsg = { role: "user" | "assistant"; text: string };
+type ChatMsg = { role: "user" | "assistant"; text: string; images?: string[] };
 
 // The refined, public-facing chat for a shared agent. Spec-free by design: it streams through
 // `runShare(token, …)` and never touches the graph. Styled as a floating glass terminal over
@@ -21,6 +27,10 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
   const [threadId] = useState(newThread);
   const logRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  const attach = useAttachment(
+    (file) => uploadShareImage(token, file),
+    (msg) => toast(msg, "error"),
+  );
 
   // Keep the newest message in view as tokens stream in.
   useEffect(() => {
@@ -30,9 +40,11 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
+    const images = attach.pending ? [attach.pending] : [];
+    attach.clear();
     setInput("");
     setBusy(true);
-    setMessages((m) => [...m, { role: "user", text }, { role: "assistant", text: "" }]);
+    setMessages((m) => [...m, { role: "user", text, images }, { role: "assistant", text: "" }]);
     const apply = (chunk: string) =>
       setMessages((m) => {
         const copy = [...m];
@@ -43,7 +55,7 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
     track("run_started", { share: true });
     let errored = false;
     try {
-      for await (const ev of runShare(token, text, threadId)) {
+      for await (const ev of runShare(token, text, threadId, images)) {
         if (ev.type === "token") apply(ev.text);
         else if (ev.type === "error") {
           errored = true;
@@ -108,7 +120,10 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
                     <span className="inline-block animate-pulse text-cyan-300/80">▋</span>
                   )
                 ) : (
-                  m.text
+                  <>
+                    <SentImages urls={m.images ?? []} />
+                    {m.text}
+                  </>
                 )}
               </div>
             </div>
@@ -118,12 +133,19 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
 
       {/* Composer */}
       <form
-        className="flex items-center gap-2 border-t border-white/5 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
+        className="border-t border-white/5 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3"
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
       >
+        {attach.pending ? (
+          <div className="mb-2">
+            <AttachmentChip url={attach.pending} onRemove={attach.clear} />
+          </div>
+        ) : null}
+        <div className="flex items-center gap-2">
+        <AttachButton onPick={attach.pick} uploading={attach.uploading} disabled={busy} />
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -147,6 +169,7 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
         >
           <ArrowUp className="h-5 w-5" strokeWidth={2.5} />
         </button>
+        </div>
       </form>
     </div>
   );

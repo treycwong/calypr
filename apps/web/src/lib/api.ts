@@ -52,10 +52,11 @@ export async function* runAgent(
   graph: GraphSpec,
   message: string,
   threadId: string,
+  images: string[] = [],
 ): AsyncGenerator<RunEvent> {
   yield* streamSSE<RunEvent>(
     "/api/runs",
-    { graph, message, thread_id: threadId },
+    { graph, message, thread_id: threadId, images },
     (status) => ({ type: "error", message: `run failed (${status})` }),
   );
 }
@@ -66,13 +67,43 @@ export async function* runShare(
   token: string,
   message: string,
   threadId: string,
+  images: string[] = [],
 ): AsyncGenerator<RunEvent> {
   yield* streamSSE<RunEvent>(
     `/api/s/${token}/runs`,
-    { message, thread_id: threadId },
+    { message, thread_id: threadId, images },
     (status) => ({ type: "error", message: `run failed (${status})` }),
   );
 }
+
+/** Client-side pre-checks for an image attachment (the API re-enforces both server-side). */
+export const MAX_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+export const UPLOAD_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+/** Upload an image for a vision run; returns its public blob URL. POSTs the raw file body —
+ * the proxy forwards it and the API enforces the 5MB cap + type/magic checks. */
+async function uploadTo(url: string, file: File): Promise<string> {
+  if (!UPLOAD_IMAGE_TYPES.includes(file.type)) {
+    throw new Error("Only PNG, JPEG, WebP, or GIF images are supported.");
+  }
+  if (file.size > MAX_UPLOAD_BYTES) {
+    throw new Error("Images must be 5MB or smaller.");
+  }
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": file.type },
+    body: file,
+  });
+  if (!res.ok) {
+    const detail = await res.json().then((j) => j.detail).catch(() => null);
+    throw new Error(typeof detail === "string" ? detail : `upload failed (${res.status})`);
+  }
+  return (await res.json()).url as string;
+}
+
+export const uploadImage = (file: File) => uploadTo("/api/uploads", file);
+export const uploadShareImage = (token: string, file: File) =>
+  uploadTo(`/api/s/${token}/uploads`, file);
 
 /** A minted share link (mirror of the API's `ShareInfo`). */
 export type ShareInfo = {

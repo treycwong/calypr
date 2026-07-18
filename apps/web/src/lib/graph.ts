@@ -17,7 +17,8 @@ export type CalyprNodeType =
   | "revisor"
   | "retriever"
   | "image"
-  | "tts";
+  | "tts"
+  | "upload";
 
 export type NodeData = {
   config: Record<string, unknown>;
@@ -37,6 +38,7 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   retriever: "Knowledge",
   image: "Image",
   tts: "Voice",
+  upload: "Upload",
 };
 
 // 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
@@ -198,6 +200,11 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     response_format: "mp3",
     input_channel: "messages",
     output_channel: "messages",
+  },
+  upload: {
+    images_channel: "images",
+    target_channel: "messages",
+    max_images: 4,
   },
 };
 

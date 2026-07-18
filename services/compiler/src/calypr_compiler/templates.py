@@ -535,6 +535,53 @@ def translate_and_speak() -> GraphSpec:
     )
 
 
+def _vision_reviewer(
+    tpl_id: str, name: str, description: str, agent_label: str, system_prompt: str
+) -> GraphSpec:
+    """A vision-review pipeline: Input → Upload → Agent → Output. The Upload block brings the
+    user's attached image into the conversation; the Agent's system prompt decides *how* the
+    image is reviewed — that's the whole point of these templates sharing one shape."""
+    return GraphSpec(
+        id=tpl_id,
+        name=name,
+        description=description,
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="upload", type="upload", config={}),
+            _role_agent("reviewer", system_prompt, label=agent_label),
+            _output(),
+        ],
+        edges=_chain("in", "upload", "reviewer", "out"),
+        entry="in",
+    )
+
+
+def label_reader() -> GraphSpec:
+    return _vision_reviewer(
+        "tpl-label-reader",
+        "Label & receipt reader",
+        "Attach a food label, receipt, or document photo and get the key facts extracted.",
+        "Reviewer",
+        "You are a document reviewer. Analyse the attached image — a nutrition label, receipt, "
+        "or document photo — and extract the key facts as a short structured summary (use bullet "
+        "points; include totals, dates, and named items verbatim). If no image is attached, say "
+        "so plainly and ask for one.",
+    )
+
+
+def alt_text() -> GraphSpec:
+    return _vision_reviewer(
+        "tpl-alt-text",
+        "Generate alt text",
+        "Attach an image and get concise, screen-reader-ready alt text back.",
+        "Alt-text writer",
+        "Write concise, descriptive alt text for the attached image, for screen-reader users. "
+        "One or two sentences, factual, no 'image of'/'picture of' prefix; include any visible "
+        "text verbatim. Output only the alt text. If no image is attached, say so plainly.",
+    )
+
+
 def trip_planner() -> GraphSpec:
     """Orchestrator–Worker: an orchestrator frames the trip, four specialists work in parallel
     (fan-out), and a synthesizer merges their suggestions into one itinerary (fan-in). Workers
@@ -617,6 +664,8 @@ TEMPLATES: list[GraphSpec] = [
     image_generation(),
     text_to_speech(),
     translate_and_speak(),
+    label_reader(),
+    alt_text(),
 ]
 
 # Everything the canvas gallery offers.

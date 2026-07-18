@@ -69,6 +69,7 @@ async def create_run(
                 req.graph,
                 ctx,
                 req.message,
+                images=req.images,
                 thread_id=req.thread_id,
                 # Read at call time (not import time) so a lifespan swap to the durable
                 # Postgres checkpointer is visible here (WEEK2 plan §C1).

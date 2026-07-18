@@ -6,12 +6,18 @@ import type { GraphSpec } from "@calypr/dsl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  AttachButton,
+  AttachmentChip,
+  SentImages,
+  useAttachment,
+} from "@/components/AttachImage";
 import { Markdown } from "@/components/Markdown";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
-import { runAgent } from "@/lib/api";
+import { runAgent, uploadImage } from "@/lib/api";
 
-type ChatMsg = { role: "user" | "assistant"; text: string };
+type ChatMsg = { role: "user" | "assistant"; text: string; images?: string[] };
 
 export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -20,6 +26,7 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
   const newThread = () => `web-${Math.random().toString(36).slice(2)}`;
   const [threadId, setThreadId] = useState(newThread);
   const { toast } = useToast();
+  const attach = useAttachment(uploadImage, (msg) => toast(msg, "error"));
 
   // Start a fresh conversation thread — clears history (and recovers a thread that a tool
   // error may have left mid-tool-call).
@@ -27,14 +34,17 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
     if (busy) return;
     setMessages([]);
     setThreadId(newThread());
+    attach.clear();
   }
 
   async function send() {
     const text = input.trim();
     if (!text || busy) return;
+    const images = attach.pending ? [attach.pending] : [];
+    attach.clear();
     setInput("");
     setBusy(true);
-    setMessages((m) => [...m, { role: "user", text }, { role: "assistant", text: "" }]);
+    setMessages((m) => [...m, { role: "user", text, images }, { role: "assistant", text: "" }]);
     const apply = (chunk: string) =>
       setMessages((m) => {
         const copy = [...m];
@@ -46,7 +56,7 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
     track("run_started", { nodes: graph.nodes?.length ?? 0 });
     let errored = false;
     try {
-      for await (const ev of runAgent(graph, text, threadId)) {
+      for await (const ev of runAgent(graph, text, threadId, images)) {
         if (ev.type === "token") apply(ev.text);
         else if (ev.type === "error") {
           errored = true;
@@ -100,29 +110,40 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
                   ""
                 )
               ) : (
-                m.text
+                <>
+                  <SentImages urls={m.images ?? []} />
+                  {m.text}
+                </>
               )}
             </div>
           </div>
         ))}
       </div>
       <form
-        className="flex gap-2 border-t border-border p-3"
+        className="border-t border-border p-3"
         onSubmit={(e) => {
           e.preventDefault();
           void send();
         }}
       >
-        <Input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Message your agent…"
-          data-testid="chat-input"
-          disabled={busy}
-        />
-        <Button type="submit" disabled={busy} data-testid="chat-send">
-          Send
-        </Button>
+        {attach.pending ? (
+          <div className="mb-2">
+            <AttachmentChip url={attach.pending} onRemove={attach.clear} />
+          </div>
+        ) : null}
+        <div className="flex gap-2">
+          <AttachButton onPick={attach.pick} uploading={attach.uploading} disabled={busy} />
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Message your agent…"
+            data-testid="chat-input"
+            disabled={busy}
+          />
+          <Button type="submit" disabled={busy} data-testid="chat-send">
+            Send
+          </Button>
+        </div>
       </form>
     </div>
   );

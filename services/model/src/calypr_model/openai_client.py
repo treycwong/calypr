@@ -23,7 +23,17 @@ def _to_openai(messages: list[Msg], system: str) -> list[dict]:
         if m.role == Role.system:
             out.append({"role": "system", "content": m.content})
         elif m.role == Role.user:
-            out.append({"role": "user", "content": m.content})
+            if m.images:
+                # Vision: text + image_url parts (the Chat Completions multimodal shape).
+                parts: list[dict] = []
+                if m.content:
+                    parts.append({"type": "text", "text": m.content})
+                parts.extend(
+                    {"type": "image_url", "image_url": {"url": url}} for url in m.images
+                )
+                out.append({"role": "user", "content": parts})
+            else:
+                out.append({"role": "user", "content": m.content})
         elif m.role == Role.assistant:
             msg: dict = {"role": "assistant", "content": m.content or None}
             if m.tool_calls:
