@@ -29,6 +29,17 @@ verified end-to-end through `www.calypr.co` in prod).
   composition, no new node types — Input → Agent (output-only Simplified-Chinese translator,
   gpt-4o-mini) → Voice (gpt-4o-mini-tts, Mandarin-pronunciation `instructions`) → Output. One run
   yields two outputs: the streamed 中文 transcript and the spoken translation's player below it.
+- [x] **Upload block + vision loopback** (2026-07-18): users attach an image (≤5MB, playground +
+  share page) and a vision Agent reviews it. `Msg.images` + OpenAI-adapter multimodal content
+  (Anthropic drops images — v1 limitation), `upload` node (state.images → image_url
+  HumanMessage), `POST /uploads` + `/share/{token}/uploads` (5MB cap, type allowlist, magic-byte
+  sniff; blob `uploads/` prefix), attach UI (paperclip + thumbnail chip) in both chats,
+  `RunRequest.images` (≤4, blob/data-URI-only — anti-SSRF). Templates: `tpl-label-reader` +
+  `tpl-alt-text` (Input → Upload → Agent → Output; the Agent prompt is the specialization).
+  Verified with a real gpt-4o-mini vision call locally.
+- [ ] **Vision/upload follow-ups**: Anthropic image blocks; per-token rate limiting on share
+  uploads (abuse guard — currently only token-gated + 5MB); blob GC now also covers `uploads/`;
+  non-image files (PDF receipts); multi-image attach UX.
 - [x] **Shared plumbing**: `calypr_storage` package (Vercel Blob upload, `data:` URI fallback when
   `BLOB_READ_WRITE_TOKEN` unset) + `packages/nodes/src/calypr_nodes/_assets.py::store_asset`
   (used by both nodes). `services/model` gained `image_client.py` / `tts_client.py` +

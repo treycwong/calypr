@@ -39,6 +39,8 @@ def test_use_case_templates_present():
         "tpl-image-generation",
         "tpl-text-to-speech",
         "tpl-translate-speak",
+        "tpl-label-reader",
+        "tpl-alt-text",
     ]
 
 

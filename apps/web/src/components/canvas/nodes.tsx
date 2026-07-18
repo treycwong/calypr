@@ -264,6 +264,19 @@ export function TTSNodeView({ data, selected }: NodeProps) {
   );
 }
 
+export function UploadNodeView({ data, selected }: NodeProps) {
+  const max = (data as NodeData).config.max_images ?? 4;
+  return (
+    <>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell title="Upload" accent="bg-orange-400" selected={selected} testid="node-upload">
+        image in · up to {String(max)}
+      </Shell>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </>
+  );
+}
+
 export const nodeTypes = {
   input: InputNodeView,
   agent: AgentNodeView,
@@ -278,4 +291,5 @@ export const nodeTypes = {
   retriever: RetrieverNodeView,
   image: ImageNodeView,
   tts: TTSNodeView,
+  upload: UploadNodeView,
 };

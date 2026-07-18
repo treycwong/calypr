@@ -115,6 +115,7 @@ async def create_share_run(token: str, req: ShareRunRequest) -> StreamingRespons
                 spec,
                 ctx,
                 req.message,
+                images=req.images,
                 thread_id=thread_id,
                 checkpointer=engine.checkpointer,  # call-time read (durable saver if swapped in)
             ):

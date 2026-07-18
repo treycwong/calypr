@@ -32,12 +32,27 @@ def text_of(message: BaseMessage) -> str:
     return str(content)
 
 
+def images_of(message: BaseMessage) -> list[str]:
+    """Collect image URLs from a message's content blocks (the langchain multimodal shape:
+    `{"type": "image_url", "image_url": {"url": …}}`). Plain-string content → no images."""
+    content = message.content
+    if not isinstance(content, list):
+        return []
+    urls: list[str] = []
+    for block in content:
+        if isinstance(block, dict) and block.get("type") == "image_url":
+            url = (block.get("image_url") or {}).get("url")
+            if url:
+                urls.append(url)
+    return urls
+
+
 def lc_to_msgs(messages: list[BaseMessage]) -> list[Msg]:
     """Convert LangGraph message state into provider-neutral `Msg`s."""
     out: list[Msg] = []
     for m in messages:
         if isinstance(m, HumanMessage):
-            out.append(Msg(role=Role.user, content=text_of(m)))
+            out.append(Msg(role=Role.user, content=text_of(m), images=images_of(m)))
         elif isinstance(m, SystemMessage):
             out.append(Msg(role=Role.system, content=text_of(m)))
         elif isinstance(m, AIMessage):

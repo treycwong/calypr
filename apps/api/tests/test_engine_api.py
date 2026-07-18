@@ -90,7 +90,9 @@ def test_templates_lists_frameworks_and_use_case_templates():
     assert by_kind["tpl-image-generation"] == "template"
     assert by_kind["tpl-text-to-speech"] == "template"
     assert by_kind["tpl-translate-speak"] == "template"
-    assert len(starters) == 17  # 9 frameworks + 8 templates
+    assert by_kind["tpl-label-reader"] == "template"
+    assert by_kind["tpl-alt-text"] == "template"
+    assert len(starters) == 19  # 9 frameworks + 10 templates
     # each carries a full, compilable graph
     first = starters[0]
     assert first["graph"]["entry"]

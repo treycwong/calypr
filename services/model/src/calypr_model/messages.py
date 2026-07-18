@@ -30,3 +30,7 @@ class Msg:
     # assistant turns may carry tool calls; tool turns carry the id they answer.
     tool_calls: list[ToolCallRequest] = field(default_factory=list)
     tool_call_id: str | None = None
+    # user turns may attach images (public URLs or data: URIs) for vision models. `content`
+    # stays a plain str so text-only consumers are untouched; adapters that support vision
+    # (OpenAI) build multimodal content from this, others ignore it.
+    images: list[str] = field(default_factory=list)

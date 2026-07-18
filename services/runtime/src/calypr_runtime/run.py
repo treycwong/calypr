@@ -38,17 +38,27 @@ def _config(thread_id: str | None) -> dict:
     }
 
 
+def _initial_state(user_input: str, images: list[str] | None) -> dict[str, Any]:
+    """Seed state for one turn. `images` (uploaded attachment URLs) is only included when
+    present so graphs without an Upload node see exactly the state they always did."""
+    state: dict[str, Any] = {"input": user_input}
+    if images:
+        state["images"] = images
+    return state
+
+
 async def run(
     spec: GraphSpec,
     ctx: NodeContext,
     user_input: str,
     *,
+    images: list[str] | None = None,
     thread_id: str | None = None,
     checkpointer: Any = None,
 ) -> dict[str, Any]:
     """Compile + run to completion; return the final state."""
     compiled = compile_graph(spec, ctx, checkpointer=checkpointer or InMemorySaver())
-    return await compiled.ainvoke({"input": user_input}, _config(thread_id))
+    return await compiled.ainvoke(_initial_state(user_input, images), _config(thread_id))
 
 
 async def run_stream(
@@ -56,6 +66,7 @@ async def run_stream(
     ctx: NodeContext,
     user_input: str,
     *,
+    images: list[str] | None = None,
     thread_id: str | None = None,
     checkpointer: Any = None,
 ) -> AsyncIterator[RunEvent]:
@@ -64,7 +75,7 @@ async def run_stream(
     last_state: dict[str, Any] = {}
     try:
         async for mode, chunk in compiled.astream(
-            {"input": user_input}, _config(thread_id), stream_mode=["custom", "values"]
+            _initial_state(user_input, images), _config(thread_id), stream_mode=["custom", "values"]
         ):
             if mode == "custom":
                 kind = chunk.get("type")

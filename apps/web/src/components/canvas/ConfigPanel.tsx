@@ -531,6 +531,29 @@ function TTSFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function UploadFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <Field id="cfg-max-images" label="Max images per message">
+        <Input
+          id="cfg-max-images"
+          data-testid="cfg-max-images"
+          type="number"
+          min={1}
+          max={4}
+          value={Number(config.max_images ?? 4)}
+          onChange={(e) => set({ max_images: Number(e.target.value) })}
+        />
+      </Field>
+      <p className="text-xs text-muted-foreground">
+        Lets the user attach an image (≤5MB — label, receipt, screenshot) in the chat; a
+        downstream Agent on a vision model (gpt-4o, gpt-4o-mini) reviews it. Without an
+        attachment this block passes through unchanged.
+      </p>
+    </>
+  );
+}
+
 export function ConfigPanel({
   node,
   onChange,
@@ -564,6 +587,7 @@ export function ConfigPanel({
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}
       {type === "image" ? <ImageFields config={config} set={set} /> : null}
       {type === "tts" ? <TTSFields config={config} set={set} /> : null}
+      {type === "upload" ? <UploadFields config={config} set={set} /> : null}
 
       {type === "code" ? (
         <Field id="cfg-code" label="Python — a function body over `state`">

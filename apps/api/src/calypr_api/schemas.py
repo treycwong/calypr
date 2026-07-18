@@ -8,7 +8,24 @@ from typing import Literal
 
 from calypr_compiler import Issue
 from calypr_dsl import GraphSpec
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+#: Attachment URLs a run may carry: our own blob store or an inline image data URI. Rejecting
+#: arbitrary URLs keeps runs from hotlinking/SSRF-ing third-party hosts through the vision path.
+_MAX_RUN_IMAGES = 4
+
+
+def _validate_run_images(images: list[str]) -> list[str]:
+    if len(images) > _MAX_RUN_IMAGES:
+        raise ValueError(f"at most {_MAX_RUN_IMAGES} images per run")
+    for url in images:
+        ok = (
+            url.startswith("data:image/")
+            or (url.startswith("https://") and ".blob.vercel-storage.com/" in url)
+        )
+        if not ok:
+            raise ValueError("image URLs must be uploads (blob storage) or data:image/ URIs")
+    return images
 
 
 class CompileResponse(BaseModel):
@@ -26,6 +43,13 @@ class RunRequest(BaseModel):
     thread_id: str | None = None
     # Optional: when the playground runs a saved agent, its id lets metering attribute the run.
     agent_id: str | None = None
+    # Uploaded attachment URLs for a vision run (seeded into state.images; see the Upload node).
+    images: list[str] = []
+
+    @field_validator("images")
+    @classmethod
+    def _images_ok(cls, v: list[str]) -> list[str]:
+        return _validate_run_images(v)
 
 
 class AssistMessage(BaseModel):
@@ -85,6 +109,12 @@ class ShareRunRequest(BaseModel):
 
     message: str
     thread_id: str | None = None
+    images: list[str] = []
+
+    @field_validator("images")
+    @classmethod
+    def _images_ok(cls, v: list[str]) -> list[str]:
+        return _validate_run_images(v)
 
 
 class WorkspaceInfo(BaseModel):

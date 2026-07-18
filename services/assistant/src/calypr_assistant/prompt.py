@@ -12,6 +12,7 @@ from functools import lru_cache
 
 from calypr_compiler.templates import (
     image_generation,
+    label_reader,
     market_research,
     rag,
     routing,
@@ -124,6 +125,8 @@ def _few_shots() -> str:
         ("Make an image generator that always produces anime-style art.", _anime_image()),
         # Audio out: chain a Voice (TTS) node after an agent, with `instructions` for the voice.
         ("Build an assistant that answers me and reads the answer out loud.", _spoken_assistant()),
+        # Image in: an Upload block before the agent lets a vision model review attachments.
+        ("Build an agent I can send receipts to and it itemises them.", label_reader()),
     ]
     blocks = []
     for request, spec in pairs:
