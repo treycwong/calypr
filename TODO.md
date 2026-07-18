@@ -25,6 +25,10 @@ verified end-to-end through `www.calypr.co` in prod).
   `image_model`/`tts_model` fields (mirrors the existing chat-model seam) + `image_model_for_node`/
   `tts_model_for_node` resolvers; the starter-matrix test injects Fake clients regardless of each
   template's configured model.
+- [x] **"Translate & speak (EN → 中文)" template** (2026-07-18, `tpl-translate-speak`): pure
+  composition, no new node types — Input → Agent (output-only Simplified-Chinese translator,
+  gpt-4o-mini) → Voice (gpt-4o-mini-tts, Mandarin-pronunciation `instructions`) → Output. One run
+  yields two outputs: the streamed 中文 transcript and the spoken translation's player below it.
 - [x] **Shared plumbing**: `calypr_storage` package (Vercel Blob upload, `data:` URI fallback when
   `BLOB_READ_WRITE_TOKEN` unset) + `packages/nodes/src/calypr_nodes/_assets.py::store_asset`
   (used by both nodes). `services/model` gained `image_client.py` / `tts_client.py` +
