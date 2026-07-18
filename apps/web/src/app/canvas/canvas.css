@@ -39,27 +39,27 @@
   fill: var(--foreground);
 }
 
-/* Active-node glow while a run executes: the amber ring set inline in nodes.tsx breathes so the
-   currently-running node reads as "live". Keyframe drives the box-shadow the Tailwind
-   `animate-[nodePulse_…]` utility references. */
+/* Active-node glow while a run executes: the neon-blue (brand cyan) ring set inline in nodes.tsx
+   breathes so the currently-running node reads as "live". Keyframe drives the box-shadow the
+   Tailwind `animate-[nodePulse_…]` utility references. */
 @keyframes nodePulse {
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgb(251 191 36),
-      0 0 22px -4px rgb(251 191 36 / 0.55);
+      0 0 0 1px rgb(34 211 238),
+      0 0 22px -4px rgb(34 211 238 / 0.55);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgb(251 191 36),
-      0 0 30px 2px rgb(251 191 36 / 0.85);
+      0 0 0 1px rgb(34 211 238),
+      0 0 30px 2px rgb(34 211 238 / 0.9);
   }
 }
 
-/* The connector feeding the active node uses React Flow's built-in `animated` dash flow; brighten
-   its stroke so the marching-ants are clearly visible on the dark canvas. */
+/* The connector feeding the active node uses React Flow's built-in `animated` dash flow; brand
+   cyan stroke so the marching-ants are clearly visible on the dark canvas. */
 .react-flow__edge.edge-active .react-flow__edge-path {
-  stroke: rgb(251 191 36);
+  stroke: rgb(34 211 238);
   stroke-width: 2;
 }
 .react-flow__edge.edge-done .react-flow__edge-path {

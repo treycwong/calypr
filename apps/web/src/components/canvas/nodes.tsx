@@ -11,7 +11,7 @@ const handleStyle = { width: 10, height: 10 };
 // `nodePulse`); `done`/`error` settle to a persistent ring until the next run clears them.
 const STATUS_CLASS: Record<NodeStatus, string> = {
   active:
-    "border-amber-400 shadow-[0_0_0_1px_rgb(251_191_36),0_0_26px_-2px_rgb(251_191_36/0.7)] animate-[nodePulse_1.2s_ease-in-out_infinite]",
+    "border-cyan-400 shadow-[0_0_0_1px_rgb(34_211_238),0_0_26px_-2px_rgb(34_211_238/0.7)] animate-[nodePulse_1.2s_ease-in-out_infinite]",
   done: "border-emerald-500/60 shadow-[0_0_0_1px_rgb(16_185_129/0.4)]",
   error: "border-red-500 shadow-[0_0_0_1px_rgb(239_68_68/0.6)]",
 };
