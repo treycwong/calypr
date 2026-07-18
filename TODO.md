@@ -51,10 +51,13 @@ verified end-to-end through `www.calypr.co` in prod).
   (`[label](audio-url)`) inline rules. New `ChatImage.tsx` (image + download) and `ChatAudio.tsx`
   (slim inline pill player — play/pause, scrubber, time, download). Both nodes emit **single-line**
   captions (multi-line breaks the line-based Markdown parser — hit and fixed pre-merge).
-- [x] **Provision `BLOB_READ_WRITE_TOKEN`** (2026-07-18) — Vercel Blob store `calypr-media`
-  (public, Portland/PDX1, base URL `https://pr7homsjyvqypjew.public.blob.vercel-storage.com`)
-  created; token set in Railway `calypr-api` + redeployed. Verified in prod: Image + Voice runs on
-  the playground now return real blob URLs (not `data:` URIs).
+- [x] **Provision `BLOB_READ_WRITE_TOKEN`** (2026-07-18) — Vercel Blob store (public,
+  Portland/PDX1, base URL `https://pr7homsjyvqypjew.public.blob.vercel-storage.com`); token set
+  in Railway `calypr-api`. **Incident (fixed same day):** the token was pasted with its
+  `.env`-style double quotes, so Vercel 403'd every upload and media silently fell back to
+  `data:` URIs — the earlier "blob URLs verified" claim was wrong. Fixed the Railway value and
+  hardened `put_blob` to strip stray quotes/whitespace (regression test added). Verified for
+  real: prod `POST /uploads` returns a public blob URL that serves 200.
 - [ ] **Blob lifecycle / garbage collection — NOT built.** Every generation writes a permanent
   object (`runs/{png,mp3}/<uuid>.<ext>`); nothing ever deletes them — not on run/agent/share-link
   deletion, and there's no TTL. Files (and Vercel Blob storage cost) accumulate indefinitely and

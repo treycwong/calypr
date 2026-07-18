@@ -44,7 +44,9 @@ async def put_blob(
 
     Raises `BlobError` if `BLOB_READ_WRITE_TOKEN` is unset or the API rejects the upload.
     """
-    auth = token or os.environ.get(_TOKEN_ENV)
+    # Strip whitespace and stray quotes — pasting the `.env`-style snippet (`"vercel_blob_rw_…"`)
+    # into a dashboard stores the quotes literally, which Vercel rejects with an opaque 403.
+    auth = (token or os.environ.get(_TOKEN_ENV) or "").strip().strip("'\"")
     if not auth:
         raise BlobError(f"{_TOKEN_ENV} is not set — cannot upload to Vercel Blob")
 
