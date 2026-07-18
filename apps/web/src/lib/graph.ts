@@ -20,8 +20,13 @@ export type CalyprNodeType =
   | "tts"
   | "upload";
 
+export type NodeStatus = "active" | "done" | "error";
+
 export type NodeData = {
   config: Record<string, unknown>;
+  // Display-only run state injected at render time (see canvas decoration). Never persisted:
+  // `buildGraphSpec` reads only `config`, so a run's status never leaks into the saved graph.
+  status?: NodeStatus;
 };
 
 export const NODE_LABELS: Record<CalyprNodeType, string> = {

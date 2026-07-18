@@ -83,6 +83,12 @@ async def run_stream(
                     yield RunEvent(type="token", text=chunk.get("text", ""))
                 elif kind == "usage":
                     yield RunEvent(type="usage", state=chunk)
+                elif kind == "node":
+                    yield RunEvent(
+                        type="node",
+                        node_id=chunk.get("node_id", ""),
+                        phase=chunk.get("phase", ""),
+                    )
             elif mode == "values":
                 last_state = chunk
     except GraphRecursionError as exc:

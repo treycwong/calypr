@@ -19,7 +19,17 @@ import { runAgent, uploadImage } from "@/lib/api";
 
 type ChatMsg = { role: "user" | "assistant"; text: string; images?: string[] };
 
-export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
+export function Playground({
+  getGraph,
+  onNodeEvent,
+  onRunReset,
+}: {
+  getGraph: () => GraphSpec;
+  // Drives the canvas run animation. `onRunReset` clears prior run state at the start of a
+  // send (and on New chat); `onNodeEvent` reports node enter/exit and run errors.
+  onNodeEvent?: (nodeId: string, phase: "start" | "end") => void;
+  onRunReset?: (opts?: { error?: boolean }) => void;
+}) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
@@ -35,6 +45,7 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
     setMessages([]);
     setThreadId(newThread());
     attach.clear();
+    onRunReset?.();
   }
 
   async function send() {
@@ -54,18 +65,22 @@ export function Playground({ getGraph }: { getGraph: () => GraphSpec }) {
       });
     const graph = getGraph();
     track("run_started", { nodes: graph.nodes?.length ?? 0 });
+    onRunReset?.(); // clear the previous run's node glow before this one starts
     let errored = false;
     try {
       for await (const ev of runAgent(graph, text, threadId, images)) {
         if (ev.type === "token") apply(ev.text);
+        else if (ev.type === "node") onNodeEvent?.(ev.node_id, ev.phase);
         else if (ev.type === "error") {
           errored = true;
+          onRunReset?.({ error: true });
           apply(`⚠️ ${ev.message}`);
           toast(ev.message, "error");
         }
       }
       track(errored ? "run_errored" : "run_completed");
     } catch {
+      onRunReset?.({ error: true });
       track("run_errored");
     } finally {
       setBusy(false);

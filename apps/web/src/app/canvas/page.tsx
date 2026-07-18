@@ -27,7 +27,7 @@ import {
   Undo2,
 } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GraphSpec } from "@calypr/dsl";
 
@@ -57,6 +57,7 @@ import {
   DEFAULT_CONFIG,
   graphToCanvas,
   type NodeData,
+  type NodeStatus,
   ROUTER_DEFAULT_BRANCH,
 } from "@/lib/graph";
 
@@ -392,6 +393,57 @@ function CanvasInner() {
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
 
+  // --- Live run animation ----------------------------------------------------
+  // Per-node run status, driven by node events streamed from the Playground. Kept out of the
+  // canvas node state so it never persists into the saved graph or the undo history — it's
+  // injected only into the decorated arrays handed to <ReactFlow> below.
+  const [runStatus, setRunStatus] = useState<Record<string, NodeStatus>>({});
+  const onNodeEvent = useCallback((nodeId: string, phase: "start" | "end") => {
+    setRunStatus((prev) => {
+      const next = { ...prev };
+      if (phase === "start") {
+        // The prior active node has finished once the next one begins.
+        for (const k in next) if (next[k] === "active") next[k] = "done";
+        next[nodeId] = "active";
+      } else if (next[nodeId] === "active") {
+        next[nodeId] = "done";
+      }
+      return next;
+    });
+  }, []);
+  const onRunReset = useCallback((opts?: { error?: boolean }) => {
+    if (opts?.error) {
+      // Freeze the run where it stopped, flagging the node that was executing.
+      setRunStatus((prev) => {
+        const next = { ...prev };
+        for (const k in next) if (next[k] === "active") next[k] = "error";
+        return next;
+      });
+    } else {
+      setRunStatus({});
+    }
+  }, []);
+
+  // Overlay run status onto nodes, and animate/colour the connector feeding each running or
+  // finished node. Untouched objects keep their identity so React Flow re-renders minimally.
+  const decoratedNodes = useMemo(
+    () =>
+      nodes.map((n) =>
+        runStatus[n.id] ? { ...n, data: { ...n.data, status: runStatus[n.id] } } : n,
+      ),
+    [nodes, runStatus],
+  );
+  const decoratedEdges = useMemo(
+    () =>
+      edges.map((e) => {
+        const s = runStatus[e.target];
+        if (s === "active") return { ...e, animated: true, className: "edge-active" };
+        if (s === "done") return { ...e, className: "edge-done" };
+        return e;
+      }),
+    [edges, runStatus],
+  );
+
   return (
     <div className="flex h-screen flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
@@ -498,7 +550,12 @@ function CanvasInner() {
           <Button
             size="sm"
             variant={showPlayground ? "outline" : "default"}
-            onClick={() => setShowPlayground((s) => !s)}
+            onClick={() =>
+              setShowPlayground((s) => {
+                if (s) setRunStatus({}); // closing the playground clears any lingering run glow
+                return !s;
+              })
+            }
             data-testid="toggle-playground"
           >
             {showPlayground ? (
@@ -564,8 +621,8 @@ function CanvasInner() {
 
         <div className="relative flex-1" data-testid="canvas">
           <ReactFlow
-            nodes={nodes}
-            edges={edges}
+            nodes={decoratedNodes}
+            edges={decoratedEdges}
             onNodesChange={handleNodesChange}
             onEdgesChange={handleEdgesChange}
             onNodeDragStart={onNodeDragStart}
@@ -645,7 +702,11 @@ function CanvasInner() {
             className="w-80 shrink-0 border-l border-border"
             data-testid="playground"
           >
-            <Playground getGraph={getGraph} />
+            <Playground
+              getGraph={getGraph}
+              onNodeEvent={onNodeEvent}
+              onRunReset={onRunReset}
+            />
           </aside>
         ) : null}
       </div>
