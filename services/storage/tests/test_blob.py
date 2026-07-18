@@ -47,3 +47,19 @@ async def test_put_blob_without_token_raises(monkeypatch):
     monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
     with pytest.raises(BlobError):
         await put_blob(b"data", pathname="x.png")
+
+
+async def test_put_blob_strips_pasted_quotes(monkeypatch):
+    """A token pasted with its `.env`-style quotes must still authenticate — the quotes are
+    stripped before building the Bearer header (a real prod incident: Vercel 403s otherwise)."""
+    captured: dict = {}
+    transport = _stub_transport(captured)
+    real_init = httpx.AsyncClient.__init__
+
+    def patched_init(self, *args, **kwargs):
+        kwargs["transport"] = transport
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", patched_init)
+    await put_blob(b"x", pathname="a.png", content_type="image/png", token='"tok_123"\n')
+    assert captured["headers"]["authorization"] == "Bearer tok_123"
