@@ -39,6 +39,25 @@ async def test_usage_events_carry_node_id_and_model():
         assert "input_tokens" in u and "output_tokens" in u
 
 
+async def test_node_events_stream_start_and_end_per_node():
+    """The canvas run animation needs real node lifecycle events. Each executed node must emit a
+    `node` event on enter (`start`) and exit (`end`), in execution order, so the UI can glow the
+    running node and settle finished ones."""
+    spec = input_agent_output(model="fake")
+    ctx = NodeContext(model=FakeModelClient(reply="hi"))
+
+    events = [ev async for ev in run_stream(spec, ctx, "go")]
+
+    node_events = [(e.node_id, e.phase) for e in events if e.type == "node"]
+    # Golden spec is Input → Agent → Output; each node opens and closes.
+    for node in spec.nodes:
+        assert (node.id, "start") in node_events
+        assert (node.id, "end") in node_events
+    # A node's start precedes its own end.
+    agent = next(n.id for n in spec.nodes if n.type == "agent")
+    assert node_events.index((agent, "start")) < node_events.index((agent, "end"))
+
+
 async def test_checkpointer_persists_state_across_turns():
     spec = input_agent_output(model="fake")
     ctx = NodeContext(model=FakeModelClient(reply="ok"))

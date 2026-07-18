@@ -39,6 +39,33 @@
   fill: var(--foreground);
 }
 
+/* Active-node glow while a run executes: the neon-blue (brand cyan) ring set inline in nodes.tsx
+   breathes so the currently-running node reads as "live". Keyframe drives the box-shadow the
+   Tailwind `animate-[nodePulse_…]` utility references. */
+@keyframes nodePulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 1px rgb(34 211 238),
+      0 0 22px -4px rgb(34 211 238 / 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgb(34 211 238),
+      0 0 30px 2px rgb(34 211 238 / 0.9);
+  }
+}
+
+/* The connector feeding the active node uses React Flow's built-in `animated` dash flow; brand
+   cyan stroke so the marching-ants are clearly visible on the dark canvas. */
+.react-flow__edge.edge-active .react-flow__edge-path {
+  stroke: rgb(34 211 238);
+  stroke-width: 2;
+}
+.react-flow__edge.edge-done .react-flow__edge-path {
+  stroke: rgb(16 185 129 / 0.55);
+}
+
 /* Shimmering "Thinking…" text for the AI assistant while it drafts a graph. A moving
    light band sweeps across the text (background-clip: text). No shadcn primitive for this. */
 @keyframes assistant-shimmer {

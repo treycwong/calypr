@@ -4,6 +4,7 @@ import type { GraphSpec } from "@calypr/dsl";
 
 export type RunEvent =
   | { type: "token"; text: string }
+  | { type: "node"; node_id: string; phase: "start" | "end" }
   | { type: "final"; output: string }
   | { type: "usage"; [k: string]: unknown }
   | { type: "error"; message: string };

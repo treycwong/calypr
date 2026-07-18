@@ -77,6 +77,9 @@ async def create_run(
             ):
                 if ev.type == "token":
                     yield _sse({"type": "token", "text": ev.text})
+                elif ev.type == "node":
+                    # Display-only: drives the canvas run animation. Not metered.
+                    yield _sse({"type": "node", "node_id": ev.node_id, "phase": ev.phase})
                 elif ev.type == "usage":
                     recorder.add_usage(ev.state or {})
                     yield _sse({"type": "usage", **(ev.state or {})})

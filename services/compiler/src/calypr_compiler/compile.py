@@ -11,6 +11,7 @@ from dataclasses import replace
 
 from calypr_dsl import GraphSpec
 from calypr_nodes import NodeContext, NodeFn, current_node_id, get_node, graph_channels, has_node
+from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -32,12 +33,30 @@ def _with_node_id(node_id: str, fn: NodeFn) -> NodeFn:
     @functools.wraps(fn)
     async def wrapped(*args, **kwargs):
         token = current_node_id.set(node_id)
+        _emit_node_event(node_id, "start")
         try:
             return await fn(*args, **kwargs)
         finally:
+            _emit_node_event(node_id, "end")
             current_node_id.reset(token)
 
     return wrapped
+
+
+def _emit_node_event(node_id: str, phase: str) -> None:
+    """Emit a display-only node lifecycle event on the custom stream so the canvas can glow the
+    running node. No-op outside a streaming run (no writer) or if the writer errors — this is
+    presentational and must never break execution."""
+    try:
+        writer = get_stream_writer()
+    except Exception:
+        return
+    if writer is None:
+        return
+    try:
+        writer({"type": "node", "node_id": node_id, "phase": phase})
+    except Exception:
+        pass
 
 
 def _tools_bound_to(spec: GraphSpec) -> dict[str, list[dict]]:
