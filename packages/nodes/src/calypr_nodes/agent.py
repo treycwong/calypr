@@ -255,8 +255,13 @@ class AgentNode(BaseNode):
     def routing(cls, cfg: AgentConfig, ctx: NodeContext):
         """With tools bound, the agent branches like LangGraph's `tools_condition`: if its
         last message asked for a tool, take the `tools` branch (→ a Tool node that loops
-        back); otherwise `respond` (→ the finish edge). Without tools, a plain node."""
-        if not ctx.tools:
+        back); otherwise `respond` (→ the finish edge). Without tools, a plain node.
+
+        `ctx.tools is None` means the agent has no wired Tool node at all → plain node. An
+        empty list means it *is* wired to a Tool node that currently exposes zero tools (e.g.
+        an unconfigured MCP server) — still install the router so it routes `respond` and
+        terminates, rather than letting the ReAct edges collapse into an infinite loop."""
+        if ctx.tools is None:
             return None
         out = cfg.output_channel
 

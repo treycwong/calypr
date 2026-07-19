@@ -14,6 +14,7 @@ import {
   IMAGE_QUALITY_OPTIONS,
   IMAGE_SIZE_OPTIONS,
   KNOWLEDGE_SOURCE_OPTIONS,
+  MCP_TRANSPORT_OPTIONS,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
@@ -288,34 +289,89 @@ function MemoryFields({ config, set }: { config: Config; set: Setter }) {
 }
 
 function ToolFields({ config, set }: { config: Config; set: Setter }) {
+  const provider = String(config.provider ?? "demo_search");
+  const toolFilter = Array.isArray(config.mcp_tool_filter)
+    ? (config.mcp_tool_filter as string[])
+    : [];
   return (
     <>
       <SelectField
         id="cfg-provider"
         label="Provider"
-        value={String(config.provider ?? "demo_search")}
+        value={provider}
         options={TOOL_PROVIDER_OPTIONS}
         onChange={(v) => set({ provider: v })}
       />
-      <Field id="cfg-api-key" label="API key">
-        <Input
-          id="cfg-api-key"
-          data-testid="cfg-api-key"
-          type="password"
-          placeholder="runtime only — never written into generated code"
-          value={String(config.api_key ?? "")}
-          onChange={(e) => set({ api_key: e.target.value })}
-        />
-      </Field>
-      <Field id="cfg-max-results" label="Max results">
-        <Input
-          id="cfg-max-results"
-          type="number"
-          min={1}
-          value={Number(config.max_results ?? 3)}
-          onChange={(e) => set({ max_results: Number(e.target.value) })}
-        />
-      </Field>
+      {provider === "mcp" ? (
+        <>
+          <Field id="cfg-mcp-url" label="MCP server URL">
+            <Input
+              id="cfg-mcp-url"
+              data-testid="cfg-mcp-url"
+              type="url"
+              placeholder="https://your-mcp-server/mcp"
+              value={String(config.mcp_url ?? "")}
+              onChange={(e) => set({ mcp_url: e.target.value })}
+            />
+          </Field>
+          <SelectField
+            id="cfg-mcp-transport"
+            label="Transport"
+            value={String(config.mcp_transport ?? "streamable_http")}
+            options={MCP_TRANSPORT_OPTIONS}
+            onChange={(v) => set({ mcp_transport: v })}
+          />
+          <Field id="cfg-mcp-token" label="Bearer token">
+            <Input
+              id="cfg-mcp-token"
+              data-testid="cfg-mcp-token"
+              type="password"
+              placeholder="runtime only — never written into generated code"
+              value={String(config.mcp_token ?? "")}
+              onChange={(e) => set({ mcp_token: e.target.value })}
+            />
+          </Field>
+          <Field id="cfg-mcp-tool-filter" label="Tool filter (comma-separated, blank = all)">
+            <Input
+              id="cfg-mcp-tool-filter"
+              data-testid="cfg-mcp-tool-filter"
+              type="text"
+              placeholder="e.g. search, fetch"
+              value={toolFilter.join(", ")}
+              onChange={(e) =>
+                set({
+                  mcp_tool_filter: e.target.value
+                    .split(",")
+                    .map((s) => s.trim())
+                    .filter(Boolean),
+                })
+              }
+            />
+          </Field>
+        </>
+      ) : (
+        <>
+          <Field id="cfg-api-key" label="API key">
+            <Input
+              id="cfg-api-key"
+              data-testid="cfg-api-key"
+              type="password"
+              placeholder="runtime only — never written into generated code"
+              value={String(config.api_key ?? "")}
+              onChange={(e) => set({ api_key: e.target.value })}
+            />
+          </Field>
+          <Field id="cfg-max-results" label="Max results">
+            <Input
+              id="cfg-max-results"
+              type="number"
+              min={1}
+              value={Number(config.max_results ?? 3)}
+              onChange={(e) => set({ max_results: Number(e.target.value) })}
+            />
+          </Field>
+        </>
+      )}
     </>
   );
 }

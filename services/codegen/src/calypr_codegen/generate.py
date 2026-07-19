@@ -32,6 +32,7 @@ _STDLIB_ROOTS = {
     "__future__",
     "typing",
     "operator",
+    "asyncio",
     "os",
     "json",
     "re",

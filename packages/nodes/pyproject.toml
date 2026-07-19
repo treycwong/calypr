@@ -9,6 +9,7 @@ dependencies = [
   "calypr-storage",
   "langgraph>=0.2",
   "langchain-core>=0.3",
+  "langchain-mcp-adapters>=0.1",  # MCP server tools → LangChain BaseTools (the `mcp` provider)
   "numpy>=1.26",  # langchain_core vector store + fake embeddings (the keyless demo KB)
   "pydantic>=2.9",
 ]
