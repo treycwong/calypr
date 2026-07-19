@@ -77,18 +77,38 @@ def _run_sync(coro):
 
 # Discovered MCP tools cached per (url, transport, token). `tool_spec()` is called several
 # times per compile (bind + code_refs + compile), and discovery is a network round-trip.
-_MCP_CACHE: dict[tuple[str, str, str], list[BaseTool]] = {}
+_MCP_CACHE: dict[tuple, list[BaseTool]] = {}
 
 
-def _mcp_tools(url: str, transport: str, token: str) -> list[BaseTool]:
-    """Connect to an MCP server over HTTP and return its tools as LangChain BaseTools."""
-    key = (url, transport, token)
+def _headers_for(token: str, headers: dict[str, str] | None) -> dict[str, str]:
+    """Resolve the request headers for an MCP connection. An explicit `headers` dict (used by
+    connectors — e.g. Notion's `Notion-Token`) wins; otherwise a bearer token, if any."""
+    if headers:
+        return dict(headers)
+    if token:
+        return {"Authorization": f"Bearer {token}"}
+    return {}
+
+
+def mcp_tools(
+    url: str,
+    transport: str = "streamable_http",
+    *,
+    token: str = "",
+    headers: dict[str, str] | None = None,
+) -> list[BaseTool]:
+    """Connect to an MCP server over HTTP and return its tools as LangChain BaseTools.
+
+    Cached per (url, transport, headers) — discovery is a network round-trip and this is called
+    several times per compile. Public so the API's connector `/test` + resolution can reuse it."""
+    resolved = _headers_for(token, headers)
+    key = (url, transport, tuple(sorted(resolved.items())))
     if key not in _MCP_CACHE:
         from langchain_mcp_adapters.client import MultiServerMCPClient
 
         conn: dict = {"transport": transport, "url": url}
-        if token:
-            conn["headers"] = {"Authorization": f"Bearer {token}"}
+        if resolved:
+            conn["headers"] = resolved
         client = MultiServerMCPClient({"server": conn})
         _MCP_CACHE[key] = _run_sync(client.get_tools())
     return _MCP_CACHE[key]
@@ -124,6 +144,7 @@ def tool_spec(
     mcp_url: str = "",
     mcp_transport: str = "streamable_http",
     mcp_token: str = "",
+    mcp_headers: dict[str, str] | None = None,
     mcp_tool_filter: list[str] | None = None,
     discover: bool = True,
 ) -> ToolSpec:
@@ -131,10 +152,13 @@ def tool_spec(
 
     `discover=False` skips the live MCP round-trip — the codegen paths (`code_refs`/`codegen`)
     only need the static tool reference and defs, never the discovered tools, so they must not
-    require a reachable server at generate time."""
+    require a reachable server at generate time. `mcp_headers` (runtime-injected by a resolved
+    connector — e.g. Notion) overrides the bearer-token header when present."""
     if provider == "mcp":
         tools = (
-            _mcp_tools(mcp_url, mcp_transport, mcp_token) if (mcp_url and discover) else []
+            mcp_tools(mcp_url, mcp_transport, token=mcp_token, headers=mcp_headers)
+            if (mcp_url and discover)
+            else []
         )
         if mcp_tool_filter:
             allow = set(mcp_tool_filter)

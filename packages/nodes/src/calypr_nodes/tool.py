@@ -36,6 +36,12 @@ class ToolConfig(BaseModel):
     mcp_transport: Literal["streamable_http", "sse"] = "streamable_http"
     mcp_token: str = ""  # runtime-only bearer; never embedded in generated code
     mcp_tool_filter: list[str] = []  # subset of the server's tools to bind (empty = all)
+    # A vault handle for a saved connector (Tier A/B). The canvas stores only this ref; the
+    # server resolves it to url + headers at run time (never a secret in the DSL).
+    mcp_connector_ref: str = ""
+    # Runtime-only, server-injected connection headers from a resolved connector (e.g. Notion's
+    # `Notion-Token`). Never set by the client, never serialized to codegen.
+    mcp_headers: dict[str, str] = {}
 
 
 @register
@@ -65,6 +71,7 @@ class ToolsNode(BaseNode):
             mcp_url=cfg.mcp_url,
             mcp_transport=cfg.mcp_transport,
             mcp_token=cfg.mcp_token,
+            mcp_headers=cfg.mcp_headers,
             mcp_tool_filter=cfg.mcp_tool_filter,
             discover=discover,
         )

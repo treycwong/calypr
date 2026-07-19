@@ -192,6 +192,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     mcp_transport: "streamable_http",
     mcp_token: "",
     mcp_tool_filter: [],
+    mcp_connector_ref: "",
   },
   responder: { model: "fake", system_prompt: "" },
   revisor: { model: "fake", system_prompt: "", max_revisions: 2 },

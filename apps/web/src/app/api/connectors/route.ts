@@ -1,0 +1,27 @@
+// Proxy connector list/create to the Python API (server-side), forwarding the tenant identity.
+import { internalHeaders } from "@/lib/api-headers";
+
+const API_URL = process.env.CALYPR_API_URL ?? "http://localhost:8000";
+
+export const dynamic = "force-dynamic";
+
+const json = (text: string, status: number) =>
+  new Response(text, { status, headers: { "content-type": "application/json" } });
+
+export async function GET() {
+  const r = await fetch(`${API_URL}/connectors`, {
+    cache: "no-store",
+    headers: await internalHeaders(),
+  });
+  return json(await r.text(), r.status);
+}
+
+export async function POST(req: Request) {
+  const body = await req.text();
+  const r = await fetch(`${API_URL}/connectors`, {
+    method: "POST",
+    headers: { "content-type": "application/json", ...(await internalHeaders()) },
+    body,
+  });
+  return json(await r.text(), r.status);
+}

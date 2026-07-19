@@ -1,7 +1,9 @@
 "use client";
 
 import type { Node } from "@xyflow/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
+
+import { type Connector, listConnectors } from "@/lib/api";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -293,6 +295,21 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
   const toolFilter = Array.isArray(config.mcp_tool_filter)
     ? (config.mcp_tool_filter as string[])
     : [];
+  const connectorRef = String(config.mcp_connector_ref ?? "");
+  const [connectors, setConnectors] = useState<Connector[]>([]);
+  useEffect(() => {
+    if (provider !== "mcp") return;
+    listConnectors()
+      .then(setConnectors)
+      .catch(() => setConnectors([]));
+  }, [provider]);
+  const connectorOptions = [
+    { value: "", label: "Manual URL (below)" },
+    ...connectors.map((c) => ({
+      value: c.id,
+      label: `${c.name}${c.kind === "notion" ? " · Notion" : c.url ? ` · ${c.url}` : ""}`,
+    })),
+  ];
   return (
     <>
       <SelectField
@@ -304,33 +321,20 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
       />
       {provider === "mcp" ? (
         <>
-          <Field id="cfg-mcp-url" label="MCP server URL">
-            <Input
-              id="cfg-mcp-url"
-              data-testid="cfg-mcp-url"
-              type="url"
-              placeholder="https://your-mcp-server/mcp"
-              value={String(config.mcp_url ?? "")}
-              onChange={(e) => set({ mcp_url: e.target.value })}
-            />
-          </Field>
           <SelectField
-            id="cfg-mcp-transport"
-            label="Transport"
-            value={String(config.mcp_transport ?? "streamable_http")}
-            options={MCP_TRANSPORT_OPTIONS}
-            onChange={(v) => set({ mcp_transport: v })}
+            id="cfg-mcp-connector"
+            label="Connector (from Settings)"
+            value={connectorRef}
+            options={connectorOptions}
+            onChange={(v) => set({ mcp_connector_ref: v })}
           />
-          <Field id="cfg-mcp-token" label="Bearer token">
-            <Input
-              id="cfg-mcp-token"
-              data-testid="cfg-mcp-token"
-              type="password"
-              placeholder="runtime only — never written into generated code"
-              value={String(config.mcp_token ?? "")}
-              onChange={(e) => set({ mcp_token: e.target.value })}
-            />
-          </Field>
+          {connectorRef ? (
+            <p className="text-xs text-muted-foreground">
+              Server + credentials resolve from your saved connector at run time.
+            </p>
+          ) : (
+            <ManualMcpFields config={config} set={set} />
+          )}
           <Field id="cfg-mcp-tool-filter" label="Tool filter (comma-separated, blank = all)">
             <Input
               id="cfg-mcp-tool-filter"
@@ -372,6 +376,40 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
           </Field>
         </>
       )}
+    </>
+  );
+}
+
+function ManualMcpFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <Field id="cfg-mcp-url" label="MCP server URL">
+        <Input
+          id="cfg-mcp-url"
+          data-testid="cfg-mcp-url"
+          type="url"
+          placeholder="https://your-mcp-server/mcp"
+          value={String(config.mcp_url ?? "")}
+          onChange={(e) => set({ mcp_url: e.target.value })}
+        />
+      </Field>
+      <SelectField
+        id="cfg-mcp-transport"
+        label="Transport"
+        value={String(config.mcp_transport ?? "streamable_http")}
+        options={MCP_TRANSPORT_OPTIONS}
+        onChange={(v) => set({ mcp_transport: v })}
+      />
+      <Field id="cfg-mcp-token" label="Bearer token">
+        <Input
+          id="cfg-mcp-token"
+          data-testid="cfg-mcp-token"
+          type="password"
+          placeholder="runtime only — never written into generated code"
+          value={String(config.mcp_token ?? "")}
+          onChange={(e) => set({ mcp_token: e.target.value })}
+        />
+      </Field>
     </>
   );
 }

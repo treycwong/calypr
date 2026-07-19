@@ -17,5 +17,25 @@ services:
       timeout: 3s
       retries: 20
 
+  # Self-hosted Notion MCP server for the Notion connector (Tier A, Path A). Runs with token
+  # passthrough so one instance serves every workspace: Calypr forwards each workspace's Notion
+  # bot token via the `Notion-Token` header (resolved from the vault at run time). Point
+  # CALYPR_NOTION_MCP_URL at http://localhost:3100/mcp. See infra/CONNECTORS.md.
+  notion-mcp:
+    image: node:22-alpine
+    command:
+      - npx
+      - -y
+      - "@notionhq/notion-mcp-server"
+      - --transport
+      - http
+      - --host
+      - 0.0.0.0
+      - --port
+      - "3000"
+      - --enable-token-passthrough
+    ports:
+      - "3100:3000"
+
 volumes:
   calypr_pgdata:
