@@ -12,6 +12,7 @@ import Link from "next/link";
 
 import { HeroDither } from "@/components/landing/HeroDither";
 import { HeroTrails } from "@/components/landing/HeroTrails";
+import { HoverButton } from "@/components/landing/HoverButton";
 import { SiteFooter } from "@/components/site/Footer";
 import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
@@ -144,13 +145,10 @@ export default function Home() {
           <h1 className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-4xl text-balance text-5xl font-semibold leading-[1.02] tracking-tight duration-700 sm:text-7xl lg:text-8xl">
             Design AI agents visually.
           </h1>
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 flex flex-wrap items-center justify-center gap-3 delay-100 duration-700">
-            <Link href="/canvas" className={primaryBtn}>
-              Open the canvas <ArrowRight className="h-4 w-4" />
-            </Link>
-            <a href="#code" className={ghostBtn}>
-              See the generated code
-            </a>
+          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 delay-100 duration-700">
+            <HoverButton href="/canvas">
+              Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
+            </HoverButton>
           </div>
         </div>
         </div>
