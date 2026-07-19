@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
-import { HeroAscii } from "@/components/landing/HeroAscii";
+import { HeroDither } from "@/components/landing/HeroDither";
 import { SiteFooter } from "@/components/site/Footer";
 import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
@@ -189,12 +189,12 @@ export default function Home() {
 
       {/* hero */}
       <section className="relative">
-        {/* generative agent-graph backdrop, framed away from the text by a radial mask */}
+        {/* dithered-sphere shader backdrop, framed away from the text by a radial mask */}
         <div
           aria-hidden
           className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(105%_75%_at_50%_42%,transparent_18%,black_60%)]"
         >
-          <HeroAscii />
+          <HeroDither />
         </div>
         <div className="relative mx-auto w-full max-w-6xl px-5 pt-20 pb-10 sm:pt-28">
         <div className="flex flex-col items-center text-center">
