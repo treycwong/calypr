@@ -14,7 +14,7 @@ export function SiteFooter() {
             prompt → canvas → code · {new Date().getFullYear()}
           </p>
         </div>
-        <div className="flex items-center gap-6 font-mono text-xs text-muted-foreground">
+        <div className="flex items-center gap-6 text-xs text-muted-foreground">
           <Link href="/canvas" className="transition-colors hover:text-foreground">
             Canvas
           </Link>

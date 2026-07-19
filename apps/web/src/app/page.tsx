@@ -5,16 +5,14 @@ import {
   GitBranch,
   Play,
   ShieldCheck,
-  Sparkles,
   Workflow,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 
-import { HeroDither } from "@/components/landing/HeroDither";
-import { HeroTrails } from "@/components/landing/HeroTrails";
 import { HoverButton } from "@/components/landing/HoverButton";
+import { LandingHeader } from "@/components/landing/LandingHeader";
 import { SiteFooter } from "@/components/site/Footer";
-import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
 
 // ── small building blocks ───────────────────────────────────────────────────
@@ -103,59 +101,44 @@ export default function Home() {
 
   return (
     <div className="relative flex min-h-full flex-col">
-      {/* atmospheric grayscale glow */}
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_-10%,rgba(255,255,255,0.06),transparent)]"
-      />
-
-      {/* nav */}
-      <SiteHeader />
-
-      {/* hero */}
-      <section className="relative">
-        {/* base canvas texture (the same dotted grid + soft glow as sign-in) so the hero isn't
-            flat black — the globe/nebula sit on top of this, not on bare background */}
+      {/* hero — full-bleed background image with a floating nav overlaid */}
+      <section className="relative isolate min-h-screen overflow-hidden bg-black text-white">
+        {/* background image (public/hero.png) — the LCP element, so eager + priority */}
+        <Image
+          src="/hero.png"
+          alt=""
+          aria-hidden
+          fill
+          priority
+          sizes="100vw"
+          className="pointer-events-none -z-10 object-cover"
+        />
+        {/* legibility scrims: darken top (behind nav) and bottom (behind headline) */}
         <div
           aria-hidden
-          className="dotted pointer-events-none absolute inset-0 overflow-hidden"
-        >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(65%_55%_at_50%_35%,rgba(255,255,255,0.06),transparent)]" />
-        </div>
+          className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-black/50 via-transparent to-black/70"
+        />
 
-        {/* dithered-sphere shader backdrop + nebula + spark trails, framed away from the text by
-            a radial mask so the headline stays crisp */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(105%_75%_at_50%_42%,transparent_16%,black_58%)]"
-        >
-          {/* nebula colour blooms, behind the globe */}
-          <div className="nebula absolute left-1/2 top-[42%] h-[70vh] w-[70vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(0,178,255,0.22),transparent_62%)]" />
-          <div className="nebula nebula-2 absolute left-[38%] top-[38%] h-[55vh] w-[55vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(129,90,255,0.16),transparent_60%)]" />
-          <HeroDither />
-          <HeroTrails />
-        </div>
-        <div className="relative mx-auto flex min-h-[82vh] w-full max-w-6xl flex-col justify-center px-5 pt-24 pb-20 sm:pt-32">
-        <div className="flex flex-col items-center text-center">
-          <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
-            <Eyebrow>
-              <Sparkles className="h-3 w-3" /> prompt → canvas → code
-            </Eyebrow>
+        <LandingHeader />
+
+        {/* headline block, bottom-left */}
+        <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-end px-6 pb-20 pt-32">
+          <div className="animate-in fade-in slide-in-from-bottom-4 max-w-2xl duration-700">
+            <h1 className="text-balance text-6xl font-medium leading-[0.95] tracking-tight sm:text-7xl lg:text-8xl">
+              Calypr
+            </h1>
+            <p className="mt-4 text-lg text-white/70 sm:text-xl">Build your dreams.</p>
+            <div className="mt-8">
+              <HoverButton href="/canvas">
+                Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
+              </HoverButton>
+            </div>
           </div>
-          <h1 className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-4xl text-balance text-5xl font-semibold leading-[1.02] tracking-tight duration-700 sm:text-7xl lg:text-8xl">
-            Design AI agents visually.
-          </h1>
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 delay-100 duration-700">
-            <HoverButton href="/canvas">
-              Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
-            </HoverButton>
-          </div>
-        </div>
         </div>
       </section>
 
       {/* pillars */}
-      <section className="mx-auto w-full max-w-6xl px-5 py-16">
+      <section id="features" className="mx-auto w-full max-w-6xl px-5 py-16">
         <div className="grid gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
           {PILLARS.map(({ icon: Icon, title, body }) => (
             <div key={title} className="bg-background p-7">

@@ -22,7 +22,7 @@ function Frame({ children }: { children: React.ReactNode }) {
             <circle cx="5" cy="15" r="2.4" fill="currentColor" opacity="0.55" />
             <circle cx="15" cy="15" r="2.4" fill="currentColor" opacity="0.8" />
           </svg>
-          <span className="font-mono text-sm font-medium tracking-tight">calypr</span>
+          <span className="font-sans text-sm font-medium tracking-tight">calypr</span>
         </Link>
         {children}
       </div>

@@ -12,7 +12,7 @@ export function SiteHeader() {
         <Link href="/" aria-label="Calypr home">
           <Wordmark />
         </Link>
-        <nav className="hidden items-center gap-7 font-mono text-xs text-muted-foreground md:flex">
+        <nav className="hidden items-center gap-7 text-xs text-muted-foreground md:flex">
           <Link href="/#how" className="transition-colors hover:text-foreground">
             How it works
           </Link>
