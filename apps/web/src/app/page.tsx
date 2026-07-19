@@ -137,11 +137,7 @@ export default function Home() {
             <br />
             <span className="text-muted-foreground">Leave with the code.</span>
           </h1>
-          <p className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground delay-100 duration-700 sm:text-lg">
-            Calypr is a no-ceiling agent builder. Drag nodes onto a canvas, run them live,
-            and export idiomatic LangGraph — Python you&rsquo;d actually merge.
-          </p>
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 flex flex-wrap items-center justify-center gap-3 delay-200 duration-700">
+          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 flex flex-wrap items-center justify-center gap-3 delay-100 duration-700">
             <Link href="/canvas" className={primaryBtn}>
               Open the canvas <ArrowRight className="h-4 w-4" />
             </Link>
@@ -149,10 +145,6 @@ export default function Home() {
               See the generated code
             </a>
           </div>
-
-          <p className="animate-in fade-in mt-16 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground delay-300 duration-1000">
-            compiles to langgraph · openai · anthropic · postgres + pgvector
-          </p>
         </div>
         </div>
       </section>
