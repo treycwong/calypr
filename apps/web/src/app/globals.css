@@ -232,3 +232,28 @@
   );
   background-size: 18px 18px;
 }
+
+/* Nebula clouds behind the hero globe — soft, slow-drifting colour blooms. Two layers pan on
+   different paths so the haze feels alive without any hard edges. */
+.nebula {
+  filter: blur(48px);
+  will-change: transform;
+  animation: nebula-drift 26s ease-in-out infinite alternate;
+}
+.nebula-2 {
+  animation-duration: 34s;
+  animation-direction: alternate-reverse;
+}
+@keyframes nebula-drift {
+  from {
+    transform: translate3d(-3%, -2%, 0) scale(1);
+  }
+  to {
+    transform: translate3d(4%, 3%, 0) scale(1.12);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nebula {
+    animation: none;
+  }
+}
