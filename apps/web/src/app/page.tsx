@@ -113,6 +113,15 @@ export default function Home() {
 
       {/* hero */}
       <section className="relative">
+        {/* base canvas texture (the same dotted grid + soft glow as sign-in) so the hero isn't
+            flat black — the globe/nebula sit on top of this, not on bare background */}
+        <div
+          aria-hidden
+          className="dotted pointer-events-none absolute inset-0 overflow-hidden"
+        >
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(65%_55%_at_50%_35%,rgba(255,255,255,0.06),transparent)]" />
+        </div>
+
         {/* dithered-sphere shader backdrop + nebula + spark trails, framed away from the text by
             a radial mask so the headline stays crisp */}
         <div
@@ -134,8 +143,6 @@ export default function Home() {
           </div>
           <h1 className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-4xl text-balance text-5xl font-semibold leading-[1.02] tracking-tight duration-700 sm:text-7xl lg:text-8xl">
             Design AI agents visually.
-            <br />
-            <span className="text-muted-foreground">Leave with the code.</span>
           </h1>
           <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 flex flex-wrap items-center justify-center gap-3 delay-100 duration-700">
             <Link href="/canvas" className={primaryBtn}>
