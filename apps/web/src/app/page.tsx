@@ -11,6 +11,7 @@ import {
 import Link from "next/link";
 
 import { HeroDither } from "@/components/landing/HeroDither";
+import { HeroTrails } from "@/components/landing/HeroTrails";
 import { SiteFooter } from "@/components/site/Footer";
 import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
@@ -26,83 +27,6 @@ function Eyebrow({ children }: { children: React.ReactNode }) {
 }
 
 // A monochrome echo of the real canvas: dotted grid + connected nodes.
-function CanvasPreview() {
-  const node =
-    "rounded-md border border-border bg-card/80 px-3 py-2 shadow-[0_1px_0_0_rgba(255,255,255,0.04)] backdrop-blur";
-  const dot = "h-1.5 w-1.5 rounded-full bg-foreground";
-  return (
-    <div className="dotted relative overflow-hidden rounded-xl border border-border bg-background/60">
-      {/* faux window chrome */}
-      <div className="flex items-center gap-1.5 border-b border-border px-4 py-2.5">
-        <span className="h-2.5 w-2.5 rounded-full border border-border" />
-        <span className="h-2.5 w-2.5 rounded-full border border-border" />
-        <span className="h-2.5 w-2.5 rounded-full border border-border" />
-        <span className="ml-3 font-mono text-[11px] text-muted-foreground">react-agent · canvas</span>
-      </div>
-
-      <div className="relative grid place-items-center px-6 py-12 sm:py-16">
-        <svg
-          className="pointer-events-none absolute inset-0 h-full w-full text-border"
-          aria-hidden
-        >
-          <line x1="50%" y1="27%" x2="50%" y2="43%" stroke="currentColor" strokeWidth="1.5" />
-          <line x1="50%" y1="57%" x2="50%" y2="73%" stroke="currentColor" strokeWidth="1.5" />
-          <line
-            x1="62%"
-            y1="50%"
-            x2="78%"
-            y2="50%"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-          />
-        </svg>
-
-        <div className="relative flex flex-col items-center gap-6">
-          <div className={node}>
-            <div className="flex items-center gap-2">
-              <span className={`${dot} opacity-60`} />
-              <span className="text-xs font-medium">Input</span>
-            </div>
-          </div>
-
-          <div className="relative">
-            <div className={`${node} ring-1 ring-border`}>
-              <div className="flex items-center gap-2">
-                <span className={dot} />
-                <span className="text-xs font-medium">Agent</span>
-              </div>
-              <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
-                model_based · gpt-4o-mini
-              </div>
-            </div>
-            {/* tools branch */}
-            <div className="absolute left-[112%] top-1/2 -translate-y-1/2">
-              <div className={node}>
-                <div className="flex items-center gap-2">
-                  <span className={`${dot} opacity-70`} />
-                  <span className="text-xs font-medium">Tools</span>
-                </div>
-                <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">web_search</div>
-              </div>
-            </div>
-            <span className="absolute left-[104%] top-[34%] font-mono text-[9px] text-muted-foreground">
-              tools
-            </span>
-          </div>
-
-          <div className={node}>
-            <div className="flex items-center gap-2">
-              <span className={`${dot} opacity-80`} />
-              <span className="text-xs font-medium">Output</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ── content ───────────────────────────────────────────────────────────────
 
 const PILLARS = [
@@ -189,30 +113,35 @@ export default function Home() {
 
       {/* hero */}
       <section className="relative">
-        {/* dithered-sphere shader backdrop, framed away from the text by a radial mask */}
+        {/* dithered-sphere shader backdrop + nebula + spark trails, framed away from the text by
+            a radial mask so the headline stays crisp */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(105%_75%_at_50%_42%,transparent_18%,black_60%)]"
+          className="pointer-events-none absolute inset-0 overflow-hidden [mask-image:radial-gradient(105%_75%_at_50%_42%,transparent_16%,black_58%)]"
         >
+          {/* nebula colour blooms, behind the globe */}
+          <div className="nebula absolute left-1/2 top-[42%] h-[70vh] w-[70vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(0,178,255,0.22),transparent_62%)]" />
+          <div className="nebula nebula-2 absolute left-[38%] top-[38%] h-[55vh] w-[55vh] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(129,90,255,0.16),transparent_60%)]" />
           <HeroDither />
+          <HeroTrails />
         </div>
-        <div className="relative mx-auto w-full max-w-6xl px-5 pt-20 pb-10 sm:pt-28">
+        <div className="relative mx-auto flex min-h-[82vh] w-full max-w-6xl flex-col justify-center px-5 pt-24 pb-20 sm:pt-32">
         <div className="flex flex-col items-center text-center">
           <div className="animate-in fade-in slide-in-from-bottom-3 duration-700">
             <Eyebrow>
               <Sparkles className="h-3 w-3" /> prompt → canvas → code
             </Eyebrow>
           </div>
-          <h1 className="animate-in fade-in slide-in-from-bottom-4 mt-6 max-w-3xl text-balance text-4xl font-semibold leading-[1.05] tracking-tight duration-700 sm:text-6xl">
+          <h1 className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-4xl text-balance text-5xl font-semibold leading-[1.02] tracking-tight duration-700 sm:text-7xl lg:text-8xl">
             Design AI agents visually.
             <br />
             <span className="text-muted-foreground">Leave with the code.</span>
           </h1>
-          <p className="animate-in fade-in slide-in-from-bottom-4 mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground delay-100 duration-700 sm:text-lg">
+          <p className="animate-in fade-in slide-in-from-bottom-4 mt-7 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground delay-100 duration-700 sm:text-lg">
             Calypr is a no-ceiling agent builder. Drag nodes onto a canvas, run them live,
             and export idiomatic LangGraph — Python you&rsquo;d actually merge.
           </p>
-          <div className="animate-in fade-in slide-in-from-bottom-4 mt-8 flex flex-wrap items-center justify-center gap-3 delay-200 duration-700">
+          <div className="animate-in fade-in slide-in-from-bottom-4 mt-9 flex flex-wrap items-center justify-center gap-3 delay-200 duration-700">
             <Link href="/canvas" className={primaryBtn}>
               Open the canvas <ArrowRight className="h-4 w-4" />
             </Link>
@@ -220,15 +149,11 @@ export default function Home() {
               See the generated code
             </a>
           </div>
-        </div>
 
-        <div className="animate-in fade-in slide-in-from-bottom-6 mx-auto mt-16 max-w-4xl delay-300 duration-1000">
-          <CanvasPreview />
+          <p className="animate-in fade-in mt-16 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground delay-300 duration-1000">
+            compiles to langgraph · openai · anthropic · postgres + pgvector
+          </p>
         </div>
-
-        <p className="mt-8 text-center font-mono text-[11px] uppercase tracking-[0.2em] text-muted-foreground">
-          compiles to langgraph · openai · anthropic · postgres + pgvector
-        </p>
         </div>
       </section>
 
