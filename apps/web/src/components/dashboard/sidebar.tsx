@@ -37,7 +37,7 @@ export function Sidebar({
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card/30">
       <div className="flex h-14 items-center px-4">
-        <Link href="/dashboard" className="font-mono text-sm font-semibold tracking-tight">
+        <Link href="/dashboard" className="font-sans text-sm font-semibold tracking-tight">
           calypr
         </Link>
       </div>

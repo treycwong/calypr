@@ -1,15 +1,40 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist_Mono } from "next/font/google";
+import localFont from "next/font/local";
 import "./globals.css";
 
 import { AnalyticsInit } from "@/components/analytics-init";
 import { ToastProvider } from "@/components/ui/toast";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
+// Display / headings — PP Hatton (self-hosted, see src/fonts).
+const hatton = localFont({
+  variable: "--font-hatton",
+  display: "swap",
+  src: [
+    { path: "../fonts/PPHatton-Medium.woff2", weight: "500", style: "normal" },
+    { path: "../fonts/PPHatton-Medium.woff", weight: "500", style: "normal" },
+    { path: "../fonts/PPHatton-Bold.woff2", weight: "700", style: "normal" },
+    { path: "../fonts/PPHatton-Bold.woff", weight: "700", style: "normal" },
+    { path: "../fonts/PPHatton-Ultrabold.woff2", weight: "800", style: "normal" },
+    { path: "../fonts/PPHatton-Ultrabold.woff", weight: "800", style: "normal" },
+  ],
 });
 
+// Body — PP Mori (self-hosted).
+const mori = localFont({
+  variable: "--font-mori",
+  display: "swap",
+  src: [
+    { path: "../fonts/PPMori-Regular.woff2", weight: "400", style: "normal" },
+    { path: "../fonts/PPMori-Regular.woff", weight: "400", style: "normal" },
+    { path: "../fonts/PPMori-SemiBold.woff2", weight: "600", style: "normal" },
+    { path: "../fonts/PPMori-SemiBold.woff", weight: "600", style: "normal" },
+    { path: "../fonts/PPMori-ExtraBold.woff2", weight: "800", style: "normal" },
+    { path: "../fonts/PPMori-ExtraBold.woff", weight: "800", style: "normal" },
+  ],
+});
+
+// Retained for monospace UI chrome (labels, timestamps) and blog code blocks.
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
@@ -40,7 +65,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${mori.variable} ${hatton.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <AnalyticsInit />

@@ -1,0 +1,98 @@
+"use client";
+
+import { Menu, X } from "lucide-react";
+import Link from "next/link";
+import { useState } from "react";
+
+// Landing-only header: transparent, floating over the hero image. A centred nav pill on
+// desktop, a hamburger sheet on mobile, the Calypr logo top-left, and the "Join Waitlist"
+// CTA top-right. Other routes (blog, app) keep the standard SiteHeader — this variant
+// assumes a dark, full-bleed backdrop so everything is tuned for white-on-media legibility.
+const NAV = [
+  { label: "Features", href: "/#features" },
+  { label: "Templates", href: "/#templates" },
+  { label: "Blog", href: "/blog" },
+  { label: "Tutorials", href: "/tutorials" },
+  { label: "Pricing", href: "/pricing" },
+];
+
+export function LandingHeader() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <header className="absolute inset-x-0 top-0 z-20">
+      <div className="mx-auto flex h-24 w-full max-w-7xl items-center justify-between px-6">
+        {/* logo top-left (SVG is dark; invert to white over the media) */}
+        <Link href="/" aria-label="Calypr home" className="shrink-0" onClick={() => setOpen(false)}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.svg"
+            alt="Calypr"
+            width={87}
+            height={25}
+            className="h-6 w-auto [filter:brightness(0)_invert(1)]"
+          />
+        </Link>
+
+        {/* centred nav pill (desktop) */}
+        <nav className="hidden items-center gap-1 rounded-full border border-white/10 bg-black/40 px-2 py-1.5 text-sm text-white/70 backdrop-blur-md md:flex">
+          {NAV.map(({ label, href }) => (
+            <Link
+              key={label}
+              href={href}
+              className="rounded-full px-4 py-1.5 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              {label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* waitlist CTA (desktop) */}
+        <Link
+          href="/waitlist"
+          className="hidden shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-5 py-2 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/60 md:inline-flex"
+        >
+          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px] shadow-emerald-400/60" />
+          Join Waitlist
+        </Link>
+
+        {/* hamburger (mobile) */}
+        <button
+          type="button"
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          onClick={() => setOpen((v) => !v)}
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-black/40 text-white backdrop-blur-md transition-colors hover:bg-black/60 md:hidden"
+        >
+          {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        </button>
+      </div>
+
+      {/* mobile sheet */}
+      {open ? (
+        <div className="mx-4 rounded-2xl border border-white/10 bg-black/70 p-2 backdrop-blur-md md:hidden">
+          <nav className="flex flex-col">
+            {NAV.map(({ label, href }) => (
+              <Link
+                key={label}
+                href={href}
+                onClick={() => setOpen(false)}
+                className="rounded-xl px-4 py-3 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+              >
+                {label}
+              </Link>
+            ))}
+            <Link
+              href="/waitlist"
+              onClick={() => setOpen(false)}
+              className="mt-1 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-medium text-black transition-colors hover:bg-white/90"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              Join Waitlist
+            </Link>
+          </nav>
+        </div>
+      ) : null}
+    </header>
+  );
+}
