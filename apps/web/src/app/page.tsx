@@ -124,10 +124,12 @@ export default function Home() {
         {/* headline block, bottom-left */}
         <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col justify-end px-6 pb-20 pt-32">
           <div className="animate-in fade-in slide-in-from-bottom-4 max-w-2xl duration-700">
-            <h1 className="text-balance text-6xl font-medium leading-[0.95] tracking-tight sm:text-7xl lg:text-8xl">
-              Calypr
+            <h1 className="text-balance text-[36px] font-medium leading-[1.05] tracking-tight">
+              Build your dreams
             </h1>
-            <p className="mt-4 text-lg text-white/70 sm:text-xl">Build your dreams.</p>
+            <p className="mt-4 text-lg text-white/70 sm:text-xl">
+              Design, build and share your AI apps easily.
+            </p>
             <div className="mt-8">
               <HoverButton href="/canvas">
                 Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
