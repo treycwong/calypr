@@ -12,7 +12,13 @@ import uuid
 
 import pytest
 from calypr_api import vault
-from calypr_api.connectors import resolve, resolve_graph
+from calypr_api.config import settings
+from calypr_api.connectors import (
+    ConnectorResolutionError,
+    assert_egress_allowed,
+    resolve,
+    resolve_graph,
+)
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import ConnectorCredential
 from calypr_api.db.session import engine
@@ -54,6 +60,28 @@ def test_resolve_notion_uses_notion_token_header(monkeypatch):
     conn = resolve(cred)
     assert conn.url == "https://notion-mcp.internal/mcp"
     assert conn.headers == {"Notion-Token": "ntn_bot_token"}
+
+
+def test_egress_guard_blocks_private_hosts_in_production(monkeypatch):
+    # SSRF guard: on a real deployment, a Tier B URL resolving to loopback/private is rejected.
+    monkeypatch.setattr(settings, "internal_key", "proxy-shared-secret")  # prod signal
+    for blocked in (
+        "http://localhost:3333/mcp",
+        "http://127.0.0.1/mcp",
+        "https://10.0.0.5/mcp",
+        "https://169.254.169.254/latest/meta-data",  # cloud metadata
+    ):
+        with pytest.raises(ConnectorResolutionError):
+            assert_egress_allowed(blocked)
+    # A public host is allowed.
+    assert_egress_allowed("https://mcp.example.com/mcp")
+
+
+def test_egress_guard_is_off_in_local_dev(monkeypatch):
+    # No prod signal → localhost is allowed (so dev/CI can test against local MCP servers).
+    monkeypatch.setattr(settings, "internal_key", "")
+    monkeypatch.setattr(settings, "environment", "development")
+    assert_egress_allowed("http://localhost:3333/mcp")  # no raise
 
 
 def test_resolve_graph_is_a_noop_without_connector_refs():

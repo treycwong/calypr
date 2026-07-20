@@ -34,3 +34,13 @@ def test_configured_key_round_trips_in_production(monkeypatch):
     monkeypatch.setattr(settings, "environment", "production")
     monkeypatch.setattr(settings, "vault_key", "a-real-operator-passphrase")
     assert vault.decrypt(vault.encrypt("secret")) == "secret"
+
+
+def test_internal_key_set_forces_fail_closed_without_vault_key(monkeypatch):
+    # The trusted-proxy secret is only ever set in a real deployment; its presence must forbid
+    # the dev fallback even if CALYPR_ENVIRONMENT was left unset (the misconfiguration footgun).
+    monkeypatch.setattr(settings, "environment", "development")
+    monkeypatch.setattr(settings, "vault_key", "")
+    monkeypatch.setattr(settings, "internal_key", "proxy-shared-secret")
+    with pytest.raises(vault.VaultUnavailable):
+        vault.encrypt("x")

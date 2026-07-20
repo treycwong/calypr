@@ -18,7 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 
 from calypr_api.config import settings
-from calypr_api.connectors import ConnectorResolutionError, resolve
+from calypr_api.connectors import (
+    ConnectorResolutionError,
+    assert_egress_allowed,
+    resolve,
+)
 from calypr_api.db.models import ConnectorCredential
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
@@ -82,6 +86,10 @@ def create_connector(
     body: ConnectorCreate, t: Tenant = Depends(tenant)
 ) -> ConnectorInfo:
     """Save a Tier B MCP server. The bearer secret (if any) is encrypted before storage."""
+    try:
+        assert_egress_allowed(body.url)  # reject private/loopback hosts early (SSRF guard)
+    except ConnectorResolutionError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
     c = ConnectorCredential(
         workspace_id=t.workspace_id,
         kind="mcp",

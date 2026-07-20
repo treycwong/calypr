@@ -7,9 +7,12 @@ ever carries a `mcp_connector_ref`, never a token)."""
 
 from __future__ import annotations
 
+import ipaddress
 import logging
+import socket
 import uuid
 from dataclasses import dataclass, field
+from urllib.parse import urlparse
 
 from calypr_dsl import GraphSpec
 from sqlalchemy import select
@@ -20,6 +23,40 @@ from calypr_api.db.session import SessionLocal, set_tenant
 from calypr_api.vault import decrypt
 
 log = logging.getLogger("calypr_api")
+
+
+def _egress_enforced() -> bool:
+    """Enforce the SSRF egress guard on real deployments only. In local dev/CI (no internal
+    key, non-prod) the guard is off so tests can point Tier B connectors at localhost servers."""
+    return settings.environment == "production" or bool(settings.internal_key)
+
+
+def assert_egress_allowed(url: str) -> None:
+    """Reject a user-supplied Tier B URL whose host resolves to a private/loopback/link-local
+    address — the SSRF guard for connectors. Resolves the host to IPs (so a public name pointing
+    at an internal IP is caught) and is called at *use* time (test + run), not just at save, to
+    blunt DNS-rebinding. No-op off real deployments and for hosts that don't resolve (the
+    connection then fails naturally)."""
+    if not _egress_enforced():
+        return
+    host = urlparse(url).hostname or ""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ConnectorResolutionError(
+                "connector URL host is not allowed (private/loopback address)."
+            )
 
 
 @dataclass
@@ -58,6 +95,7 @@ def resolve(cred: ConnectorCredential) -> ResolvedConnection:
     # kind == "mcp" (Tier B): the user-supplied URL + optional bearer.
     if not cred.url:
         raise ConnectorResolutionError("connector has no URL")
+    assert_egress_allowed(cred.url)  # SSRF guard at use time (test + run)
     return ResolvedConnection(
         url=cred.url,
         transport=cred.transport,

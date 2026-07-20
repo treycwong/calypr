@@ -25,12 +25,22 @@ class VaultUnavailable(RuntimeError):
     """Raised when the vault is asked to (de)crypt in production without a configured key."""
 
 
+def _is_production_like() -> bool:
+    """A positive signal that this is a real deployment, so the dev fallback key must NOT be
+    used. `internal_key` is the shared secret the trusted Next proxy presents — it is only ever
+    set in a real deployment, so its presence means production even if `CALYPR_ENVIRONMENT` was
+    left unset. This closes the footgun where a misconfigured env silently encrypts every
+    workspace secret under the public dev key."""
+    return settings.environment == "production" or bool(settings.internal_key)
+
+
 def _master_secret() -> str:
     if settings.vault_key:
         return settings.vault_key
-    if settings.environment == "production":
+    if _is_production_like():
         raise VaultUnavailable(
-            "CALYPR_VAULT_KEY is required in production to store connector credentials."
+            "CALYPR_VAULT_KEY is required in production (or whenever CALYPR_INTERNAL_KEY is "
+            "set) to store connector credentials — refusing the insecure dev fallback key."
         )
     return _DEV_FALLBACK_SECRET
 
