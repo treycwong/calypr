@@ -24,15 +24,26 @@ from calypr_nodes._assets import store_asset
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._context import current_node_id
 from calypr_nodes._convert import safe_stream_writer, text_of
+from calypr_nodes._parse import (
+    calls_named,
+    docstring,
+    kwarg_const,
+    return_dict_key,
+    state_get_keys,
+    string_assign,
+)
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     image_model_for_node,
     register,
 )
+
+_DOCSTRING = "Generate an image from the prompt and append it as a Markdown image."
 
 
 class ImageConfig(BaseModel):
@@ -171,3 +182,30 @@ class ImageNode(BaseNode):
             f'    return {{"{cfg.output_channel}": [AIMessage(content=markdown)]}}',
         ]
         return CodeFragment(fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports)
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> ImageConfig | None:
+        """Recover an Image node. `model`/`size`/`quality`/`n` come from the
+        `OpenAI().images.generate(...)` call; the prompt/output channels from the state read and
+        return; the optional `style` from the emitted `style = "..."` literal (absent → none)."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        gen = calls_named(fn, "generate")
+        keys = state_get_keys(fn)
+        out = return_dict_key(fn)
+        if not gen or not keys or out is None:
+            return None
+        call = gen[0]
+        cfg = ImageConfig(prompt_channel=keys[0], output_channel=out, style="")
+        for field, attr in (("model", "model"), ("size", "size"), ("quality", "quality")):
+            val = kwarg_const(call, attr)
+            if isinstance(val, str):
+                setattr(cfg, field, val)
+        n = kwarg_const(call, "n")
+        if isinstance(n, int):
+            cfg.n = n
+        style = string_assign(fn, "style")
+        if style is not None:
+            cfg.style = style
+        return cfg

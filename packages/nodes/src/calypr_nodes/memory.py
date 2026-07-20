@@ -15,15 +15,27 @@ from pydantic import BaseModel
 
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._llm import collect_text
+from calypr_nodes._parse import (
+    calls_named,
+    docstring,
+    kwarg_const,
+    return_dict_key,
+    state_get_keys,
+    str_const,
+)
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
+
+_BUFFER_DOC = "Append the latest message to the memory buffer."
+_SUMMARY_DOC = "Summarise the conversation into long-term memory."
 
 _SUMMARY_PROMPT = (
     "Summarise the conversation so far in a few sentences, keeping facts and decisions "
@@ -134,3 +146,34 @@ class MemoryNode(BaseNode):
         return CodeFragment(
             fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> MemoryConfig | None:
+        """Recover a Memory node. The docstring selects the operation: `buffer` just appends
+        the latest message; `summary` runs an LLM over the transcript (so model + temperature
+        are recovered too). Both read `state.get("<input_channel>")` and write one channel."""
+        fn = ctx.func
+        if fn is None:
+            return None
+        doc = docstring(fn)
+        if doc not in (_BUFFER_DOC, _SUMMARY_DOC):
+            return None
+        keys = state_get_keys(fn)
+        memory_channel = return_dict_key(fn)
+        if not keys or memory_channel is None:
+            return None
+        if doc == _BUFFER_DOC:
+            return MemoryConfig(
+                operation="buffer", input_channel=keys[0], memory_channel=memory_channel
+            )
+        calls = calls_named(fn, "init_chat_model")
+        model = str_const(calls[0].args[0]) if calls and calls[0].args else None
+        temperature = kwarg_const(calls[0], "temperature") if calls else None
+        cfg = MemoryConfig(
+            operation="summary", input_channel=keys[0], memory_channel=memory_channel
+        )
+        if model is not None:
+            cfg.model = model
+        if isinstance(temperature, (int, float)):
+            cfg.temperature = float(temperature)
+        return cfg

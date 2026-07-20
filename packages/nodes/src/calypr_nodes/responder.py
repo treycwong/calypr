@@ -13,15 +13,19 @@ from pydantic import BaseModel
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._convert import lc_to_msgs
 from calypr_nodes._llm import actor_message
+from calypr_nodes._parse import docstring, llm_actor_fields
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
+
+_DOCSTRING = "Reflexion responder: answer, self-critique, and search for gaps."
 
 _RESPONDER_PROMPT = (
     "You are the responder in a Reflexion loop. Answer the question as well as you can, "
@@ -105,3 +109,13 @@ class ResponderNode(BaseNode):
         return CodeFragment(
             fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> ResponderConfig | None:
+        """Recover a Reflexion Responder — the single-shot LLM-actor shape, keyed on its
+        docstring, with the fixed Reflexion framing stripped back off the system prompt."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        fields = llm_actor_fields(fn, _RESPONDER_PROMPT)
+        return ResponderConfig(**fields) if fields else None

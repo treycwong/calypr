@@ -14,6 +14,7 @@ Two kinds:
 
 from __future__ import annotations
 
+import ast
 import json
 from collections.abc import Callable
 from typing import Any, Literal
@@ -24,6 +25,7 @@ from pydantic import BaseModel
 
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._llm import collect_text
+from calypr_nodes._parse import calls_named, state_get_keys, str_const, string_assign
 from calypr_nodes.code import custom_code_allowed
 from calypr_nodes.registry import (
     BaseNode,
@@ -31,9 +33,20 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
+
+# Markers inside the emitted LLM-classifier system prompt (see `_classify_prompt`), used to
+# recover the branch list on the way back.
+_CATEGORIES_MARKER = "Categories:\n"
+
+# The stable docstrings the node body carries per kind — the recogniser's discriminator, so a
+# *different* routing node (e.g. a Revisor, which also emits a `route_*` companion) is not
+# mistaken for a Router.
+_RULES_DOC = "Router — passthrough; routing is on the conditional edges."
+_LLM_DOC = "Routing classifier: pick a branch for the latest request."
 
 _SAFE_BUILTINS = {
     "len": len,
@@ -238,4 +251,83 @@ class RouterNode(BaseNode):
             function="\n".join(lines) + "\n",
             imports=imports,
             routing=True,
+        )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> RouterConfig | None:
+        """Recover a Router node. Its signature is a companion `route_<ref>` function (the
+        branch decision the generator emits alongside the node) — no other node type has one.
+        A `rules` router's node body is a bare `return {}`; an `llm` router's calls
+        `init_chat_model`, so the presence of that call selects the kind."""
+        node_fn = ctx.func
+        route_fn = ctx.defs.get(f"route_{ctx.ref_name}")
+        if node_fn is None or not isinstance(route_fn, ast.FunctionDef):
+            return None
+
+        doc = ast.get_docstring(node_fn)
+        if doc == _LLM_DOC:
+            return cls._parse_llm(ctx, node_fn, route_fn)
+        if doc == _RULES_DOC:
+            return cls._parse_rules(ctx, route_fn)
+        return None  # a different routing node (Revisor, …) — not a Router
+
+    @classmethod
+    def _parse_rules(
+        cls, ctx: NodeParseContext, route_fn: ast.FunctionDef
+    ) -> RouterConfig:
+        """`route_<ref>` is a chain of `if <when>: return "<name>"` then a final
+        `return "<default>"`. Recover each branch's predicate source and the default."""
+        branches: list[Branch] = []
+        default = ""
+        for stmt in route_fn.body:
+            if isinstance(stmt, ast.If) and isinstance(stmt.body[0], ast.Return):
+                name = str_const(stmt.body[0].value)
+                when = ast.get_source_segment(ctx.source, stmt.test) or ""
+                if name is not None:
+                    branches.append(Branch(name=name, when=when))
+            elif isinstance(stmt, ast.Return):
+                default = str_const(stmt.value) or ""
+        return RouterConfig(kind="rules", branches=branches, default=default)
+
+    @classmethod
+    def _parse_llm(
+        cls, ctx: NodeParseContext, node_fn: ast.FunctionDef, route_fn: ast.FunctionDef
+    ) -> RouterConfig:
+        """The classifier body carries model + channels; the branch list (name + description)
+        is recovered from the `Categories:` block of the emitted system prompt, and the default
+        from the `route_<ref>` fallback `state.get(route_channel, "<default>")`."""
+        model_calls = calls_named(node_fn, "init_chat_model")
+        model = (
+            str_const(model_calls[0].args[0])
+            if model_calls and model_calls[0].args
+            else "fake"
+        )
+        keys = state_get_keys(node_fn)
+        input_channel = keys[0] if keys else "messages"
+
+        # route_channel + default from `return state.get("<route_channel>", "<default>")`.
+        route_channel, default = "task_type", ""
+        for get in calls_named(route_fn, "get"):
+            if len(get.args) >= 2 and str_const(get.args[0]) is not None:
+                route_channel = str_const(get.args[0]) or route_channel
+                default = str_const(get.args[1]) or ""
+                break
+
+        branches: list[Branch] = []
+        system = string_assign(node_fn, "system") or ""
+        _, _, block = system.partition(_CATEGORIES_MARKER)
+        for line in block.splitlines():
+            line = line.strip()
+            if not line.startswith("- "):
+                continue
+            name, sep, when = line[2:].partition(": ")
+            branches.append(Branch(name=name, when=when if sep else ""))
+
+        return RouterConfig(
+            kind="llm",
+            model=model,
+            input_channel=input_channel,
+            route_channel=route_channel,
+            branches=branches,
+            default=default,
         )

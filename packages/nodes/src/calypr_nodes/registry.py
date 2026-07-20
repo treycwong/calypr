@@ -7,6 +7,7 @@ all it takes for the compiler to handle it and (later) for the canvas to render 
 
 from __future__ import annotations
 
+import ast
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -67,6 +68,31 @@ class CodegenContext:
     tool_refs: list[str] = field(default_factory=list)
 
 
+@dataclass
+class NodeParseContext:
+    """Per-node context for `parse()` — the inverse of `CodegenContext`.
+
+    The reverse parser (`calypr_roundtrip`) hands each node type everything needed to
+    recover its config from generated code without re-walking the module: the name
+    `add_node(...)` referenced, that name's defining statement (a function *or* a
+    module-level assignment, e.g. `node_x = ToolNode([...])`), the full parsed module,
+    the original source (for `ast.get_source_segment`), and every other top-level
+    definition keyed by name (so a recogniser can find a companion `route_*` function or
+    a `knowledge = ...` helper the codegen emitted alongside its node).
+
+    A `parse()` returns a validated config `BaseModel` when it recognises the shape, or
+    `None` to decline — the parser then tries the next node type, degrading to a `code`
+    node only when every recogniser declines.
+    """
+
+    ref_name: str  # the symbol add_node("<id>", <ref_name>) referenced
+    func: ast.FunctionDef | None  # ref_name's def, if it is a function
+    assign: ast.Assign | None  # ref_name's assignment, if it is `<ref_name> = <expr>`
+    module: ast.Module  # the full parsed module
+    source: str  # original code (for ast.get_source_segment)
+    defs: dict[str, ast.stmt] = field(default_factory=dict)  # top-level name -> its def/assign
+
+
 class NodeMeta(BaseModel):
     """Palette metadata for a node type (drives the canvas in Phase 2)."""
 
@@ -111,6 +137,21 @@ class BaseNode:
 
         `ctx` carries per-node codegen info (e.g. bound tool names); most nodes ignore it."""
         raise NotImplementedError(f"node {cls.type!r} has no codegen yet")
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> BaseModel | None:
+        """Recover this node's config from generated code — the inverse of `codegen()`.
+
+        Lives beside `codegen()` so the forward and reverse can't drift (a registry-wide
+        property test asserts `generate` ∘ `parse` ∘ `generate` is a fixed point). Return a
+        validated `config_model` when the code matches this node's emitted shape, or `None`
+        to decline so the parser tries the next type. The default declines — a node type
+        with no recogniser degrades to a `code` node, exactly as before recognisers existed.
+
+        Recovers only what the code *expresses*: fields the generator never emits
+        (e.g. `max_tokens`, a cosmetic `label`) come back as their config defaults. That is
+        lossless for the round-trip because those fields don't change the generated code."""
+        return None
 
     @classmethod
     def routing(

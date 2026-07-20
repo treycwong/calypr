@@ -18,10 +18,12 @@ walker inverts exactly that grammar and nothing more:
 their **keys**; `tools_condition` maps do not (they reconstruct to plain agent↔tool edges), so the
 router function name (`route_*` vs `tools_condition`) is the discriminator.
 
-Node *types* are not recoverable from the call graph alone — PR-1 degrades every node to a
-`code` (Custom Code) node carrying its function source verbatim. Per-node recognisers replace
-that in a later PR. The walker never raises on the generated surface: unrecognised statements
-become warnings, not failures.
+Node *types* are not recoverable from the call graph alone. Each node function is offered to the
+registered node types' `parse()` recognisers (the inverse of their `codegen()`, living beside it
+in `packages/nodes`) in priority order; the first to claim the shape sets the node's type +
+config. Any function no recogniser matches degrades to a `code` (Custom Code) node carrying its
+source verbatim. The walker never raises on the generated surface: unrecognised statements and
+recogniser errors become warnings, not failures.
 """
 
 from __future__ import annotations
@@ -31,8 +33,31 @@ import json
 from dataclasses import dataclass, field
 
 from calypr_dsl import SCHEMA_VERSION, EdgeSpec, GraphSpec, NodeSpec, Reducer, StateChannel
+from calypr_nodes import NodeParseContext, get_node, has_node
 
 _GRAPH_METHODS = {"add_node", "add_edge", "add_conditional_edges"}
+
+# The order recognisers are tried in. A node function is offered to each type's `parse()`
+# until one claims it; the first match wins, so more-specific shapes come first. `router`
+# precedes `agent` because an LLM router also calls `init_chat_model` — it's disambiguated by
+# its companion `route_*` function, which `router.parse()` keys on. Types absent here (or with
+# no recogniser) never match and their nodes degrade to a `code` node — the same graceful
+# fallback the parser had before any recogniser existed.
+_RECOGNITION_ORDER = (
+    "input",
+    "output",
+    "router",
+    "agent",
+    "tool",
+    "retriever",
+    "responder",
+    "revisor",
+    "evaluator",
+    "memory",
+    "image",
+    "tts",
+    "upload",
+)
 
 # Inverse of codegen's `_PYTYPE`: a generated Python annotation maps back to a canonical DSL
 # type. The forward map is many-to-one (both "string"/"str" -> str), so we pick one canonical
@@ -183,6 +208,16 @@ def parse_python(code: str) -> ParseResult:
     functions: dict[str, ast.FunctionDef] = {
         n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)
     }
+    # Every top-level symbol → its defining statement (a function *or* an assignment such as
+    # `node_x = ToolNode([...])`). Recognisers use this to resolve the name `add_node` points
+    # at and to find companion defs (a `route_*` function, a `knowledge = ...` helper).
+    top_defs: dict[str, ast.stmt] = dict(functions)
+    for stmt in tree.body:
+        if isinstance(stmt, ast.Assign):
+            for tgt in stmt.targets:
+                if isinstance(tgt, ast.Name):
+                    top_defs[tgt.id] = stmt
+
     build = functions.get("build_graph")
     if build is None:
         warnings.append("no build_graph() found — cannot recover topology")
@@ -248,18 +283,44 @@ def parse_python(code: str) -> ParseResult:
     trailer = _parse_trailer(code, warnings)
     layout = (trailer or {}).get("layout", {})
 
-    # Every node degrades to a Custom Code node in PR-1 (type recovery is a later PR).
+    # Each node is offered to the recognisers in priority order; the first to claim it sets its
+    # type + config. Any node no recogniser matches degrades to a `code` node with its source
+    # preserved verbatim — the parser never rejects the generated surface.
     degraded: list[str] = []
     nodes: list[NodeSpec] = []
     for node_id in node_ids:
-        src = ""
-        fn = functions.get(node_fn.get(node_id, ""))
-        if fn is not None:
-            src = ast.get_source_segment(code, fn) or ""
+        ref = node_fn.get(node_id, "")
+        defn = top_defs.get(ref)
+        pctx = NodeParseContext(
+            ref_name=ref,
+            func=defn if isinstance(defn, ast.FunctionDef) else None,
+            assign=defn if isinstance(defn, ast.Assign) else None,
+            module=tree,
+            source=code,
+            defs=top_defs,
+        )
+
         pos = layout.get(node_id)
         position = {"x": pos["x"], "y": pos["y"]} if isinstance(pos, dict) and "x" in pos else None
-        nodes.append(NodeSpec(id=node_id, type="code", config={"code": src}, position=position))
-        degraded.append(node_id)
+
+        node_type = "code"
+        config: dict = {}
+        for candidate in _RECOGNITION_ORDER:
+            if not has_node(candidate):
+                continue
+            try:
+                cfg = get_node(candidate).parse(pctx)
+            except Exception as exc:  # a recogniser must never sink the whole parse
+                warnings.append(f"{candidate}.parse() raised on {node_id!r}: {exc} — skipped")
+                continue
+            if cfg is not None:
+                node_type, config = candidate, cfg.model_dump()
+                break
+
+        if node_type == "code":
+            config = {"code": ast.get_source_segment(code, defn) or "" if defn else ""}
+            degraded.append(node_id)
+        nodes.append(NodeSpec(id=node_id, type=node_type, config=config, position=position))
 
     graph_meta = (trailer or {}).get("graph", {})
     spec = GraphSpec(

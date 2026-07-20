@@ -13,20 +13,25 @@ No metering here — vision input tokens are counted by the provider in the Agen
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+from calypr_nodes._parse import docstring, return_dict_key, state_get_keys
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
 )
+
+_DOCSTRING = "Append the uploaded image(s) as a vision message for the next agent."
 
 
 class UploadConfig(BaseModel):
@@ -96,3 +101,23 @@ class UploadNode(BaseNode):
             function="\n".join(lines) + "\n",
             imports=["from langchain_core.messages import HumanMessage"],
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> UploadConfig | None:
+        """Recover an Upload node: it reads the uploaded URLs from `state.get("<images_channel>")`
+        and appends a vision `HumanMessage`. `max_images` is the `urls[:<n>]` slice bound."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        keys = state_get_keys(fn)
+        target = return_dict_key(fn)
+        if not keys or target is None:
+            return None
+        cfg = UploadConfig(images_channel=keys[0], target_channel=target)
+        for sub in (n for n in ast.walk(fn) if isinstance(n, ast.Subscript)):
+            sl = sub.slice
+            if isinstance(sl, ast.Slice) and isinstance(sl.upper, ast.Constant):
+                if isinstance(sl.upper.value, int):
+                    cfg.max_images = sl.upper.value
+                    break
+        return cfg
