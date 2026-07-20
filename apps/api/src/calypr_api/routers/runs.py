@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from calypr_api import engine, spend
+from calypr_api.connectors import resolve_graph
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
 from calypr_api.errors import run_error_message
@@ -64,9 +65,13 @@ async def create_run(
         )
         completed = False
         try:
-            ctx = context_for(req.graph)  # may raise if a provider key is missing
+            # Resolve MCP connector refs → live url + headers (vault-decrypted, server-side)
+            # before compile, off the event loop (DB I/O). No-ops when no connector is used.
+            graph = await asyncio.to_thread(resolve_graph, req.graph, workspace_id)
+            # Resolve the workspace's BYO provider keys (vault) so the run uses them over env.
+            ctx = await asyncio.to_thread(context_for, graph, workspace_id)
             async for ev in run_stream(
-                req.graph,
+                graph,
                 ctx,
                 req.message,
                 images=req.images,

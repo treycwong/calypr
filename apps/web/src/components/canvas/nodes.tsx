@@ -192,12 +192,25 @@ export function MemoryNodeView({ data, selected }: NodeProps) {
 }
 
 export function ToolNodeView({ data, selected }: NodeProps) {
-  const provider = (data as NodeData).config.provider ?? "demo_search";
+  const config = (data as NodeData).config;
+  const provider = config.provider ?? "demo_search";
+  // For MCP, show the server host next to the provider tag (falls back to a hint when unset).
+  let label = String(provider);
+  if (provider === "mcp") {
+    const url = String(config.mcp_url ?? "");
+    let host = "";
+    try {
+      host = url ? new URL(url).host : "";
+    } catch {
+      host = url;
+    }
+    label = host ? `mcp · ${host}` : "mcp · (no server)";
+  }
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="Tools" accent="bg-yellow-500" selected={selected} status={statusOf(data)} testid="node-tool">
-        {String(provider)}
+        {label}
       </Shell>
       {/* Loops back to the agent that called it (the ReAct cycle). */}
       <Handle type="source" position={Position.Right} style={handleStyle} />

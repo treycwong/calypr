@@ -18,7 +18,15 @@ from calypr_api import engine as engine_mod
 from calypr_api.config import settings
 from calypr_api.db.session import engine
 from calypr_api.middleware import PostHogMiddleware
-from calypr_api.routers import agents, assist, runs, share, uploads
+from calypr_api.routers import (
+    agents,
+    assist,
+    connectors,
+    provider_keys,
+    runs,
+    share,
+    uploads,
+)
 
 log = logging.getLogger("calypr_api")
 
@@ -99,6 +107,8 @@ def create_app() -> FastAPI:
     app.include_router(assist.router)
     app.include_router(share.router)
     app.include_router(uploads.router)
+    app.include_router(connectors.router)
+    app.include_router(provider_keys.router)
     return app
 
 

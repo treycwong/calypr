@@ -226,6 +226,77 @@ def react() -> GraphSpec:
     )
 
 
+def mcp_react() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-mcp-react",
+        name="MCP ReAct",
+        description="ReAct over an MCP server: the agent calls any of the server's tools in a "
+        "loop, then answers. Set the Tool node's MCP URL to your server.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are an assistant with access to an MCP server's tools. Use the "
+                    "available tools to gather what you need, then answer from the results."
+                ),
+            ),
+            NodeSpec(
+                id="tools",
+                type="tool",
+                config={"provider": "mcp", "mcp_url": "", "mcp_transport": "streamable_http"},
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
+        ],
+        entry="in",
+    )
+
+
+def notion_assistant() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-notion-assistant",
+        name="Notion assistant",
+        description="Answer questions from your Notion workspace. Connect Notion in Settings, "
+        "then pick your connector on the Tools node.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are a helpful assistant with access to the user's Notion workspace "
+                    "through MCP tools. Use the search tool to find relevant pages, read them "
+                    "with the retrieve tools, then answer from what you found — citing the page "
+                    "titles you used. If you can't find anything relevant, say so."
+                ),
+            ),
+            NodeSpec(
+                id="tools",
+                type="tool",
+                # Empty connector_ref: the user selects their own saved Notion connector from
+                # the Tool node's dropdown after loading the template (connectors are per-
+                # workspace, so a template can't hard-code one).
+                config={"provider": "mcp", "mcp_connector_ref": ""},
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
+        ],
+        entry="in",
+    )
+
+
 def reflexion() -> GraphSpec:
     return GraphSpec(
         id="tpl-reflexion",
@@ -650,6 +721,7 @@ FRAMEWORKS: list[GraphSpec] = [
     reflection(),
     learning(),
     react(),
+    mcp_react(),
     reflexion(),
     rag(),
 ]
@@ -666,6 +738,7 @@ TEMPLATES: list[GraphSpec] = [
     translate_and_speak(),
     label_reader(),
     alt_text(),
+    notion_assistant(),
 ]
 
 # Everything the canvas gallery offers.

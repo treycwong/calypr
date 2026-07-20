@@ -251,6 +251,59 @@ def test_retriever_pgvector_codegen_is_real_and_clean():
     assert check.returncode == 0, check.stdout
 
 
+def test_mcp_codegen_reads_env_and_leaks_no_secret():
+    """The MCP provider projects to a MultiServerMCPClient reading its URL/token from the
+    environment — the bearer is runtime-only and must never appear in generated source."""
+    from calypr_compiler.templates import mcp_react
+
+    graph = mcp_react()
+    graph = graph.model_copy(
+        update={
+            "nodes": [
+                n.model_copy(
+                    update={
+                        "config": {
+                            "provider": "mcp",
+                            "mcp_url": "https://mcp.example.com/mcp",
+                            "mcp_transport": "streamable_http",
+                            "mcp_token": "super-secret-bearer",
+                        }
+                    }
+                )
+                if n.id == "tools"
+                else n
+                for n in graph.nodes
+            ]
+        }
+    )
+    code = generate_python(graph)
+    assert "MultiServerMCPClient(" in code
+    assert 'os.environ["MCP_URL"]' in code
+    assert "MCP_TOKEN" in code  # bearer read from env (single-quoted inside the f-string)
+    assert "asyncio.run(" in code
+    assert "ToolNode([*mcp_tools])" in code
+    # The agent binds every MCP tool and loops via the canonical tools_condition — same ReAct
+    # wiring as demo_search, proving MCP composes through the unchanged Tool seam.
+    assert ".bind_tools([*mcp_tools])" in code
+    assert "tools_condition" in code
+    # Secrets never serialized — neither the token nor the design-time URL literal.
+    assert "super-secret-bearer" not in code
+    assert "mcp.example.com" not in code
+    assert "import calypr" not in code and "from calypr" not in code
+
+    fmt = subprocess.run(
+        ["ruff", "format", "-"], input=code, capture_output=True, text=True
+    )
+    assert fmt.stdout == code, "mcp codegen is not ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
 def test_agent_prompt_placeholder_substituted_in_codegen():
     """An Agent whose prompt uses `{{ state.context }}` (the RAG pattern) emits a runtime
     substitution in the generated code, so the exported agent fills in retrieved context

@@ -23,6 +23,7 @@ def test_frameworks_present():
         "tpl-reflection",
         "tpl-learning",
         "tpl-react",
+        "tpl-mcp-react",
         "tpl-reflexion",
         "tpl-rag",
     ]
@@ -41,6 +42,7 @@ def test_use_case_templates_present():
         "tpl-translate-speak",
         "tpl-label-reader",
         "tpl-alt-text",
+        "tpl-notion-assistant",
     ]
 
 

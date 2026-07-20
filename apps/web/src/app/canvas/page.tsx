@@ -17,6 +17,7 @@ import "@xyflow/react/dist/style.css";
 import "./canvas.css";
 import {
   Blocks,
+  Cable,
   LayoutTemplate,
   type LucideIcon,
   Play,
@@ -40,6 +41,7 @@ import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
+import { SettingsPanel } from "@/components/canvas/SettingsPanel";
 import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
@@ -104,9 +106,9 @@ function CanvasInner() {
   // The single rail-driven left panel — one tab at a time (or null = closed). Clicking the
   // active tab again closes it (full-width canvas).
   const [activePanel, setActivePanel] = useState<
-    "blocks" | "templates" | "ai" | null
+    "blocks" | "templates" | "settings" | "ai" | null
   >("blocks");
-  const togglePanel = (p: "blocks" | "templates" | "ai") =>
+  const togglePanel = (p: "blocks" | "templates" | "settings" | "ai") =>
     setActivePanel((cur) => (cur === p ? null : p));
   // The persistent right panel switches between node Properties and generated Code.
   const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
@@ -585,6 +587,13 @@ function CanvasInner() {
             onClick={() => togglePanel("templates")}
             testid="tab-templates"
           />
+          <RailButton
+            icon={Cable}
+            label="Connectors"
+            active={activePanel === "settings"}
+            onClick={() => togglePanel("settings")}
+            testid="tab-connectors"
+          />
           <div className="my-1 h-px w-5 bg-border" />
           <RailButton
             icon={Sparkles}
@@ -603,6 +612,11 @@ function CanvasInner() {
             ) : (
               <TemplatesPanel templates={templates} onLoad={loadTemplate} />
             )}
+          </aside>
+        ) : null}
+        {activePanel === "settings" ? (
+          <aside className="w-72 shrink-0 overflow-auto border-r border-border p-3">
+            <SettingsPanel />
           </aside>
         ) : null}
         {activePanel === "ai" ? (

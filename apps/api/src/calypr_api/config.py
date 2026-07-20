@@ -49,5 +49,25 @@ class Settings(BaseSettings):
     # reaches this many USD, new runs/assists are refused with an SSE error. 0/unset ⇒ disabled.
     platform_spend_cap_usd: float = 0.0
 
+    # Connector credential vault (MCP-NODE-PLAN §5). Master secret for Fernet envelope
+    # encryption; any string works. Unset → an insecure dev key in non-prod, fail-closed in prod.
+    vault_key: str = ""
+    # Public base URL the browser is redirected back to after an OAuth consent (no trailing
+    # slash), e.g. "https://calypr.co". The connector callback path is appended. Unset → the
+    # request's own origin is used (fine for local dev).
+    oauth_redirect_base: str = ""
+    # Notion connector (Tier A, Path A — classic public-integration OAuth). Client id/secret of
+    # a Notion public integration; unset ⇒ the "Connect Notion" flow is disabled (501).
+    notion_client_id: str = ""
+    notion_client_secret: str = ""
+    # The self-hosted `@notionhq/notion-mcp-server` (run with --enable-token-passthrough) that
+    # Calypr connects to, passing each workspace's Notion bot token via the `Notion-Token`
+    # header. Unset ⇒ Notion connectors can be created but won't resolve at run time.
+    notion_mcp_url: str = ""
+    # The Notion MCP server's own bearer token (its `--auth-token`). Sent as `Authorization:
+    # Bearer` alongside the per-request `Notion-Token`. Leave unset only when the server runs
+    # with `--unsafe-disable-auth` (isolated localhost dev).
+    notion_mcp_auth: str = ""
+
 
 settings = Settings()

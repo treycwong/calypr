@@ -51,6 +51,13 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
 export const TOOL_PROVIDER_OPTIONS = [
   { value: "demo_search", label: "Demo search (no key, deterministic)" },
   { value: "tavily", label: "Tavily · web search (code-gen)" },
+  { value: "mcp", label: "MCP server (HTTP)" },
+];
+
+// Transports an MCP Tool node can speak (HTTP only for now; stdio is code-gen-only, deferred).
+export const MCP_TRANSPORT_OPTIONS = [
+  { value: "streamable_http", label: "Streamable HTTP" },
+  { value: "sse", label: "SSE" },
 ];
 
 // The vector store a Knowledge (RAG) node retrieves from. `demo` is a seeded in-memory store
@@ -177,7 +184,16 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     memory_channel: "memory",
     model: "fake",
   },
-  tool: { provider: "demo_search", api_key: "", max_results: 3 },
+  tool: {
+    provider: "demo_search",
+    api_key: "",
+    max_results: 3,
+    mcp_url: "",
+    mcp_transport: "streamable_http",
+    mcp_token: "",
+    mcp_tool_filter: [],
+    mcp_connector_ref: "",
+  },
   responder: { model: "fake", system_prompt: "" },
   revisor: { model: "fake", system_prompt: "", max_revisions: 2 },
   retriever: {

@@ -110,7 +110,8 @@ async def create_share_run(token: str, req: ShareRunRequest) -> StreamingRespons
         )
         completed = False
         try:
-            ctx = context_for(spec)
+            # Shared runs execute under the owner's workspace, so they use the owner's BYO keys.
+            ctx = await asyncio.to_thread(context_for, spec, workspace_id)
             async for ev in run_stream(
                 spec,
                 ctx,

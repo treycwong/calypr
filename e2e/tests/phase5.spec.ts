@@ -15,7 +15,11 @@ async function openCanvas(page: Page) {
 // Templates moved from a header dropdown to the left icon-rail's Templates panel.
 async function loadTemplate(page: Page, name: string) {
   await page.getByTestId("tab-templates").click();
-  await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+  // Exact match: "ReAct" must not also select "MCP ReAct" (substring) — strict-mode safe.
+  await page
+    .getByTestId("templates-panel")
+    .getByRole("button", { name, exact: true })
+    .click();
   // A preview modal opens first; Apply swaps the canvas nodes.
   await page.getByTestId("template-apply").click();
 }
@@ -213,7 +217,7 @@ test("a template previews in a modal; Apply swaps nodes without renaming the pro
   // Name the project, then open a template — a preview modal appears (not an instant load).
   await page.getByTestId("agent-name").fill("My Project");
   await page.getByTestId("tab-templates").click();
-  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct" }).click();
+  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct", exact: true }).click();
   await expect(page.getByTestId("template-modal")).toBeVisible();
 
   // Cancel leaves the canvas untouched.
@@ -222,7 +226,7 @@ test("a template previews in a modal; Apply swaps nodes without renaming the pro
   await expect(page.getByTestId("node-agent")).toHaveCount(0);
 
   // Apply swaps in the template's nodes but keeps the project name.
-  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct" }).click();
+  await page.getByTestId("templates-panel").getByRole("button", { name: "ReAct", exact: true }).click();
   await page.getByTestId("template-apply").click();
   await expect(page.getByTestId("node-agent")).toBeVisible();
   await expect(page.getByTestId("agent-name")).toHaveValue("My Project");

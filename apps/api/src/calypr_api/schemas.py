@@ -135,3 +135,86 @@ class TemplateInfo(BaseModel):
     description: str
     kind: Literal["framework", "template"]
     graph: GraphSpec
+
+
+class ConnectorCreate(BaseModel):
+    """Save a Tier B MCP server: a name + URL, optionally a bearer secret (stored encrypted).
+
+    The secret is write-only — it is never echoed back by any response model."""
+
+    name: str
+    url: str
+    transport: Literal["streamable_http", "sse"] = "streamable_http"
+    secret: str = ""  # optional bearer; "" = keyless server
+
+    @field_validator("url")
+    @classmethod
+    def _https_only(cls, v: str) -> str:
+        # MCP servers ride HTTPS; blocking other schemes trims the SSRF surface for a
+        # user-supplied URL (localhost http is still allowed for dev/CI test servers).
+        if not (
+            v.startswith("https://")
+            or v.startswith("http://localhost")
+            or v.startswith("http://127.0.0.1")
+        ):
+            raise ValueError("connector URL must be https:// (or http://localhost for dev)")
+        return v
+
+
+class ConnectorInfo(BaseModel):
+    """A saved connector, safe to return to the client — carries NO secret, only a
+    `has_secret` flag so the UI can show a lock/reconnect state."""
+
+    id: str
+    kind: Literal["mcp", "notion"]
+    name: str
+    url: str | None
+    transport: str
+    has_secret: bool
+    meta: dict = {}
+    created_at: datetime
+
+
+class ConnectorTestResult(BaseModel):
+    """Result of a live ListTools probe against a connector (drives the canvas Test button)."""
+
+    ok: bool
+    tools: list[str] = []
+    error: str | None = None
+
+
+class OAuthStart(BaseModel):
+    """The provider authorize URL the browser should be redirected to (Tier A connect)."""
+
+    authorize_url: str
+
+
+class NotionCallback(BaseModel):
+    """The authorization code the browser returned from Notion's consent screen."""
+
+    code: str
+
+
+#: The model providers a workspace can supply its own key for (BYO-key). Kept small and
+#: explicit — the model factory maps these to its provider clients.
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "tavily")
+
+
+class ProviderKeyInfo(BaseModel):
+    """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
+
+    provider: Literal["openai", "anthropic", "tavily"]
+    has_key: bool
+
+
+class ProviderKeySet(BaseModel):
+    """Set/replace a provider's BYO key. Write-only — never echoed back."""
+
+    key: str
+
+    @field_validator("key")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("key must not be empty")
+        return v.strip()

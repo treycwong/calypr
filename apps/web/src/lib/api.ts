@@ -201,6 +201,93 @@ export async function deleteAgent(id: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error(`delete failed (${res.status})`);
 }
 
+/** A saved MCP/OAuth connector (never carries the secret — only `has_secret`). */
+export type Connector = {
+  id: string;
+  kind: "mcp" | "notion";
+  name: string;
+  url: string | null;
+  transport: string;
+  has_secret: boolean;
+  meta: Record<string, unknown>;
+  created_at: string;
+};
+
+/** The workspace's saved connectors (Settings panel + the Tool node's connector dropdown). */
+export async function listConnectors(): Promise<Connector[]> {
+  const res = await fetch("/api/connectors", { cache: "no-store" });
+  if (!res.ok) throw new Error(`list connectors failed (${res.status})`);
+  return res.json();
+}
+
+/** Save a Tier B MCP server (URL + optional bearer, stored encrypted server-side). */
+export async function createConnector(body: {
+  name: string;
+  url: string;
+  transport?: string;
+  secret?: string;
+}): Promise<Connector> {
+  const res = await fetch("/api/connectors", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`save connector failed (${res.status})`);
+  return res.json();
+}
+
+/** Delete a connector. */
+export async function deleteConnector(id: string): Promise<void> {
+  const res = await fetch(`/api/connectors/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`delete failed (${res.status})`);
+}
+
+/** Result of a live ListTools probe against a connector. */
+export type ConnectorTest = { ok: boolean; tools: string[]; error: string | null };
+
+/** Test a connector — resolves it server-side and lists its tools. */
+export async function testConnector(id: string): Promise<ConnectorTest> {
+  const res = await fetch(`/api/connectors/${id}/test`, { method: "POST" });
+  if (!res.ok) throw new Error(`test failed (${res.status})`);
+  return res.json();
+}
+
+/** Start the Notion OAuth flow — returns the URL to open in the browser. */
+export async function notionConnectUrl(): Promise<string> {
+  const res = await fetch("/api/connectors/notion/connect", { cache: "no-store" });
+  if (!res.ok) {
+    const detail = res.status === 501 ? " (Notion is not configured on this server)" : "";
+    throw new Error(`could not start Notion connect${detail}`);
+  }
+  return (await res.json()).authorize_url as string;
+}
+
+/** A model provider's BYO-key state ({has_key}) — the value is never returned. */
+export type ProviderKeyInfo = { provider: string; has_key: boolean };
+
+/** Which providers have a workspace BYO key on file (the Settings "API Keys" section). */
+export async function listProviderKeys(): Promise<ProviderKeyInfo[]> {
+  const res = await fetch("/api/provider-keys", { cache: "no-store" });
+  if (!res.ok) throw new Error(`list provider keys failed (${res.status})`);
+  return res.json();
+}
+
+/** Set/replace a provider's BYO key (stored encrypted server-side). */
+export async function setProviderKey(provider: string, key: string): Promise<void> {
+  const res = await fetch(`/api/provider-keys/${provider}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  if (!res.ok) throw new Error(`save key failed (${res.status})`);
+}
+
+/** Remove a provider's BYO key (runs fall back to the server key). */
+export async function deleteProviderKey(provider: string): Promise<void> {
+  const res = await fetch(`/api/provider-keys/${provider}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`delete key failed (${res.status})`);
+}
+
 export type WorkspaceInfo = { id: string; name: string };
 
 /** The current user's workspace. */

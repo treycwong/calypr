@@ -11,7 +11,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy import (
+    DateTime,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -116,6 +124,80 @@ class RunUsage(Base):
     model: Mapped[str | None] = mapped_column(String, nullable=True)
     input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     output_tokens: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+
+
+class ConnectorCredential(Base):
+    """A workspace's saved MCP connector + its envelope-encrypted secret (MCP-NODE-PLAN §5).
+
+    The canvas stores only this row's `id` (a `mcp_connector_ref`), never a token — so a leaked
+    GraphSpec yields a handle, not a credential. `secret_encrypted` is Fernet ciphertext
+    (see `vault.py`); the plaintext is decrypted only server-side at run time and never returned
+    to the client. RLS scopes every row to its workspace, same as `agent`."""
+
+    __tablename__ = "connector_credential"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # "mcp" (Tier B — user-supplied HTTP URL) | "notion" (Tier A — OAuth). Drives resolution.
+    kind: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)  # user-facing label
+    # Tier B: the MCP server URL. Tier A: unused (the URL comes from server config).
+    url: Mapped[str | None] = mapped_column(String, nullable=True)
+    transport: Mapped[str] = mapped_column(
+        String, nullable=False, server_default="streamable_http"
+    )
+    # Fernet ciphertext of the bearer/OAuth token; NULL for a keyless server. Never serialized.
+    secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Non-secret display metadata (e.g. Notion workspace name, discovered tool names snapshot).
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class ProviderKey(Base):
+    """A workspace's BYO API key for a model provider (openai / anthropic / tavily / …).
+
+    One row per (workspace, provider). `key_encrypted` is Fernet ciphertext (see `vault.py`),
+    decrypted only server-side at run time and injected into the model factory — it overrides
+    the server env for that provider. Never returned to the client. RLS-scoped like `agent`."""
+
+    __tablename__ = "provider_key"
+    __table_args__ = (UniqueConstraint("workspace_id", "provider"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    provider: Mapped[str] = mapped_column(String, nullable=False)  # openai|anthropic|tavily|…
+    key_encrypted: Mapped[str] = mapped_column(String, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class ShareLink(Base):
