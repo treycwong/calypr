@@ -127,8 +127,8 @@ export default function Home() {
             <h1 className="text-balance text-[36px] font-medium leading-[1.05] tracking-tight">
               Build your dreams
             </h1>
-            <p className="mt-4 text-lg text-white/70 sm:text-xl">
-              Design, build and share your AI apps easily.
+            <p className="mt-3 text-sm text-white/70 sm:text-base">
+              Create your own AI apps easily.
             </p>
             <div className="mt-8">
               <HoverButton href="/canvas">
