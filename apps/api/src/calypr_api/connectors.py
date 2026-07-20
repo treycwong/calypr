@@ -43,11 +43,17 @@ def resolve(cred: ConnectorCredential) -> ResolvedConnection:
                 "Notion MCP server URL is not configured (CALYPR_NOTION_MCP_URL)."
             )
         # The self-hosted notion-mcp-server runs with --enable-token-passthrough: each request
-        # carries the workspace's Notion bot token via the `Notion-Token` header.
+        # carries the workspace's Notion bot token via the `Notion-Token` header. The server
+        # also requires its own bearer (`--auth-token`) unless started with --unsafe-disable-auth.
+        headers: dict[str, str] = {}
+        if secret:
+            headers["Notion-Token"] = secret
+        if settings.notion_mcp_auth:
+            headers["Authorization"] = f"Bearer {settings.notion_mcp_auth}"
         return ResolvedConnection(
             url=settings.notion_mcp_url,
             transport="streamable_http",
-            headers={"Notion-Token": secret} if secret else {},
+            headers=headers,
         )
     # kind == "mcp" (Tier B): the user-supplied URL + optional bearer.
     if not cred.url:

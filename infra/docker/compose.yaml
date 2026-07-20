@@ -31,11 +31,18 @@ services:
       - http
       - --host
       - 0.0.0.0
+      # Internal port must match the published port: the server's DNS-rebinding protection
+      # validates the Host header against its own host:port, so a 3100→3000 remap would be
+      # rejected as "Invalid Host header: localhost:3100".
       - --port
-      - "3000"
+      - "3100"
       - --enable-token-passthrough
+      # Isolated localhost only: the server's own bearer auth is off, so Calypr sends just the
+      # per-workspace Notion-Token. In production run with `--auth-token <secret>` instead and
+      # set CALYPR_NOTION_MCP_AUTH to the same value. See infra/CONNECTORS.md.
+      - --unsafe-disable-auth
     ports:
-      - "3100:3000"
+      - "3100:3100"
 
 volumes:
   calypr_pgdata:

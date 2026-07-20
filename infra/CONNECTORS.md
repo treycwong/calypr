@@ -14,6 +14,7 @@ path resolves it to a live URL + headers server-side just before compile
 | `CALYPR_OAUTH_REDIRECT_BASE` | Public web origin OAuth returns to, e.g. `https://calypr.co`. | The callback path `/api/connectors/notion/callback` is appended. Required for Notion. |
 | `CALYPR_NOTION_CLIENT_ID` / `CALYPR_NOTION_CLIENT_SECRET` | A Notion **public** integration's OAuth credentials. | Unset ⇒ the "Connect Notion" flow returns 501. |
 | `CALYPR_NOTION_MCP_URL` | The self-hosted `@notionhq/notion-mcp-server` endpoint, e.g. `http://localhost:3100/mcp`. | Unset ⇒ Notion connectors save but won't resolve at run time. |
+| `CALYPR_NOTION_MCP_AUTH` | The Notion MCP server's own bearer (`--auth-token`), sent as `Authorization: Bearer` alongside `Notion-Token`. | Leave unset only when the server runs with `--unsafe-disable-auth` (isolated localhost). |
 
 ## Tier B — any HTTP MCP server (no OAuth)
 
@@ -32,9 +33,19 @@ so Calypr uses a **public Notion integration** + a **self-hosted** Notion MCP se
 2. **Run the Notion MCP server** with token passthrough (already wired in
    `infra/docker/compose.yaml` as the `notion-mcp` service on `localhost:3100`):
    ```
-   npx -y @notionhq/notion-mcp-server --transport http --enable-token-passthrough
+   npx -y @notionhq/notion-mcp-server --transport http --host 0.0.0.0 \
+     --port 3100 --enable-token-passthrough --unsafe-disable-auth
    ```
    Set `CALYPR_NOTION_MCP_URL=http://localhost:3100/mcp`.
+
+   Two gotchas the compose file already handles:
+   - **The internal port must equal the published port.** The server's DNS-rebinding
+     protection validates the `Host` header against its own host:port, so a `3100→3000`
+     remap is rejected with `Invalid Host header`. Run it on `--port 3100` and publish
+     `3100:3100`.
+   - **The server requires its own bearer** unless started with `--unsafe-disable-auth`.
+     For production, drop that flag, pass `--auth-token <secret>`, and set
+     `CALYPR_NOTION_MCP_AUTH` to the same value (Calypr then sends the bearer too).
 3. **Connect** in Settings → **Connected accounts → Connect Notion**. The browser completes the
    Notion consent flow; the callback exchanges the code for a bot token, which is encrypted and
    stored. At run time Calypr connects to the Notion MCP server, passing that token via the

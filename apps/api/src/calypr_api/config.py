@@ -64,6 +64,10 @@ class Settings(BaseSettings):
     # Calypr connects to, passing each workspace's Notion bot token via the `Notion-Token`
     # header. Unset ⇒ Notion connectors can be created but won't resolve at run time.
     notion_mcp_url: str = ""
+    # The Notion MCP server's own bearer token (its `--auth-token`). Sent as `Authorization:
+    # Bearer` alongside the per-request `Notion-Token`. Leave unset only when the server runs
+    # with `--unsafe-disable-auth` (isolated localhost dev).
+    notion_mcp_auth: str = ""
 
 
 settings = Settings()
