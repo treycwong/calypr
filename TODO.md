@@ -5,6 +5,66 @@ context. The visual canvas → LangGraph compile → ownable-Python round-trip i
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
 production** and the **RAG ingestion** next pass.
 
+## 🟢 MCP tool node + credential vault + connectors + BYO keys — DONE (2026-07-20), merged to main (PR #27, `8a79e0e`)
+
+Universal MCP support for the Tools node, plus the credential-vault subsystem it needed
+(connectors, Notion Tier A, BYO provider keys). CI (`build-test`) green at merge; Vercel Preview
+still fails independently (pre-existing infra issue above, not code).
+
+- [x] **MCP provider on the Tools node** (`packages/nodes/src/calypr_nodes/tools_catalog.py`,
+  `tool.py`) — reuses the existing `type="tool"` node (no new node type); `provider="mcp"` drives
+  a real HTTP MCP server via `langchain-mcp-adapters` (`streamable_http`/`sse`). Async tool
+  discovery runs on a dedicated thread (compile is sync but called inside a live event loop);
+  results cached per URL. `discover=False` keeps codegen offline (never hits the server at
+  generate time). Bearer token is runtime-only — generated code reads `os.environ`, never a
+  literal. `mcp_react()` framework + `tpl_notion_assistant()` template in the gallery.
+- [x] **Credential vault** (`apps/api/src/calypr_api/vault.py`) — Fernet envelope encryption,
+  master secret from `CALYPR_VAULT_KEY` (any string). Insecure dev fallback key in local/CI;
+  **fail-closed** in production or whenever `CALYPR_INTERNAL_KEY` is set (closes a
+  misconfiguration footgun where secrets would silently encrypt under the public dev key).
+- [x] **Connectors** (`connector_credential` table + RLS, migration `0006`; `/connectors` CRUD +
+  `/test` live-ListTools probe) — Tier B (paste any HTTPS MCP URL + optional bearer, encrypted)
+  ships now. Canvas Tool node gets a **Connector** dropdown resolving to url+headers server-side
+  at run time (`resolve_graph`, injected just before compile) — the DSL only ever carries a
+  `mcp_connector_ref` handle, never a secret. SSRF guard added post-review: Tier B URLs resolving
+  to loopback/private/link-local/metadata addresses are rejected on real deployments (save + use
+  time), off in local dev/CI.
+- [x] **BYO provider API keys** (`provider_key` table + RLS, migration `0007`; `/provider-keys`
+  GET/PUT/DELETE) — Settings → API Keys: pick OpenAI/Anthropic/Tavily from a dropdown, paste a
+  key, it's encrypted and shown masked (••••) once saved. `model_for`/`image_model_for`/
+  `tts_model_for` gained an optional `keys` map — a workspace key overrides the server env for
+  that provider, else falls back to env (every param optional, fully backward-compatible; 356+
+  tests unaffected).
+- [x] **Settings → Connectors panel** (`apps/web/src/components/canvas/SettingsPanel.tsx`) —
+  sidebar tab renamed Settings→**Connectors** with a Cable icon; section titles in Geist Mono to
+  match the Blocks tab; Connected Accounts / MCP Servers / API Keys sections.
+- [x] **Notion Tier A verified working end-to-end in dev** — classic public-integration OAuth →
+  encrypted bot token → self-hosted `@notionhq/notion-mcp-server --enable-token-passthrough`
+  (Docker, `infra/docker/compose.yaml`, port 3333). Live-tested: `/connectors/{id}/test` returns
+  all 24 Notion tools through vault → decrypt → `Notion-Token` header → MCP server → Notion.
+- [ ] **Notion Tier A — DEFERRED in production** (not enabled at merge; tracked here so it isn't
+  lost). `CALYPR_NOTION_*` env vars are intentionally left unset in prod, so `Connect Notion`
+  returns 501 and no Notion code path is reachable — everything else in this section is live.
+  Needed before turning it on:
+  - [ ] **Host `notion-mcp` as its own long-running service** (Railway) — Vercel can't run it.
+    Start with **`--auth-token <secret>`** (not the local `--unsafe-disable-auth`); internal port
+    must equal the published port (the server's DNS-rebinding check validates the `Host` header
+    against its own host:port).
+  - [ ] **Add an OAuth `state` parameter** to `notion_connect`/`notion_callback`
+    (`apps/api/src/calypr_api/routers/connectors.py`) — CSRF hardening flagged in the security
+    review. Currently inert only because Notion is unconfigured; required before enabling it.
+  - [ ] Set `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`,
+    `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`; register the redirect URI
+    `https://calypr.co/api/connectors/notion/callback` in the Notion integration.
+  - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (full runbook + security posture).
+- [ ] **Fast-follows, not started:** stdio transport for MCP (codegen-only, local dev escape
+  hatch); egress allowlist toggle per workspace (the SSRF guard is a blanket private-range block,
+  not configurable); token refresh/reconnect job for Notion (OAuth refresh tokens expire — no
+  "Reconnect" badge yet); migrate `ToolConfig.api_key` (Tavily's old per-node field) into the
+  Settings API Keys section for consistency; `FORCE ROW LEVEL SECURITY` on `connector_credential`/
+  `provider_key` if the prod DB role turns out to be the table owner (app-level `workspace_id`
+  filters already cover this, so it's belt-and-suspenders, not urgent).
+
 ## 🟢 Image + Voice (TTS) + Upload blocks — DONE (2026-07-18), merged + confirmed live in prod
 
 Three new media/vision node types shipped in one day, each via its own PR, each auto-deployed by
