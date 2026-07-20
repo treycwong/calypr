@@ -15,7 +15,7 @@ async function openCanvas(page: Page) {
 
 async function loadFramework(page: Page, name: string) {
   await page.getByTestId("tab-templates").click();
-  await page.getByTestId("templates-panel").getByRole("button", { name }).click();
+  await page.getByTestId("templates-panel").getByRole("button", { name, exact: true }).click();
   await page.getByTestId("template-apply").click();
 }
 
