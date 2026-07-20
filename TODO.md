@@ -307,8 +307,34 @@ walkers over the closed `build_graph()` grammar, plus the `# calypr: {…}` meta
     conditions do round-trip.
 - [ ] **In parallel (non-eng):** run the blind code panel — <70% would-merge redirects Month 2
   to codegen quality (standing kill condition). **Still open.**
-- [ ] **Next: Week 6** — per-node config `parse()` recognizers in `packages/nodes` so nodes stop
-  degrading to Custom Code; registry-wide property test `parse(generate(spec)).spec == spec`.
+- [x] **Week 6** — per-node config `parse()` recognizers (see the Week-6 section below). Done.
+
+## 🟢 Node-config recognizers (MVP Week 6 — reverse round-trip) — DONE (2026-07-20)
+
+PR #29 (`feat/week6-node-recognizers`, branch open). Plan: `MVP-EXECUTION-PLAN.md` Week 6. The
+reverse parser now recovers each node's **type + config**, not just topology — before this every
+node degraded to a Custom Code block. Makes `canvas → code → edit → canvas` reconstruct the real
+graph.
+
+- [x] **Infra** — `NodeParseContext` + `BaseNode.parse()` hook in `registry.py` (inverse of
+  `codegen()`); shared AST helpers in new `packages/nodes/_parse.py`; dispatcher in
+  `services/roundtrip/parse.py` tries recognizers in priority order and **degrades to a `code`
+  node on no match (never misclassifies)**.
+- [x] **13 recognizers**, each `parse()` beside its `codegen()` so forward/inverse can't drift:
+  `input`, `output`, `agent` (all 6 types, scaffold-stripped prompts), `router` (rules + llm),
+  `tool` (demo/tavily/mcp), `retriever` (demo/pgvector), `responder`, `revisor`, `evaluator`,
+  `memory` (buffer/summary), plus post-plan `image`, `tts`, `upload`.
+- [x] **Registry-wide property test** — codegen fixed point
+  `generate(parse(generate(spec))) == generate(spec)`, byte-identical over golden + all 14
+  STARTERS (**22/22, zero degraded, zero misclassification**). Equivalence relation documented in
+  new `services/roundtrip/README.md` (seeds the Week-11 OSS launch). Full pytest + ruff green.
+  - Config the code doesn't express (`max_tokens`, runtime `api_key`, cosmetic `label`) reverts
+    to defaults — lossless for the round-trip since it doesn't change the generated code.
+  - Recognizers key on the generated docstring + structure. Hardening against rewritten
+    docstrings / heavy reformatting is **Week 7** (mutation / edit-survival suite, ≥95% target).
+- Pre-existing unrelated failure noted: `apps/api/tests/test_uploads.py::
+  test_share_upload_unknown_token_404s` (503 vs 404, needs a live DB) — fails identically without
+  this change.
 
 ### Alt/parallel Week-5 track — internal codegen-quality harness — NOT STARTED (parser chosen)
 
