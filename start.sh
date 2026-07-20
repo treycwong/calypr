@@ -2,15 +2,17 @@
 #
 # Start Calypr locally — the FastAPI engine + the Next.js canvas, together.
 # Ctrl-C stops both. Override ports with API_PORT / WEB_PORT, e.g.:
-#   API_PORT=8000 WEB_PORT=3100 ./start.sh
+#   API_PORT=8000 WEB_PORT=3000 ./start.sh
 #
+# Web defaults to 3000: it matches Next's own default, the Notion OAuth redirect
+# (CALYPR_OAUTH_REDIRECT_BASE), and avoids the notion-mcp container on 3100.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 API_PORT="${API_PORT:-8000}"
-WEB_PORT="${WEB_PORT:-3100}"
+WEB_PORT="${WEB_PORT:-3000}"
 # The web's Next route proxies server-side to the API at this URL.
 export CALYPR_API_URL="http://localhost:${API_PORT}"
 
