@@ -129,9 +129,9 @@ export function SettingsPanel() {
   };
 
   return (
-    <div className="flex flex-col gap-5" data-testid="settings-panel">
+    <div className="flex flex-col gap-5" data-testid="connectors-panel">
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
           Connected accounts
         </h3>
         {notion.length === 0 ? (
@@ -158,7 +158,7 @@ export function SettingsPanel() {
       </section>
 
       <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
           MCP servers
         </h3>
         <div className="flex flex-col gap-2" data-testid="mcp-servers">
@@ -207,82 +207,98 @@ export function SettingsPanel() {
         </div>
       </section>
 
-      <section>
-        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          API keys
-        </h3>
-        <p className="mb-2 text-xs text-muted-foreground">
-          Bring your own provider keys. Stored encrypted; overrides the server key for your runs.
-        </p>
-        <div className="flex flex-col gap-2" data-testid="api-keys">
-          {Object.keys(PROVIDER_LABELS).map((provider) => (
-            <ProviderKeyRow
-              key={provider}
-              provider={provider}
-              hasKey={
-                providerKeys.find((p) => p.provider === provider)?.has_key ?? false
-              }
-              onSave={(key) => saveKey(provider, key)}
-              onRemove={() => removeKey(provider)}
-            />
-          ))}
-        </div>
-      </section>
+      <ApiKeysSection
+        providerKeys={providerKeys}
+        onSave={saveKey}
+        onRemove={removeKey}
+      />
     </div>
   );
 }
 
-function ProviderKeyRow({
-  provider,
-  hasKey,
+function ApiKeysSection({
+  providerKeys,
   onSave,
   onRemove,
 }: {
-  provider: string;
-  hasKey: boolean;
-  onSave: (key: string) => void;
-  onRemove: () => void;
+  providerKeys: ProviderKeyInfo[];
+  onSave: (provider: string, key: string) => void;
+  onRemove: (provider: string) => void;
 }) {
+  const [provider, setProvider] = useState("");
   const [value, setValue] = useState("");
+  const hasKey = providerKeys.find((p) => p.provider === provider)?.has_key ?? false;
   return (
-    <div className="rounded-md border border-border p-2">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-sm">{PROVIDER_LABELS[provider]}</span>
-        {hasKey ? (
-          <span className="flex items-center gap-2 text-xs text-muted-foreground">
-            key on file
-            <button
-              type="button"
-              className="underline hover:text-foreground"
-              onClick={onRemove}
-              data-testid={`key-remove-${provider}`}
+    <section>
+      <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        API keys
+      </h3>
+      <p className="mb-2 text-xs text-muted-foreground">
+        Bring your own provider keys. Stored encrypted; overrides the server key for your runs.
+      </p>
+      <select
+        data-testid="key-provider"
+        value={provider}
+        onChange={(e) => {
+          setProvider(e.target.value);
+          setValue("");
+        }}
+        className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
+      >
+        <option value="">Select a provider…</option>
+        {Object.entries(PROVIDER_LABELS).map(([val, label]) => {
+          const on = providerKeys.find((p) => p.provider === val)?.has_key;
+          return (
+            <option key={val} value={val}>
+              {label}
+              {on ? " • key on file" : ""}
+            </option>
+          );
+        })}
+      </select>
+      {provider ? (
+        <div className="mt-2 flex flex-col gap-2 rounded-md border border-border p-2">
+          {hasKey ? (
+            <div className="flex items-center justify-between">
+              <span
+                className="font-mono text-sm tracking-widest text-muted-foreground"
+                data-testid="key-masked"
+              >
+                ••••••••••••
+              </span>
+              <button
+                type="button"
+                className="text-xs underline hover:text-foreground"
+                onClick={() => onRemove(provider)}
+                data-testid="key-remove"
+              >
+                remove
+              </button>
+            </div>
+          ) : null}
+          <div className="flex gap-2">
+            <Input
+              data-testid="key-input"
+              type="password"
+              placeholder={hasKey ? "Replace key…" : "Paste key…"}
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+            <Button
+              size="sm"
+              disabled={!value.trim()}
+              data-testid="key-save"
+              onClick={() => {
+                onSave(provider, value.trim());
+                setValue("");
+              }}
             >
-              remove
-            </button>
-          </span>
-        ) : null}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          data-testid={`key-input-${provider}`}
-          type="password"
-          placeholder={hasKey ? "Replace key…" : "Paste key…"}
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-        <Button
-          size="sm"
-          disabled={!value.trim()}
-          onClick={() => {
-            onSave(value.trim());
-            setValue("");
-          }}
-          data-testid={`key-save-${provider}`}
-        >
-          Save
-        </Button>
-      </div>
-    </div>
+              Save
+            </Button>
+          </div>
+        </div>
+      ) : null}
+    </section>
   );
 }
 

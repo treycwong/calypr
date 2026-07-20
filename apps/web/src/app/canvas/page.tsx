@@ -17,11 +17,11 @@ import "@xyflow/react/dist/style.css";
 import "./canvas.css";
 import {
   Blocks,
+  Cable,
   LayoutTemplate,
   type LucideIcon,
   Play,
   Redo2,
-  Settings,
   Share2,
   Sparkles,
   Square,
@@ -588,11 +588,11 @@ function CanvasInner() {
             testid="tab-templates"
           />
           <RailButton
-            icon={Settings}
-            label="Settings"
+            icon={Cable}
+            label="Connectors"
             active={activePanel === "settings"}
             onClick={() => togglePanel("settings")}
-            testid="tab-settings"
+            testid="tab-connectors"
           />
           <div className="my-1 h-px w-5 bg-border" />
           <RailButton

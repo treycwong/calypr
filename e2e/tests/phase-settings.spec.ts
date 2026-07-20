@@ -13,17 +13,22 @@ async function openCanvas(page: Page) {
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 
-test("the Settings tab opens the connectors panel", async ({ page }) => {
+test("the Connectors tab opens the panel with all sections", async ({ page }) => {
   await openCanvas(page);
 
-  await page.getByTestId("tab-settings").click();
-  const panel = page.getByTestId("settings-panel");
+  await page.getByTestId("tab-connectors").click();
+  const panel = page.getByTestId("connectors-panel");
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Connected accounts")).toBeVisible();
   await expect(page.getByTestId("connect-notion")).toBeVisible();
   // The Tier B add-server form is present.
   await expect(page.getByTestId("mcp-url")).toBeVisible();
   await expect(page.getByTestId("mcp-add")).toBeVisible();
+  // API Keys: a provider dropdown; the key input appears only after a provider is picked.
+  await expect(page.getByTestId("key-provider")).toBeVisible();
+  await expect(page.getByTestId("key-input")).toHaveCount(0);
+  await page.getByTestId("key-provider").selectOption("openai");
+  await expect(page.getByTestId("key-input")).toBeVisible();
 });
 
 test("an MCP Tool node exposes a Connector dropdown", async ({ page }) => {

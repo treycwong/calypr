@@ -32,17 +32,18 @@ services:
       - --host
       - 0.0.0.0
       # Internal port must match the published port: the server's DNS-rebinding protection
-      # validates the Host header against its own host:port, so a 3100→3000 remap would be
-      # rejected as "Invalid Host header: localhost:3100".
+      # validates the Host header against its own host:port, so a remap (e.g. 3333→3000) is
+      # rejected as "Invalid Host header". 3333 is deliberately outside the web range (dev web
+      # 3000, e2e web 3100) so this infra service never collides with a Next dev server.
       - --port
-      - "3100"
+      - "3333"
       - --enable-token-passthrough
       # Isolated localhost only: the server's own bearer auth is off, so Calypr sends just the
       # per-workspace Notion-Token. In production run with `--auth-token <secret>` instead and
       # set CALYPR_NOTION_MCP_AUTH to the same value. See infra/CONNECTORS.md.
       - --unsafe-disable-auth
     ports:
-      - "3100:3100"
+      - "3333:3333"
 
 volumes:
   calypr_pgdata:
