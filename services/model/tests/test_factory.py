@@ -52,3 +52,21 @@ def test_moonshot_base_url_honored(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MOONSHOT_BASE_URL", "https://example.test/v1")
     client = model_for("kimi-k2")
     assert str(client._client.base_url).rstrip("/") == "https://example.test/v1"
+
+
+def test_byo_key_overrides_env(monkeypatch):
+    """A workspace's BYO key wins over the server env for that provider (self-serve BYO-key)."""
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "env-anthropic")
+    m = model_for("gpt-4o-mini", {"openai": "byo-openai"})
+    assert m._client.api_key == "byo-openai"
+    a = model_for("claude-sonnet-4-5", {"anthropic": "byo-anthropic"})
+    assert a._client.api_key == "byo-anthropic"
+
+
+def test_missing_byo_key_falls_back_to_env(monkeypatch):
+    """No BYO key for the provider → the server env, exactly as before (prod-safe default)."""
+    monkeypatch.setenv("OPENAI_API_KEY", "env-openai")
+    assert model_for("gpt-4o-mini")._client.api_key == "env-openai"
+    # A BYO map that doesn't include the resolved provider also falls back.
+    assert model_for("gpt-4o-mini", {"anthropic": "x"})._client.api_key == "env-openai"

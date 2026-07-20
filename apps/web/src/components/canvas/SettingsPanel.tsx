@@ -13,10 +13,21 @@ import {
   type Connector,
   createConnector,
   deleteConnector,
+  deleteProviderKey,
   listConnectors,
+  listProviderKeys,
   notionConnectUrl,
+  type ProviderKeyInfo,
+  setProviderKey,
   testConnector,
 } from "@/lib/api";
+
+// Providers a workspace can BYO a key for; labels drive the API Keys section.
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  tavily: "Tavily",
+};
 
 export function SettingsPanel() {
   const { toast } = useToast();
@@ -28,6 +39,7 @@ export function SettingsPanel() {
   const [secret, setSecret] = useState("");
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
+  const [providerKeys, setProviderKeys] = useState<ProviderKeyInfo[]>([]);
 
   // Listing fails without a DB (local dev) — leave the panel empty, no error toast.
   const refresh = () =>
@@ -35,10 +47,15 @@ export function SettingsPanel() {
       .then(setConnectors)
       .catch(() => setConnectors([]))
       .finally(() => setLoading(false));
+  const refreshKeys = () =>
+    listProviderKeys()
+      .then(setProviderKeys)
+      .catch(() => setProviderKeys([]));
 
   // Load once on mount; button handlers call refresh() explicitly after mutations.
   useEffect(() => {
     refresh();
+    refreshKeys();
   }, []);
 
   const notion = connectors.filter((c) => c.kind === "notion");
@@ -90,6 +107,24 @@ export function SettingsPanel() {
       toast("Test failed.", "error");
     } finally {
       setTesting(null);
+    }
+  };
+
+  const saveKey = async (provider: string, key: string) => {
+    try {
+      await setProviderKey(provider, key);
+      await refreshKeys();
+      toast(`${PROVIDER_LABELS[provider]} key saved.`, "default");
+    } catch {
+      toast("Couldn't save that key.", "error");
+    }
+  };
+  const removeKey = async (provider: string) => {
+    try {
+      await deleteProviderKey(provider);
+      await refreshKeys();
+    } catch {
+      toast("Couldn't remove that key.", "error");
     }
   };
 
@@ -171,6 +206,82 @@ export function SettingsPanel() {
           </Button>
         </div>
       </section>
+
+      <section>
+        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          API keys
+        </h3>
+        <p className="mb-2 text-xs text-muted-foreground">
+          Bring your own provider keys. Stored encrypted; overrides the server key for your runs.
+        </p>
+        <div className="flex flex-col gap-2" data-testid="api-keys">
+          {Object.keys(PROVIDER_LABELS).map((provider) => (
+            <ProviderKeyRow
+              key={provider}
+              provider={provider}
+              hasKey={
+                providerKeys.find((p) => p.provider === provider)?.has_key ?? false
+              }
+              onSave={(key) => saveKey(provider, key)}
+              onRemove={() => removeKey(provider)}
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ProviderKeyRow({
+  provider,
+  hasKey,
+  onSave,
+  onRemove,
+}: {
+  provider: string;
+  hasKey: boolean;
+  onSave: (key: string) => void;
+  onRemove: () => void;
+}) {
+  const [value, setValue] = useState("");
+  return (
+    <div className="rounded-md border border-border p-2">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-sm">{PROVIDER_LABELS[provider]}</span>
+        {hasKey ? (
+          <span className="flex items-center gap-2 text-xs text-muted-foreground">
+            key on file
+            <button
+              type="button"
+              className="underline hover:text-foreground"
+              onClick={onRemove}
+              data-testid={`key-remove-${provider}`}
+            >
+              remove
+            </button>
+          </span>
+        ) : null}
+      </div>
+      <div className="flex gap-2">
+        <Input
+          data-testid={`key-input-${provider}`}
+          type="password"
+          placeholder={hasKey ? "Replace key…" : "Paste key…"}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={!value.trim()}
+          onClick={() => {
+            onSave(value.trim());
+            setValue("");
+          }}
+          data-testid={`key-save-${provider}`}
+        >
+          Save
+        </Button>
+      </div>
     </div>
   );
 }

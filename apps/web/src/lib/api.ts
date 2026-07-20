@@ -262,6 +262,32 @@ export async function notionConnectUrl(): Promise<string> {
   return (await res.json()).authorize_url as string;
 }
 
+/** A model provider's BYO-key state ({has_key}) — the value is never returned. */
+export type ProviderKeyInfo = { provider: string; has_key: boolean };
+
+/** Which providers have a workspace BYO key on file (the Settings "API Keys" section). */
+export async function listProviderKeys(): Promise<ProviderKeyInfo[]> {
+  const res = await fetch("/api/provider-keys", { cache: "no-store" });
+  if (!res.ok) throw new Error(`list provider keys failed (${res.status})`);
+  return res.json();
+}
+
+/** Set/replace a provider's BYO key (stored encrypted server-side). */
+export async function setProviderKey(provider: string, key: string): Promise<void> {
+  const res = await fetch(`/api/provider-keys/${provider}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key }),
+  });
+  if (!res.ok) throw new Error(`save key failed (${res.status})`);
+}
+
+/** Remove a provider's BYO key (runs fall back to the server key). */
+export async function deleteProviderKey(provider: string): Promise<void> {
+  const res = await fetch(`/api/provider-keys/${provider}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) throw new Error(`delete key failed (${res.status})`);
+}
+
 export type WorkspaceInfo = { id: string; name: string };
 
 /** The current user's workspace. */

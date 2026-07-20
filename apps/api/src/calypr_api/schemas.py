@@ -193,3 +193,28 @@ class NotionCallback(BaseModel):
     """The authorization code the browser returned from Notion's consent screen."""
 
     code: str
+
+
+#: The model providers a workspace can supply its own key for (BYO-key). Kept small and
+#: explicit — the model factory maps these to its provider clients.
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "tavily")
+
+
+class ProviderKeyInfo(BaseModel):
+    """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
+
+    provider: Literal["openai", "anthropic", "tavily"]
+    has_key: bool
+
+
+class ProviderKeySet(BaseModel):
+    """Set/replace a provider's BYO key. Write-only — never echoed back."""
+
+    key: str
+
+    @field_validator("key")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("key must not be empty")
+        return v.strip()

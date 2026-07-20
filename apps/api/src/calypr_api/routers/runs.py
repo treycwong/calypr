@@ -68,7 +68,8 @@ async def create_run(
             # Resolve MCP connector refs → live url + headers (vault-decrypted, server-side)
             # before compile, off the event loop (DB I/O). No-ops when no connector is used.
             graph = await asyncio.to_thread(resolve_graph, req.graph, workspace_id)
-            ctx = context_for(graph)  # may raise if a provider key is missing
+            # Resolve the workspace's BYO provider keys (vault) so the run uses them over env.
+            ctx = await asyncio.to_thread(context_for, graph, workspace_id)
             async for ev in run_stream(
                 graph,
                 ctx,

@@ -50,6 +50,10 @@ class NodeContext:
     tools: list[dict] | None = None
     image_model: Any | None = None
     tts_model: Any | None = None
+    # A workspace's BYO provider keys ({provider: api_key}), resolved from the vault at run
+    # time. Used only when no client is directly injected — overrides the server env per
+    # provider (self-serve BYO-key). Empty/None → the server env, exactly as before.
+    model_keys: dict[str, str] | None = None
 
 
 @dataclass
@@ -173,16 +177,22 @@ def model_for_node(ctx: NodeContext, model_id: str) -> ModelClient:
     """Resolve the model for an LLM node: the injected client (tests) if present, otherwise
     the node's *own* provider from its `model` id. This lets each LLM node use its own model
     (e.g. a cheap Responder + a strong Revisor), instead of one model for the whole graph."""
-    return ctx.model if ctx.model is not None else model_for(model_id)
+    if ctx.model is not None:
+        return ctx.model
+    return model_for(model_id, ctx.model_keys)
 
 
 def image_model_for_node(ctx: NodeContext, model_id: str):
     """Resolve the image client for an Image node: the injected client (tests) if present,
     otherwise the node's own provider from its `model` id. Mirrors `model_for_node`."""
-    return ctx.image_model if ctx.image_model is not None else image_model_for(model_id)
+    if ctx.image_model is not None:
+        return ctx.image_model
+    return image_model_for(model_id, ctx.model_keys)
 
 
 def tts_model_for_node(ctx: NodeContext, model_id: str):
     """Resolve the TTS client for a Voice node: the injected client (tests) if present,
     otherwise the node's own provider from its `model` id. Mirrors `model_for_node`."""
-    return ctx.tts_model if ctx.tts_model is not None else tts_model_for(model_id)
+    if ctx.tts_model is not None:
+        return ctx.tts_model
+    return tts_model_for(model_id, ctx.model_keys)

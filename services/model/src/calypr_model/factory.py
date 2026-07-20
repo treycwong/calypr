@@ -39,39 +39,55 @@ def provider_of(model_id: str) -> str:
     return "openai"  # sensible default for unknown ids
 
 
-def model_for(model_id: str) -> ModelClient:
+def _key(provider: str, keys: dict[str, str] | None, env_var: str) -> str | None:
+    """A workspace's BYO key for `provider` (overrides), else the server env var (fallback)."""
+    if keys and keys.get(provider):
+        return keys[provider]
+    return os.environ.get(env_var)
+
+
+def model_for(model_id: str, keys: dict[str, str] | None = None) -> ModelClient:
+    """Resolve a model id to a provider client. `keys` (provider → API key) is a workspace's
+    BYO credentials; when present for the resolved provider it overrides the server env, so a
+    self-serve user runs on their own key. Absent → env, exactly as before (prod-safe)."""
     provider = provider_of(model_id)
     if provider == "fake":
         return FakeModelClient()
     if provider == "anthropic":
-        return AnthropicModelClient()
+        return AnthropicModelClient(api_key=_key("anthropic", keys, "ANTHROPIC_API_KEY"))
     if provider == "moonshot":
         return OpenAIModelClient(
-            api_key=os.environ.get("MOONSHOT_API_KEY"),
+            api_key=_key("moonshot", keys, "MOONSHOT_API_KEY"),
             base_url=os.environ.get("MOONSHOT_BASE_URL", _MOONSHOT_BASE_URL),
         )
     if provider == "deepseek":
         return OpenAIModelClient(
-            api_key=os.environ.get("DEEPSEEK_API_KEY"),
+            api_key=_key("deepseek", keys, "DEEPSEEK_API_KEY"),
             base_url=os.environ.get("DEEPSEEK_BASE_URL", _DEEPSEEK_BASE_URL),
         )
-    return OpenAIModelClient()
+    return OpenAIModelClient(api_key=_key("openai", keys, "OPENAI_API_KEY"))
 
 
-def image_model_for(model_id: str) -> OpenAIImageClient | FakeImageClient:
+def image_model_for(
+    model_id: str, keys: dict[str, str] | None = None
+) -> OpenAIImageClient | FakeImageClient:
     """Resolve an image-generation model id to a client — the image-modality sibling of
     `model_for`. `fake` → keyless deterministic client (tests/CI); everything else → OpenAI
-    (gpt-image-1). Kept separate from `model_for` because image generation is a different
-    provider surface (bytes + per-image usage), not the chat/stream protocol."""
+    (gpt-image-1), on the workspace's BYO key if set else the env. Kept separate from
+    `model_for` because image generation is a different provider surface (bytes + per-image
+    usage), not the chat/stream protocol."""
     if model_id.lower().strip() == "fake":
         return FakeImageClient()
-    return OpenAIImageClient()
+    return OpenAIImageClient(api_key=_key("openai", keys, "OPENAI_API_KEY"))
 
 
-def tts_model_for(model_id: str) -> OpenAITTSClient | FakeTTSClient:
+def tts_model_for(
+    model_id: str, keys: dict[str, str] | None = None
+) -> OpenAITTSClient | FakeTTSClient:
     """Resolve a text-to-speech model id to a client — the audio sibling of `image_model_for`.
     `fake` → keyless deterministic client (tests/CI); everything else → OpenAI (gpt-4o-mini-tts,
-    tts-1, tts-1-hd). Separate seam because TTS returns bytes, not the chat/stream protocol."""
+    tts-1, tts-1-hd) on the workspace's BYO key if set else the env. Separate seam because TTS
+    returns bytes, not the chat/stream protocol."""
     if model_id.lower().strip() == "fake":
         return FakeTTSClient()
-    return OpenAITTSClient()
+    return OpenAITTSClient(api_key=_key("openai", keys, "OPENAI_API_KEY"))
