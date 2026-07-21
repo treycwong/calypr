@@ -74,6 +74,62 @@ def test_codegen_returns_ownable_python():
     assert "import calypr" not in code
 
 
+def test_parse_round_trips_generated_code():
+    # /parse is the inverse of /codegen: the canvas → code → canvas loop, closed.
+    graph = input_agent_output(model="fake").model_dump()
+    code = client.post("/codegen", json=graph).json()["code"]
+
+    r = client.post("/parse", json={"code": code})
+    assert r.status_code == 200
+    body = r.json()
+    assert [(n["id"], n["type"]) for n in body["graph"]["nodes"]] == [
+        ("in", "input"),
+        ("agent", "agent"),
+        ("out", "output"),
+    ]
+    assert body["graph"]["entry"] == "in"
+    assert body["degraded_nodes"] == []
+
+
+def test_parse_recovers_a_hand_edited_prompt():
+    # The whole point of the round-trip: an edit made in the code comes back in the graph.
+    graph = input_agent_output(model="fake", system_prompt="You are helpful.").model_dump()
+    code = client.post("/codegen", json=graph).json()["code"]
+    edited = code.replace("You are helpful.", "You are a pirate.")
+
+    body = client.post("/parse", json={"code": edited}).json()
+    agent = next(n for n in body["graph"]["nodes"] if n["type"] == "agent")
+    assert agent["config"]["system_prompt"] == "You are a pirate."
+
+
+def test_parse_never_500s_on_unparseable_code():
+    # Fail-safe contract: broken input is reported as a warning, never an exception.
+    r = client.post("/parse", json={"code": "def build_graph(:\n"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["graph"]["nodes"] == []
+    assert any("syntax error" in w for w in body["warnings"])
+
+
+def test_parse_degrades_unrecognised_nodes_instead_of_failing():
+    code = (
+        "def node_mystery(state: State) -> dict:\n"
+        '    """Hand-written."""\n'
+        '    return {"out": something(state)}\n'
+        "\n\n"
+        "def build_graph():\n"
+        "    graph = StateGraph(State)\n"
+        '    graph.add_node("mystery", node_mystery)\n'
+        '    graph.add_edge(START, "mystery")\n'
+        "    return graph.compile()\n"
+    )
+    body = client.post("/parse", json={"code": code}).json()
+    assert body["degraded_nodes"] == ["mystery"]
+    node = body["graph"]["nodes"][0]
+    assert node["type"] == "code"
+    assert "something(state)" in node["config"]["code"]
+
+
 def test_templates_lists_frameworks_and_use_case_templates():
     r = client.get("/templates")
     assert r.status_code == 200

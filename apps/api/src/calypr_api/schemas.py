@@ -37,6 +37,24 @@ class CodegenResponse(BaseModel):
     code: str
 
 
+class ParseRequest(BaseModel):
+    """Edited Python coming back from the Code tab (the reverse round-trip)."""
+
+    code: str
+
+
+class ParseResponse(BaseModel):
+    """The recovered graph plus what the parser couldn't take at face value.
+
+    `warnings` are advisory (a missing trailer, a statement the walker skipped); `degraded_nodes`
+    lists node ids that fell back to a Custom Code node because no recogniser matched — the
+    canvas renders those as Code nodes with the user's source preserved verbatim."""
+
+    graph: GraphSpec
+    warnings: list[str] = []
+    degraded_nodes: list[str] = []
+
+
 class RunRequest(BaseModel):
     graph: GraphSpec
     message: str
