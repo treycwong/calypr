@@ -25,25 +25,14 @@ The equivalence relation (modulo what the code can't express):
 from __future__ import annotations
 
 import pytest
+from _equivalence import CORPUS
+from _equivalence import channels as _channels
+from _equivalence import topology as _topology
 from calypr_codegen import generate_python
-from calypr_codegen.generate import _PYTYPE
-from calypr_compiler import STARTERS
 from calypr_compiler.golden import input_agent_output
-from calypr_dsl import GraphSpec, StateChannel
+from calypr_dsl import GraphSpec
 from calypr_nodes import graph_channels
 from calypr_roundtrip import parse_python
-
-CORPUS: list[GraphSpec] = [input_agent_output(), *STARTERS]
-
-
-def _topology(graph: GraphSpec) -> set[tuple[str, str]]:
-    return {(e.source, e.target) for e in graph.edges}
-
-
-def _channels(chs: list[StateChannel]) -> set[tuple[str, str, str]]:
-    # Normalise each channel by the Python type the generator would emit, so the forward map's
-    # many-to-one lossiness (string/str → str) doesn't cause spurious inequality.
-    return {(c.key, str(c.reducer), _PYTYPE.get(c.type, "Any")) for c in chs}
 
 
 @pytest.mark.parametrize("graph", CORPUS, ids=lambda g: g.id)
@@ -56,8 +45,8 @@ def test_topology_round_trips(graph: GraphSpec) -> None:
     assert _topology(parsed) == _topology(graph)
 
     # Router branch conditions survive; ReAct tools_condition labels do not (see module
-    # docstring). Router source ids come from the original graph — PR-1 degrades every parsed
-    # node to `code`, so parsed node types can't be filtered on.
+    # docstring). Router source ids are taken from the original graph so this holds regardless
+    # of how the parsed nodes were typed.
     routers = {n.id for n in graph.nodes if n.type == "router"}
     cond = lambda edges: {  # noqa: E731
         (e.source, e.target): e.condition for e in edges if e.source in routers

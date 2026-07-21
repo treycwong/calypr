@@ -60,10 +60,49 @@ genuinely cannot express are regenerated deterministically rather than preserved
   `# calypr:` trailer; without it, the id falls back to `"parsed"`, the name is read from the
   module docstring, and positions are `None`.
 
-Recognisers key on the **stable docstring + structural shape** the generator emits. Hardening the
-recovery against a user who rewrites a docstring or reformats heavily is the edit-survival work
-tracked separately (the mutation suite); this package targets the generated surface and realistic
-edits within its idiom.
+Recognisers key on the **stable docstring + structural shape** the generator emits. Where a node's
+whole config is recoverable from structure alone (`input`, `output`), the recogniser falls back to
+that shape, so rewriting the docstring costs nothing. For the rest — an Agent especially — the
+docstring is the only record of *which* variant it is, so a rewritten docstring degrades that node
+to a Code node **on purpose**: guessing the variant would silently change behaviour, while
+degrading preserves the user's code verbatim.
+
+## Edit survival (measured)
+
+The round-trip is only worth anything if it survives a human editing the code first. That is
+measured, not assumed: `tests/mutations.py` applies realistic hand-edits across the whole corpus
+and `tests/test_mutations.py` judges every result, in two tiers.
+
+**Robustness — holds for 100% of (graph, edit) pairs.** `parse_python` never raises; topology
+(node ids, edges, entry) and state channels come back exactly as the edit implies; and no node is
+ever **misclassified** — a node is either its true type or a degraded `code` node, never some
+*other* concrete type. A bad edit can cost you one node's structure; it can never silently corrupt
+the graph.
+
+**Clean absorption — measured, gated at ≥95%.** For edits inside the generated idiom, the parser
+recovers them with no degradation at all and the change reflected in config. Edits that leave the
+idiom degrade *exactly* the node they touched.
+
+| Edit | Class | Expectation |
+|---|---|---|
+| change a system prompt | absorb | new prompt in config |
+| change a temperature | absorb | new value in config |
+| rename a channel | absorb | channel renamed in config + State |
+| add an inline `# comment` | absorb | ignored entirely |
+| delete the `# calypr:` trailer | absorb | parses; layout falls back to auto-layout |
+| reflow formatting (collapse wrapped strings, squeeze blank lines) | absorb | no-op for recovery |
+| rewrite a docstring | absorb *or* degrade | `input`/`output` survive structurally; others degrade to a Code node |
+| add / remove an edge | topology | edge set follows |
+| rename a node id | topology | id follows everywhere |
+| insert a hand-written node | degrade | that node becomes a Code node; the rest is untouched |
+
+Current measurement — **robustness 100%** over 378 (graph, edit) pairs, **clean absorption 100%**
+over 307 in-idiom pairs. The suite prints the per-edit table on failure, so a regression shows up
+as a number rather than a vibe:
+
+```
+uv run pytest services/roundtrip/tests/test_mutations.py -k survival_rates -s
+```
 
 ## Tests
 
