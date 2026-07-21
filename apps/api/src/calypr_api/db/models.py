@@ -42,6 +42,10 @@ class Workspace(Base):
     # compared inline, so gating rules live in one place. Billing (Stripe, credits) lands later —
     # this column is only what feature gating reads.
     plan: Mapped[str] = mapped_column(String, nullable=False, server_default="free")
+    # Which model the AI assistant drafts graphs with, chosen in Settings → Workspace. Empty
+    # string = inherit `CALYPR_ASSISTANT_MODEL` (the server default); validated on write against
+    # `calypr_api.assistant_models.ASSISTANT_MODELS`.
+    assistant_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -153,15 +157,11 @@ class ConnectorCredential(Base):
     name: Mapped[str] = mapped_column(String, nullable=False)  # user-facing label
     # Tier B: the MCP server URL. Tier A: unused (the URL comes from server config).
     url: Mapped[str | None] = mapped_column(String, nullable=True)
-    transport: Mapped[str] = mapped_column(
-        String, nullable=False, server_default="streamable_http"
-    )
+    transport: Mapped[str] = mapped_column(String, nullable=False, server_default="streamable_http")
     # Fernet ciphertext of the bearer/OAuth token; NULL for a keyless server. Never serialized.
     secret_encrypted: Mapped[str | None] = mapped_column(String, nullable=True)
     # Non-secret display metadata (e.g. Notion workspace name, discovered tool names snapshot).
-    meta: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
+    meta: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default="{}")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

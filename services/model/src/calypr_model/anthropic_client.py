@@ -44,6 +44,22 @@ def _to_anthropic(messages: list[Msg]) -> list[dict]:
     return out
 
 
+# Sampling parameters were removed on Opus 4.7 and later (and on Sonnet 5 / Fable 5): sending
+# `temperature` at all is a hard 400 on those models, so the field is omitted and the provider's
+# own default applies. Behaviour is steered by the prompt there instead.
+_NO_TEMPERATURE_PREFIXES = (
+    "claude-opus-4-7",
+    "claude-opus-4-8",
+    "claude-sonnet-5",
+    "claude-fable-5",
+    "claude-mythos-5",
+)
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not model.lower().strip().startswith(_NO_TEMPERATURE_PREFIXES)
+
+
 class AnthropicModelClient:
     """Reads ANTHROPIC_API_KEY from the environment unless a key is passed."""
 
@@ -65,9 +81,10 @@ class AnthropicModelClient:
         kwargs: dict = {
             "model": model,
             "max_tokens": max_tokens,
-            "temperature": temperature,
             "messages": _to_anthropic(messages),
         }
+        if _accepts_temperature(model):
+            kwargs["temperature"] = temperature
         if system:
             kwargs["system"] = system
         if tools:

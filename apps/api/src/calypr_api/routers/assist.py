@@ -13,7 +13,7 @@ from collections.abc import AsyncIterator
 from datetime import date
 
 from calypr_assistant import FakeAssistant, draft_graph
-from calypr_model import provider_of
+from calypr_model import model_for, provider_of
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
@@ -21,8 +21,15 @@ from calypr_api import spend
 from calypr_api.config import settings
 from calypr_api.deps import request_workspace
 from calypr_api.metering import RunRecorder
+from calypr_api.model_access import (
+    FALLBACK_MODEL,
+    frontier_provider,
+    frontier_substitution_notice,
+)
 from calypr_api.posthog_client import posthog_client
+from calypr_api.provider_keys import resolve_model_keys
 from calypr_api.schemas import AssistRequest
+from calypr_api.workspace_settings import workspace_assistant_model
 
 router = APIRouter()
 
@@ -50,7 +57,14 @@ def _over_daily_cap(workspace_id: uuid.UUID) -> bool:
 async def create_assist(
     req: AssistRequest, workspace_id: uuid.UUID = Depends(request_workspace)
 ) -> StreamingResponse:
-    model_id = req.model or settings.assistant_model or "fake"
+    # Precedence: an explicit per-request model, then the workspace's Settings choice, then
+    # the server-wide env default, then the keyless `fake` path.
+    model_id = (
+        req.model
+        or await asyncio.to_thread(workspace_assistant_model, workspace_id)
+        or settings.assistant_model
+        or "fake"
+    )
     messages = [m.model_dump() for m in req.messages]
 
     async def event_stream() -> AsyncIterator[str]:
@@ -101,11 +115,41 @@ async def create_assist(
         # This is the moment the assistant becomes metered (PRICING-SPEC): same best-effort
         # recorder as `/runs`, tagged source="assist". Self-disables with no DB.
         recorder = await asyncio.to_thread(RunRecorder.start, workspace_id, source="assist")
+        # A separate name, not a rebind of `model_id`: assigning the closed-over variable makes
+        # it local to this generator and the read on the daily-cap path above would raise
+        # UnboundLocalError.
+        run_model = model_id
         try:
-            if provider_of(model_id) == "fake":
+            if provider_of(run_model) == "fake":
                 gen = FakeAssistant().draft(messages, req.current_graph)
             else:
-                gen = draft_graph(messages, req.current_graph, model_id)
+                # BYO keys apply to the assistant exactly as they do to a run: the workspace's
+                # key overrides the server env, and a frontier model with no key is refused
+                # rather than quietly served on ours.
+                keys = await asyncio.to_thread(resolve_model_keys, workspace_id)
+                provider = frontier_provider(run_model)
+                if provider is not None and provider not in keys:
+                    # Degrade to the cheap platform model rather than refusing, and say so —
+                    # the notice is what keeps this from being an invisible downgrade.
+                    substituted = [(run_model, provider)]
+                    run_model = FALLBACK_MODEL
+                    posthog_client.capture(
+                        "assist_model_substituted",
+                        distinct_id=str(workspace_id),
+                        properties={"provider": provider, "fallback": FALLBACK_MODEL},
+                    )
+                    yield _sse(
+                        {
+                            "type": "notice",
+                            "message": frontier_substitution_notice(substituted),
+                        }
+                    )
+                gen = draft_graph(
+                    messages,
+                    req.current_graph,
+                    run_model,
+                    client=model_for(run_model, keys or None),
+                )
             async for ev in gen:
                 payload = ev.payload()
                 if payload.get("type") == "usage":

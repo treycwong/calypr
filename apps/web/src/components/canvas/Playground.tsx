@@ -71,7 +71,10 @@ export function Playground({
       for await (const ev of runAgent(graph, text, threadId, images)) {
         if (ev.type === "token") apply(ev.text);
         else if (ev.type === "node") onNodeEvent?.(ev.node_id, ev.phase);
-        else if (ev.type === "error") {
+        else if (ev.type === "notice") {
+          apply(`\u2139\uFE0F ${ev.message}\n\n`);
+          toast(ev.message, "default");
+        } else if (ev.type === "error") {
           errored = true;
           onRunReset?.({ error: true });
           apply(`⚠️ ${ev.message}`);

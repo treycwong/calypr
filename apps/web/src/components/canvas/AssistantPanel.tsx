@@ -38,6 +38,8 @@ type ChatMessage = {
   content: string;
   thinking?: boolean; // assistant is still streaming
   error?: boolean;
+  // Set when the draft ran on the fallback model because the chosen one needed a BYO key.
+  notice?: string;
   spec?: GraphSpec; // the proposed graph
   proposal?: ProposalState;
   snapshot?: CanvasSnapshot; // canvas state captured before previewing
@@ -99,7 +101,12 @@ export function AssistantPanel({
     const current = getCurrentGraph();
     try {
       for await (const ev of assistAgent(history, current)) {
-        if (ev.type === "note") {
+        if (ev.type === "notice") {
+          // Held separately from `content`: the `note` event below replaces content wholesale,
+          // and the substitution warning must survive that.
+          patch(botId, { notice: ev.message });
+          track("assistant_model_substituted");
+        } else if (ev.type === "note") {
           patch(botId, { content: ev.text });
         } else if (ev.type === "graph") {
           // Preview immediately on the canvas so the user sees the change before approving;
@@ -193,6 +200,14 @@ export function AssistantPanel({
             </div>
           ) : (
             <div key={m.id} className="flex flex-col gap-1.5" data-testid="assistant-message">
+              {m.notice ? (
+                <div
+                  className="rounded-lg border border-border bg-muted px-3 py-2 text-[11px] text-muted-foreground"
+                  data-testid="assistant-notice"
+                >
+                  ℹ️ {m.notice}
+                </div>
+              ) : null}
               <div
                 className={`max-w-[90%] rounded-lg border px-3 py-2 text-xs ${
                   m.error

@@ -20,7 +20,7 @@ from sqlalchemy import func, update
 
 from calypr_api.db.models import Run, RunUsage
 from calypr_api.db.session import SessionLocal, set_tenant
-from calypr_api.pricing import cost_usd
+from calypr_api.pricing import platform_cost_usd
 
 log = logging.getLogger("calypr_api")
 
@@ -109,7 +109,9 @@ class RunRecorder:
                 )
                 total_in += in_tok
                 total_out += out_tok
-                total_cost += cost_usd(model or "", in_tok, out_tok)
+                # Platform COGS, not provider list price: BYO-key frontier models add $0
+                # (model_access) so they can't trip the platform spend cap.
+                total_cost += platform_cost_usd(model or "", in_tok, out_tok)
             if rows:
                 self._session.add_all(rows)
             self._session.execute(

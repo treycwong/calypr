@@ -39,25 +39,32 @@ def test_resolve_is_empty_without_db_or_keys():
 
 @pytest_db
 def test_set_list_resolve_delete_never_leaks_the_key():
+    """Only asserts on the provider it owns. It shares the dev workspace with the developer's
+    real Settings → API Keys state, so a `has_key is False` assertion on a bystander provider
+    fails as soon as a real key is saved — and failing before the delete below used to leak a
+    junk `sk-byo-*` key into the workspace, which then broke unrelated runs."""
     ws = uuid.UUID(DEV_WORKSPACE_ID)
-    # set
-    r = client.put("/provider-keys/openai", json={"key": "sk-byo-secret"})
-    assert r.status_code == 200 and r.json() == {"provider": "openai", "has_key": True}
-    # list reports has_key but never the value
-    listed = client.get("/provider-keys")
-    assert listed.status_code == 200
-    by_provider = {p["provider"]: p["has_key"] for p in listed.json()}
-    assert by_provider["openai"] is True
-    assert by_provider["anthropic"] is False
-    assert "sk-byo-secret" not in listed.text
-    # resolve decrypts server-side
-    assert resolve_model_keys(ws).get("openai") == "sk-byo-secret"
-    # upsert replaces
-    client.put("/provider-keys/openai", json={"key": "sk-byo-rotated"})
-    assert resolve_model_keys(ws)["openai"] == "sk-byo-rotated"
-    # delete → gone (runs fall back to env)
-    assert client.delete("/provider-keys/openai").status_code == 204
-    assert "openai" not in resolve_model_keys(ws)
+    try:
+        # set
+        r = client.put("/provider-keys/openai", json={"key": "sk-byo-secret"})
+        assert r.status_code == 200 and r.json() == {"provider": "openai", "has_key": True}
+        # list reports has_key but never the value
+        listed = client.get("/provider-keys")
+        assert listed.status_code == 200
+        by_provider = {p["provider"]: p["has_key"] for p in listed.json()}
+        assert by_provider["openai"] is True
+        assert "sk-byo-secret" not in listed.text
+        # resolve decrypts server-side
+        assert resolve_model_keys(ws).get("openai") == "sk-byo-secret"
+        # upsert replaces
+        client.put("/provider-keys/openai", json={"key": "sk-byo-rotated"})
+        assert resolve_model_keys(ws)["openai"] == "sk-byo-rotated"
+        # delete → gone (runs fall back to env)
+        assert client.delete("/provider-keys/openai").status_code == 204
+        assert "openai" not in resolve_model_keys(ws)
+    finally:
+        # A mid-test failure must not leave a bogus key behind for the next run.
+        client.delete("/provider-keys/openai")
 
 
 @pytest_db

@@ -41,6 +41,13 @@ MODEL_PRICES: dict[str, ModelPrice] = {
     "claude-3-5-haiku": ModelPrice(0.80, 4.00),
     "claude-3-haiku": ModelPrice(0.25, 1.25),
     # --- OpenAI (verify against https://openai.com/api/pricing) ---
+    # GPT-5.6 is not offered in the pickers (Terra was pulled), but all three tiers stay priced
+    # so an id arriving another way isn't recorded at the fail-closed rate. Sol is the flagship,
+    # Luna the cheap tier. Sourced 2026-07-21 from pricing aggregators, NOT OpenAI's own page —
+    # re-verify before these rates inform a margin decision.
+    "gpt-5.6-sol": ModelPrice(5.00, 30.00),
+    "gpt-5.6-terra": ModelPrice(2.50, 15.00),
+    "gpt-5.6-luna": ModelPrice(1.00, 6.00),
     "gpt-4.1-nano": ModelPrice(0.10, 0.40),
     "gpt-4.1-mini": ModelPrice(0.40, 1.60),
     "gpt-4.1": ModelPrice(2.00, 8.00),
@@ -68,7 +75,11 @@ MODEL_PRICES: dict[str, ModelPrice] = {
     "tts-1-hd": ModelPrice(30.00, 0.00),
     "tts-1": ModelPrice(15.00, 0.00),
     "gpt-4o-mini-tts": ModelPrice(15.00, 0.00),
-    # --- Moonshot / Kimi (verify against https://platform.moonshot.ai/docs/pricing) ---
+    # --- Moonshot / Kimi (verify against https://platform.kimi.ai/docs/pricing) ---
+    # K3 is a *reasoning* model and costs 5×/6× the older K-family rate — it MUST keep its own
+    # entry, or the bare "kimi" prefix would under-bill it by ~6× (and reasoning tokens are
+    # billed as output, so real K3 runs skew output-heavy).
+    "kimi-k3": ModelPrice(3.00, 15.00),
     "kimi": ModelPrice(0.60, 2.50),
     "moonshot": ModelPrice(0.60, 2.50),
     # --- DeepSeek (verify against https://api-docs.deepseek.com/quick_start/pricing) ---
@@ -110,3 +121,17 @@ def cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
         input_tokens / 1_000_000 * price.input_per_1m
         + output_tokens / 1_000_000 * price.output_per_1m
     )
+
+
+def platform_cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
+    """What this usage costs *the platform* — i.e. what the spend kill-switch should sum.
+
+    Identical to `cost_usd` except that frontier models are $0: they run only on a workspace's
+    own key (`model_access`), so the tokens are billed to that workspace by the provider and
+    never hit our account. Counting them would let one BYO-key user trip the platform-wide
+    monthly cap for everyone else."""
+    from calypr_api.model_access import is_frontier  # local: avoids a DSL import cycle
+
+    if is_frontier(model_id):
+        return 0.0
+    return cost_usd(model_id, input_tokens, output_tokens)

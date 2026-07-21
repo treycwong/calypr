@@ -1,6 +1,7 @@
 """Run an agent graph and stream the result as Server-Sent Events.
 
-Each SSE `data:` line is a JSON event: {type: "token"|"usage"|"final"|"error", ...},
+Each SSE `data:` line is a JSON event: {type: "token"|"node"|"usage"|"notice"|"final"
+|"error", ...},
 terminated by `data: [DONE]`. The web app proxies this stream to the browser.
 """
 
@@ -21,6 +22,11 @@ from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
 from calypr_api.errors import run_error_message
 from calypr_api.metering import RunRecorder
+from calypr_api.model_access import (
+    FALLBACK_MODEL,
+    frontier_substitution_notice,
+    substitute_missing_frontier_models,
+)
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import RunRequest
 
@@ -70,6 +76,25 @@ async def create_run(
             graph = await asyncio.to_thread(resolve_graph, req.graph, workspace_id)
             # Resolve the workspace's BYO provider keys (vault) so the run uses them over env.
             ctx = await asyncio.to_thread(context_for, graph, workspace_id)
+            # Frontier models are BYO-key only. Without a key we degrade to the cheap
+            # platform-served model rather than dead-ending the run — but never silently:
+            # the notice below is what stops this from being an invisible downgrade. The
+            # frontier model itself is still never served on the platform key.
+            graph, substituted = substitute_missing_frontier_models(graph, ctx.model_keys)
+            if substituted:
+                posthog_client.capture(
+                    "agent_run_model_substituted",
+                    properties={
+                        "providers": sorted({p for _, p in substituted}),
+                        "fallback": FALLBACK_MODEL,
+                    },
+                )
+                yield _sse(
+                    {
+                        "type": "notice",
+                        "message": frontier_substitution_notice(substituted),
+                    }
+                )
             async for ev in run_stream(
                 graph,
                 ctx,
