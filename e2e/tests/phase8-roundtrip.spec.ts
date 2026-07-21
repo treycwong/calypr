@@ -155,6 +155,24 @@ test("the round-trip UI is hidden unless it is switched on", async ({ browser })
   await context.close();
 });
 
+test("a locked Code tab says so, and names the account", async ({ browser }) => {
+  // A free workspace should be told *why* editing isn't available. Naming the signed-in address
+  // is what lets an invited partner whose GitHub email differs tell us which one to add.
+  const context = await browser.newContext(); // no opt-in
+  try {
+    const page = await context.newPage();
+    await openCanvas(page);
+    await buildAgent(page);
+    await page.getByTestId("toggle-code").click();
+    await expect(page.getByTestId("roundtrip-locked")).toContainText("private beta", {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId("apply-to-canvas")).toHaveCount(0);
+  } finally {
+    await context.close();
+  }
+});
+
 test("a beta workspace gets the round-trip with no local opt-in", async ({
   browser,
   request,

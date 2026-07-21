@@ -21,6 +21,7 @@ export function CodeView({
   name,
   applyGraph,
   plan,
+  email,
 }: {
   getGraph: () => GraphSpec;
   name?: string;
@@ -28,6 +29,8 @@ export function CodeView({
   applyGraph?: (spec: GraphSpec) => void;
   /** The workspace's entitlement tier; `beta`/`plus` unlock the round-trip. */
   plan?: string;
+  /** The signed-in address, shown when the feature is locked so an invite mismatch is visible. */
+  email?: string | null;
 }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -241,6 +244,19 @@ export function CodeView({
           {error ? error : code ? code : "Generating…"}
         </pre>
       )}
+
+      {!canRoundTrip && plan ? (
+        // Names the account we actually see, so an invited partner whose GitHub email differs
+        // from the one they gave us can tell us which address to add — instead of silently
+        // wondering why the beta didn't switch on.
+        <p
+          className="border-t border-border px-3 py-2 text-[11px] text-muted-foreground"
+          data-testid="roundtrip-locked"
+        >
+          Editing code and applying it back to the canvas is in private beta.
+          {email ? <> You&rsquo;re signed in as {email}.</> : null}
+        </p>
+      ) : null}
 
       {canRoundTrip ? (
         <div className="flex items-center gap-2 border-t border-border px-3 py-2">

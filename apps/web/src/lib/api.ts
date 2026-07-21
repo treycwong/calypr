@@ -289,7 +289,13 @@ export async function deleteProviderKey(provider: string): Promise<void> {
 }
 
 /** `plan` is the entitlement tier (`free|beta|plus`) the client gates optional features on. */
-export type WorkspaceInfo = { id: string; name: string; plan: string };
+export type WorkspaceInfo = {
+  id: string;
+  name: string;
+  plan: string;
+  /** The email the API sees us as — shown when a beta-gated feature is locked. */
+  signed_in_as?: string | null;
+};
 
 /** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
 export async function joinWaitlist(email: string, source = "landing"): Promise<void> {

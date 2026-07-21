@@ -18,7 +18,13 @@ from calypr_api import entitlements
 from calypr_api.db.models import Waitlist, Workspace
 from calypr_api.db.session import get_session
 from calypr_api.posthog_client import posthog_client
-from calypr_api.schemas import PlanUpdate, WaitlistEntry, WaitlistJoin
+from calypr_api.schemas import (
+    InviteRequest,
+    InviteResult,
+    PlanUpdate,
+    WaitlistEntry,
+    WaitlistJoin,
+)
 
 router = APIRouter()
 
@@ -50,6 +56,39 @@ def join_waitlist(body: WaitlistJoin, session: Session = Depends(get_session)) -
         session.commit()
         posthog_client.capture("waitlist_joined", properties={"source": body.source or "landing"})
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/admin/invite", response_model=InviteResult, tags=["admin"])
+def invite_emails(
+    body: InviteRequest,
+    _: None = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> InviteResult:
+    """Add addresses to the beta invite list.
+
+    The list *is* `waitlist` rows with `invited_at` set, so this stamps existing signups and
+    creates rows for people who never joined the waitlist (`source="invite"`). Once stamped, the
+    next time that person signs in their workspace flips to `beta` on its own — no workspace ids
+    to look up. Already-invited addresses are left alone, so re-running is safe."""
+    invited: list[str] = []
+    already: list[str] = []
+    for raw in body.emails:
+        email = _normalize(raw)
+        if not email:
+            continue
+        entry = session.scalar(select(Waitlist).where(Waitlist.email == email))
+        if entry is None:
+            session.add(Waitlist(email=email, source="invite", invited_at=func.now()))
+            invited.append(email)
+        elif entry.invited_at is None:
+            entry.invited_at = func.now()
+            invited.append(email)
+        else:
+            already.append(email)
+    session.commit()
+    if invited:
+        posthog_client.capture("beta_invites_sent", properties={"count": len(invited)})
+    return InviteResult(invited=invited, already_invited=already)
 
 
 @router.get("/admin/waitlist", response_model=list[WaitlistEntry], tags=["admin"])

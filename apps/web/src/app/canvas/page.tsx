@@ -116,6 +116,7 @@ function CanvasInner() {
   // Entitlement tier from the API (`free|beta|plus`); `free` until it loads, so a beta-only
   // surface never flashes for someone who isn't entitled to it.
   const [plan, setPlan] = useState("free");
+  const [signedInAs, setSignedInAs] = useState<string | null>(null);
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -142,7 +143,10 @@ function CanvasInner() {
   // Failure falls back to `free` — a gate that can't be read stays shut.
   useEffect(() => {
     getWorkspace()
-      .then((w) => setPlan(w.plan))
+      .then((w) => {
+        setPlan(w.plan);
+        setSignedInAs(w.signed_in_as ?? null);
+      })
       .catch(() => setPlan("free"));
   }, []);
 
@@ -723,6 +727,7 @@ function CanvasInner() {
                   name={name}
                   applyGraph={applyGraphToCanvas}
                   plan={plan}
+                  email={signedInAs}
                 />
               </div>
             )}

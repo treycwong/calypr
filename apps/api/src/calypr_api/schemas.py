@@ -140,6 +140,11 @@ class WorkspaceInfo(BaseModel):
     name: str
     # Entitlement tier (`free|beta|plus`) — what the client gates optional features on.
     plan: str = "free"
+    # The signed-in user's email as the API sees it (the address the beta invite list is matched
+    # against). Returned so the UI can say "you're signed in as X" when a feature is locked —
+    # an invited partner whose GitHub email differs from the one they gave us can then tell us
+    # which address to add. `None` in dev/CI, where there's no authenticating proxy.
+    signed_in_as: str | None = None
 
 
 class WorkspaceUpdate(BaseModel):
@@ -179,6 +184,20 @@ class WaitlistEntry(BaseModel):
     source: str
     created_at: datetime
     invited_at: datetime | None = None
+
+
+class InviteRequest(BaseModel):
+    """Addresses to add to the beta invite list (operator-only)."""
+
+    emails: list[str]
+
+
+class InviteResult(BaseModel):
+    """`invited` were newly stamped; `already_invited` were on the list already (re-running is
+    safe, so the split just tells you what actually changed)."""
+
+    invited: list[str] = []
+    already_invited: list[str] = []
 
 
 class PlanUpdate(BaseModel):

@@ -14,6 +14,11 @@ access — per `PRICING-SPEC.md` §1.
 
 from __future__ import annotations
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from calypr_api.db.models import Waitlist, Workspace
+
 FREE = "free"
 BETA = "beta"
 PLUS = "plus"
@@ -31,3 +36,37 @@ def has_roundtrip(plan: str | None) -> bool:
     Temporarily beta-gated while it proves out in the wild. When it graduates, this becomes
     `return True` — one line, one place."""
     return plan in (BETA, PLUS)
+
+
+def is_invited(session: Session, email: str | None) -> bool:
+    """Whether this address is on the beta invite list.
+
+    The list is just `waitlist` rows with `invited_at` set — the same table the landing form
+    writes to. So "invite someone" means stamping their existing signup, or adding a row for
+    someone who never joined the waitlist. One list, no second place to keep in sync."""
+    if not email:
+        return False
+    return (
+        session.scalar(
+            select(Waitlist.id).where(
+                Waitlist.email == email.strip().lower(),
+                Waitlist.invited_at.is_not(None),
+            )
+        )
+        is not None
+    )
+
+
+def grant_beta_if_invited(session: Session, workspace: Workspace, email: str | None) -> bool:
+    """Upgrade a `free` workspace to `beta` when its owner's email has been invited.
+
+    This is what makes an invite self-serve: you stamp an address, they sign in with it, and the
+    beta switches on by itself — no looking up workspace ids by hand.
+
+    Deliberately one-way and only from `free`: it never downgrades, and never touches a `plus`
+    workspace, so the manual admin route stays authoritative for anything unusual. Returns
+    whether it changed anything. Callers commit."""
+    if workspace.plan != FREE or not is_invited(session, email):
+        return False
+    workspace.plan = BETA
+    return True

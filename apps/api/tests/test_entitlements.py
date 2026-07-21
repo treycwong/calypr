@@ -10,6 +10,7 @@ import uuid
 
 import pytest
 from calypr_api import entitlements
+from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
 from fastapi.testclient import TestClient
@@ -117,6 +118,101 @@ def test_waitlist_join_never_returns_rows():
     assert r.content in (b"", None)
 
 
+# --- the invite list: waitlist rows with `invited_at` set -------------------------------------
+
+
+@requires_db
+def test_invite_stamps_existing_signups_and_adds_new_ones(monkeypatch):
+    monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
+    joined = f"joined.{uuid.uuid4().hex[:8]}@example.com"
+    never = f"never.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/waitlist", json={"email": joined})
+
+    r = client.post(
+        "/admin/invite",
+        json={"emails": [joined.upper(), never]},  # case shouldn't matter
+        headers={"x-admin-token": ADMIN_TOKEN},
+    )
+    assert r.status_code == 200
+    assert set(r.json()["invited"]) == {joined, never}
+
+    # Re-running an invite is safe — nothing changes the second time.
+    again = client.post(
+        "/admin/invite", json={"emails": [joined]}, headers={"x-admin-token": ADMIN_TOKEN}
+    ).json()
+    assert again["invited"] == []
+    assert again["already_invited"] == [joined]
+
+
+@requires_db
+def test_invited_email_auto_grants_beta_on_sign_in(monkeypatch):
+    # The point of the invite list: stamp an address, they sign in, beta switches on by itself.
+    monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
+    email = f"partner.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
+
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        original, ws.plan = ws.plan, entitlements.FREE
+        s.commit()
+
+        assert entitlements.grant_beta_if_invited(s, ws, email) is True
+        assert ws.plan == entitlements.BETA
+        # Idempotent: a second sign-in changes nothing.
+        assert entitlements.grant_beta_if_invited(s, ws, email) is False
+
+        ws.plan = original
+        s.commit()
+
+
+@requires_db
+def test_joining_the_waitlist_is_not_enough_to_get_beta():
+    # The distinction that makes this a *closed* beta: on the list ≠ invited.
+    email = f"pending.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/waitlist", json={"email": email})
+
+    with SessionLocal() as s:
+        assert entitlements.is_invited(s, email) is False
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        original, ws.plan = ws.plan, entitlements.FREE
+        s.commit()
+        assert entitlements.grant_beta_if_invited(s, ws, email) is False
+        assert ws.plan == entitlements.FREE
+        ws.plan = original
+        s.commit()
+
+
+@requires_db
+def test_a_stranger_never_gets_beta():
+    with SessionLocal() as s:
+        assert entitlements.is_invited(s, f"stranger.{uuid.uuid4().hex[:8]}@example.com") is False
+        assert entitlements.is_invited(s, None) is False
+        assert entitlements.is_invited(s, "") is False
+
+
+@requires_db
+def test_auto_grant_never_downgrades_or_touches_plus(monkeypatch):
+    # One-way and only from `free`, so the manual admin route stays authoritative.
+    monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
+    email = f"plusser.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
+
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        original, ws.plan = ws.plan, entitlements.PLUS
+        s.commit()
+        assert entitlements.grant_beta_if_invited(s, ws, email) is False
+        assert ws.plan == entitlements.PLUS, "a plus workspace must not be downgraded to beta"
+        ws.plan = original
+        s.commit()
+
+
 # --- admin routes fail closed ----------------------------------------------------------------
 
 
@@ -124,6 +220,7 @@ def test_admin_routes_404_without_a_configured_token(monkeypatch):
     # Unset token (the default, incl. CI and any accidental deploy) ⇒ the routes don't exist.
     monkeypatch.delenv("CALYPR_ADMIN_TOKEN", raising=False)
     assert client.get("/admin/waitlist").status_code == 404
+    assert client.post("/admin/invite", json={"emails": ["x@example.com"]}).status_code == 404
     assert (
         client.post(
             f"/admin/workspaces/{uuid.uuid4()}/plan", json={"plan": "beta"}
