@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from typing import Any, Literal
 
 from langchain_core.messages import HumanMessage
@@ -19,6 +20,31 @@ from calypr_nodes.registry import (
 )
 
 _DOCSTRING = "Seed the conversation from the caller's input."
+
+
+def _seeds_a_text_message(value: ast.expr) -> bool:
+    """True for Input's signature return value: `[HumanMessage(content=str(<x>))]`.
+
+    The `content=str(...)` wrapper is what separates it from an Upload node, which also returns a
+    `HumanMessage` but with a list of multimodal content blocks. Used as a structural fallback so
+    a user who rewrites the docstring still gets an Input node back rather than a Code node —
+    Input's whole config is recoverable from structure, so nothing is guessed."""
+    if not isinstance(value, ast.List) or not value.elts:
+        return False
+    call = value.elts[0]
+    if not (
+        isinstance(call, ast.Call)
+        and isinstance(call.func, ast.Name)
+        and call.func.id == "HumanMessage"
+    ):
+        return False
+    return any(
+        kw.arg == "content"
+        and isinstance(kw.value, ast.Call)
+        and isinstance(kw.value.func, ast.Name)
+        and kw.value.func.id == "str"
+        for kw in call.keywords
+    )
 
 
 class InputConfig(BaseModel):
@@ -79,14 +105,17 @@ class InputNode(BaseNode):
         """Recover an Input node from its generated function: it reads
         `state.get("<input_channel>")` and returns `{"<target_channel>": [HumanMessage(...)]}`.
 
-        Keyed on the stable docstring the generator emits — precise enough to never claim
-        another node type that also seeds a `HumanMessage` (e.g. Upload). Hardening against a
-        user-rewritten docstring is Week-7 edit-survival work."""
+        Keyed on the stable docstring the generator emits, falling back to the structural
+        signature (`[HumanMessage(content=str(...))]`) when the docstring has been rewritten —
+        precise enough to never claim another node type that also seeds a `HumanMessage`
+        (e.g. Upload, whose content is a list of blocks)."""
         fn = ctx.func
-        if fn is None or docstring(fn) != _DOCSTRING:
+        if fn is None:
             return None
         found = last_return_dict(fn)
         keys = state_get_keys(fn)
         if found is None or not keys:
+            return None
+        if docstring(fn) != _DOCSTRING and not _seeds_a_text_message(found[1]):
             return None
         return InputConfig(input_channel=keys[0], target_channel=found[0])

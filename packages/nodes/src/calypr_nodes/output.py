@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 
 from pydantic import BaseModel
 
 from calypr_nodes._convert import text_of
-from calypr_nodes._parse import docstring, last_return_dict, state_get_keys
+from calypr_nodes._parse import docstring, has_call, last_return_dict, state_get_keys
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
@@ -76,13 +77,21 @@ class OutputNode(BaseNode):
     @classmethod
     def parse(cls, ctx: NodeParseContext) -> OutputConfig | None:
         """Recover an Output node: it reads `state.get("<source_channel>")`, narrows the value
-        with `isinstance(value, str)`, and returns `{"<output_channel>": text}`. Keyed on the
-        generator's stable docstring (Week-7 hardens against a rewritten one)."""
+        with `isinstance(value, str)`, and returns `{"<output_channel>": text}`.
+
+        Keyed on the generator's stable docstring, falling back to the structural signature when
+        it has been rewritten: an `isinstance` narrowing plus a *plain* return value. Every other
+        node that narrows with `isinstance` (Image, Voice) returns a message **list**, so the
+        non-list return is what makes the fallback safe. Output's whole config is recoverable
+        from structure, so nothing is guessed."""
         fn = ctx.func
-        if fn is None or docstring(fn) != _DOCSTRING:
+        if fn is None:
             return None
         found = last_return_dict(fn)
         keys = state_get_keys(fn)
         if found is None or not keys:
+            return None
+        structural = not isinstance(found[1], ast.List) and has_call(fn, "isinstance")
+        if docstring(fn) != _DOCSTRING and not structural:
             return None
         return OutputConfig(source_channel=keys[0], output_channel=found[0])

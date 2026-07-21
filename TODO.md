@@ -309,9 +309,43 @@ walkers over the closed `build_graph()` grammar, plus the `# calypr: {…}` meta
   to codegen quality (standing kill condition). **Still open.**
 - [x] **Week 6** — per-node config `parse()` recognizers (see the Week-6 section below). Done.
 
+## 🟢 Edit-survival mutation suite (MVP Week 7 — reverse round-trip) — DONE (2026-07-21)
+
+PR #30 (`feat/week7-edit-survival`, open). Plan: `MVP-EXECUTION-PLAN.md` Week 7. Week 6 proved the
+round-trip on *pristine* generated code; Week 7 measures what survives when a **human edits the
+code first** — the entire point of the round-trip. Survival is now a number, not a hope.
+
+- [x] **Mutation operators** (`services/roundtrip/tests/mutations.py`) — 11 realistic hand-edits
+  (prompt, temperature, channel rename, inline comment, trailer deletion, formatting reflow, edge
+  add/remove, node-id rename, docstring rewrite, hand-written node), each paired with the
+  expectation its parse must satisfy. Node-targeted edits expand over **every** node so each
+  recognizer is actually stressed, not just the first node's.
+- [x] **Two-tier gate** (`tests/test_mutations.py`) over **378 (graph, edit) pairs**:
+  - **Robustness — asserted 100%:** never raises; topology (ids/edges/entry) + state channels come
+    back exactly as the edit implies; **never misclassifies** (a node is its true type or a
+    degraded `code` node, never some *other* type). A bad edit can cost one node's structure — it
+    can never silently corrupt the graph.
+  - **Clean absorption — measured, gated ≥95%:** in-idiom edits recover with no degradation and
+    the change reflected in config; out-of-idiom edits degrade *exactly* the touched node.
+- [x] **Measured: robustness 100% / clean absorption 100%** (307 in-idiom pairs). Table printed by
+  `pytest -k survival_rates -s`; documented in `services/roundtrip/README.md` (OSS content).
+- [x] **Gate verified to bite** — reintroducing the Week-6 retriever over-match turns 36 robustness
+  assertions red. That bug class is **invisible** to the Week-6 fixed-point test (pristine code
+  keeps the docstring intact), which is exactly the value Week 7 adds.
+- [x] **Recognizer hardening (plan's conditional Deliverable 4):** `input`/`output` gained
+  structural fallbacks, so rewriting their docstring no longer costs them their type (their config
+  is fully recoverable from structure — nothing is guessed). Agent-family nodes still degrade on a
+  docstring rewrite **by design**: the docstring is the only record of *which* agent variant it is,
+  so guessing would silently change behaviour while degrading preserves the code verbatim.
+- Still **dormant** — pure test + docs, no user-facing surface. 836 passed, ruff clean.
+- [ ] **Next: Week 8** — ship the loop: `POST /parse` in `routers/roundtrip.py`, editable
+  `CodeView.tsx` + **"Apply to canvas"**, ceiling-resolution events (`code_edited`,
+  `parse_applied`, `parse_failed`, `parse_degraded`), Playwright `phase8-roundtrip.spec.ts`.
+  This is the week the round-trip becomes user-visible.
+
 ## 🟢 Node-config recognizers (MVP Week 6 — reverse round-trip) — DONE (2026-07-20)
 
-PR #29 (`feat/week6-node-recognizers`, branch open). Plan: `MVP-EXECUTION-PLAN.md` Week 6. The
+MERGED to main (PR #29, squash `71ceb71`). Plan: `MVP-EXECUTION-PLAN.md` Week 6. The
 reverse parser now recovers each node's **type + config**, not just topology — before this every
 node degraded to a Custom Code block. Makes `canvas → code → edit → canvas` reconstruct the real
 graph.
