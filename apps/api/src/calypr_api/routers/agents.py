@@ -13,6 +13,7 @@ import uuid
 from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
+from calypr_roundtrip import parse_python
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -27,6 +28,8 @@ from calypr_api.schemas import (
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
+    ParseRequest,
+    ParseResponse,
     ShareCreate,
     ShareInfo,
     TemplateInfo,
@@ -68,6 +71,31 @@ def codegen_spec(graph: GraphSpec) -> CodegenResponse:
         },
     )
     return CodegenResponse(code=code)
+
+
+@router.post("/parse", response_model=ParseResponse, tags=["engine"])
+def parse_code(body: ParseRequest) -> ParseResponse:
+    """The reverse of `/codegen`: edited Python back to a GraphSpec the canvas can render.
+
+    Pure and unauthenticated like its sibling — it reads no workspace data, only the code in the
+    request. Never raises on bad input: `parse_python` degrades unrecognised functions to Code
+    nodes and reports them, so the caller always gets a renderable graph plus an honest account
+    of what wasn't understood."""
+    result = parse_python(body.code)
+    posthog_client.capture(
+        "graph_parse_requested",
+        properties={
+            "node_count": len(result.spec.nodes) if result.spec.nodes else 0,
+            "degraded_count": len(result.degraded_nodes),
+            "warning_count": len(result.warnings),
+            "bytes": len(body.code),
+        },
+    )
+    return ParseResponse(
+        graph=result.spec,
+        warnings=result.warnings,
+        degraded_nodes=result.degraded_nodes,
+    )
 
 
 @router.get("/templates", response_model=list[TemplateInfo], tags=["engine"])

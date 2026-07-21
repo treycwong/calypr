@@ -301,7 +301,9 @@ function CanvasInner() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
-  const applyAssistantGraph = useCallback(
+  // Replace the canvas with a graph produced elsewhere — the AI assistant, or the reverse
+  // round-trip's "Apply to canvas". Records an undo point first, so either is reversible.
+  const applyGraphToCanvas = useCallback(
     (spec: GraphSpec) => {
       record();
       const canvas = graphToCanvas(spec);
@@ -627,7 +629,7 @@ function CanvasInner() {
             <AssistantPanel
               getCurrentGraph={getCurrentGraph}
               snapshot={snapshotCanvas}
-              applyGraph={applyAssistantGraph}
+              applyGraph={applyGraphToCanvas}
               restore={restoreCanvas}
             />
           </aside>
@@ -704,7 +706,7 @@ function CanvasInner() {
               )
             ) : (
               <div className="h-full" data-testid="code-panel">
-                <CodeView getGraph={getGraph} name={name} />
+                <CodeView getGraph={getGraph} name={name} applyGraph={applyGraphToCanvas} />
               </div>
             )}
           </div>

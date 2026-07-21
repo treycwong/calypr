@@ -8,6 +8,13 @@ export type AnalyticsEvent =
   | "code_view_opened"
   | "code_copied"
   | "code_downloaded"
+  // ceiling-RESOLUTION events (reverse round-trip): the user didn't just leave with the code,
+  // they edited it and came back. `parse_degraded` is the honest one — it counts the times we
+  // couldn't fully understand an edit and fell back to a Custom Code node.
+  | "code_edited"
+  | "parse_applied"
+  | "parse_failed"
+  | "parse_degraded"
   // playground runs
   | "run_started"
   | "run_completed"

@@ -333,3 +333,27 @@ export async function generateCode(graph: GraphSpec): Promise<string> {
   if (!res.ok) throw new Error(`codegen failed (${res.status})`);
   return (await res.json()).code as string;
 }
+
+export type ParseResult = {
+  graph: GraphSpec;
+  /** Advisory notes (a missing metadata trailer, a statement the walker skipped). */
+  warnings: string[];
+  /** Node ids that fell back to a Custom Code node because no recogniser matched. */
+  degraded_nodes: string[];
+};
+
+/**
+ * The reverse round-trip: edited Python back to a graph the canvas can render.
+ *
+ * The server never fails on unparseable input — it degrades what it can't recognise and says so
+ * — so a non-OK response here means the request itself failed, not that the code was bad.
+ */
+export async function parseCode(code: string): Promise<ParseResult> {
+  const res = await fetch("/api/parse", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw new Error(`parse failed (${res.status})`);
+  return (await res.json()) as ParseResult;
+}
