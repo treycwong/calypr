@@ -43,15 +43,28 @@ print(json.dumps({"emails": [line.strip() for line in sys.stdin if line.strip()]
 ')"
 
 # Capture the response first so a failed request reports cleanly instead of feeding an empty
-# body into the parser below.
+# body into the parser below. curl's exit code distinguishes "the server said no" (22, with -f)
+# from "we never reached the server" — very different problems, so don't report them alike.
+# `|| code=$?` rather than `if ! ...`, because inside `if ! cmd` the negation has already
+# replaced curl's exit status by the time you read `$?`.
+code=0
 response="$(curl -fsS -X POST "${API_URL}/admin/invite" \
   -H "x-admin-token: ${CALYPR_ADMIN_TOKEN}" \
   -H "content-type: application/json" \
-  -d "$payload")" || {
-  echo "Request failed. A 404 usually means CALYPR_ADMIN_TOKEN is unset on the server," >&2
-  echo "or doesn't match the one you passed here (the admin routes fail closed)." >&2
+  -d "$payload")" || code=$?
+if [[ $code -ne 0 ]]; then
+  if [[ $code -eq 22 ]]; then
+    echo "The server rejected the request. A 404 here means CALYPR_ADMIN_TOKEN is unset on the" >&2
+    echo "server, or doesn't match the one you passed (the admin routes fail closed)." >&2
+  else
+    echo "Couldn't reach ${API_URL} (curl exit ${code}) — the request never got there, so this" >&2
+    echo "is a network problem, not an auth one. Things to try:" >&2
+    echo "  * curl -4 ${API_URL}/health      (force IPv4 — fixes many 'connection reset' cases)" >&2
+    echo "  * a different network / phone hotspot, or off VPN" >&2
+    echo "  * some ISPs and corporate networks block *.up.railway.app specifically" >&2
+  fi
   exit 1
-}
+fi
 
 printf '%s' "$response" | python3 -c '
 import json, sys

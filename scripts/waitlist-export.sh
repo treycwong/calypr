@@ -18,11 +18,24 @@ if [[ -z "${CALYPR_ADMIN_TOKEN:-}" ]]; then
   exit 1
 fi
 
-response="$(curl -fsS "${API_URL}/admin/waitlist" -H "x-admin-token: ${CALYPR_ADMIN_TOKEN}")" || {
-  echo "Request failed. A 404 usually means CALYPR_ADMIN_TOKEN is unset on the server," >&2
-  echo "or doesn't match the one you passed here (the admin routes fail closed)." >&2
+# curl's exit code separates "the server said no" (22, with -f) from "we never reached it".
+# `|| code=$?` rather than `if ! ...`, because inside `if ! cmd` the negation has already
+# replaced curl's exit status by the time you read `$?`.
+code=0
+response="$(curl -fsS "${API_URL}/admin/waitlist" -H "x-admin-token: ${CALYPR_ADMIN_TOKEN}")" || code=$?
+if [[ $code -ne 0 ]]; then
+  if [[ $code -eq 22 ]]; then
+    echo "The server rejected the request. A 404 here means CALYPR_ADMIN_TOKEN is unset on the" >&2
+    echo "server, or doesn't match the one you passed (the admin routes fail closed)." >&2
+  else
+    echo "Couldn't reach ${API_URL} (curl exit ${code}) — the request never got there, so this" >&2
+    echo "is a network problem, not an auth one. Things to try:" >&2
+    echo "  * curl -4 ${API_URL}/health      (force IPv4 — fixes many 'connection reset' cases)" >&2
+    echo "  * a different network / phone hotspot, or off VPN" >&2
+    echo "  * some ISPs and corporate networks block *.up.railway.app specifically" >&2
+  fi
   exit 1
-}
+fi
 
 # Emit CSV via python3 so quoting/escaping is handled properly (no jq dependency).
 printf '%s' "$response" | python3 -c '
