@@ -21,6 +21,8 @@ export type AnalyticsEvent =
   | "run_errored"
   // starters
   | "template_selected"
+  // pre-signup funnel
+  | "waitlist_joined"
   // AI assistant
   | "assistant_prompted"
   | "assistant_graph_applied"

@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { API_URL } from "../playwright.config";
+
 // Phase 8 gate (MVP-EXECUTION-PLAN Week 8): the reverse round-trip reaches the user. Open a
 // graph, drop into the Code tab, hand-edit the Python, and "Apply to canvas" turns it back into
 // nodes — then the edited agent still runs. Keyless (the "fake" model), no database needed.
@@ -151,4 +153,34 @@ test("the round-trip UI is hidden unless it is switched on", async ({ browser })
   // Read-only `<pre>`, and no way to apply anything back.
   await expect(page.getByTestId("apply-to-canvas")).toHaveCount(0);
   await context.close();
+});
+
+test("a beta workspace gets the round-trip with no local opt-in", async ({
+  browser,
+  request,
+}) => {
+  // The real cohort gate, end to end: promote the workspace through the operator endpoint and
+  // the Code tab becomes editable for a browser that has set nothing at all. This is what a
+  // beta design partner will actually experience.
+  const ws = await (await request.get(`${API_URL}/workspaces/current`)).json();
+  const promote = (plan: string) =>
+    request.post(`${API_URL}/admin/workspaces/${ws.id}/plan`, {
+      data: { plan },
+      headers: { "x-admin-token": "e2e-admin-token" },
+    });
+
+  expect((await promote("beta")).ok()).toBeTruthy();
+  const context = await browser.newContext(); // no localStorage opt-in
+  try {
+    const page = await context.newPage();
+    await openCanvas(page);
+    await buildAgent(page);
+    await page.getByTestId("toggle-code").click();
+    await expect(page.getByTestId("apply-to-canvas")).toBeVisible({ timeout: 15_000 });
+  } finally {
+    // Restore `free` — the test above asserts the UI is hidden, and both run against the same
+    // database.
+    await promote(ws.plan ?? "free");
+    await context.close();
+  }
 });

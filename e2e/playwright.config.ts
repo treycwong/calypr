@@ -47,7 +47,10 @@ export default defineConfig({
       // Pin the AI assistant to the keyless deterministic "fake" path so the suite never
       // depends on a provider key (a developer's .env may set CALYPR_ASSISTANT_MODEL to a
       // real model). load_dotenv(override=False) won't clobber this.
-      env: { CALYPR_ASSISTANT_MODEL: "fake" },
+      // ADMIN_TOKEN lets the round-trip spec promote a workspace into the beta tier through the
+      // real operator endpoint (and demote it again), so entitlement gating is exercised
+      // end-to-end rather than stubbed.
+      env: { CALYPR_ASSISTANT_MODEL: "fake", CALYPR_ADMIN_TOKEN: "e2e-admin-token" },
       reuseExistingServer: false,
       timeout: 120_000,
     },

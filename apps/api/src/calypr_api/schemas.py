@@ -138,10 +138,52 @@ class ShareRunRequest(BaseModel):
 class WorkspaceInfo(BaseModel):
     id: str
     name: str
+    # Entitlement tier (`free|beta|plus`) — what the client gates optional features on.
+    plan: str = "free"
 
 
 class WorkspaceUpdate(BaseModel):
     name: str
+
+
+class WaitlistJoin(BaseModel):
+    """A pre-signup email from the landing form.
+
+    Validated loosely on purpose: the browser's `type="email"` handles the obvious cases, and the
+    only validation that actually matters for a waitlist is whether the address receives mail.
+    A light shape check keeps `pydantic[email]` out of the dependency list for one field."""
+
+    email: str
+    source: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _looks_like_an_email(cls, v: str) -> str:
+        v = v.strip()
+        local, _, domain = v.partition("@")
+        if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("not a valid email address")
+        if len(v) > 320:  # RFC 3696 practical maximum
+            raise ValueError("email address too long")
+        return v
+
+
+class WaitlistEntry(BaseModel):
+    """One waitlist row — admin-only; never returned by the public join route."""
+
+    email: str
+    source: str
+    created_at: datetime
+    invited_at: datetime | None = None
+
+
+class PlanUpdate(BaseModel):
+    """Move a workspace between entitlement tiers (operator-only).
+
+    `email` is optional and only used to stamp the matching waitlist row as invited."""
+
+    plan: str
+    email: str | None = None
 
 
 class TemplateInfo(BaseModel):

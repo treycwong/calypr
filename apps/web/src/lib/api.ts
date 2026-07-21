@@ -288,7 +288,18 @@ export async function deleteProviderKey(provider: string): Promise<void> {
   if (!res.ok && res.status !== 204) throw new Error(`delete key failed (${res.status})`);
 }
 
-export type WorkspaceInfo = { id: string; name: string };
+/** `plan` is the entitlement tier (`free|beta|plus`) the client gates optional features on. */
+export type WorkspaceInfo = { id: string; name: string; plan: string };
+
+/** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
+export async function joinWaitlist(email: string, source = "landing"): Promise<void> {
+  const res = await fetch("/api/waitlist", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email, source }),
+  });
+  if (!res.ok) throw new Error(`waitlist failed (${res.status})`);
+}
 
 /** The current user's workspace. */
 export async function getWorkspace(): Promise<WorkspaceInfo> {

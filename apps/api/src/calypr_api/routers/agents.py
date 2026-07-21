@@ -292,7 +292,7 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
     ws = t.session.get(Workspace, t.workspace_id)
     if ws is None:
         raise HTTPException(status_code=404, detail="workspace not found")
-    return WorkspaceInfo(id=str(ws.id), name=ws.name)
+    return WorkspaceInfo(id=str(ws.id), name=ws.name, plan=ws.plan)
 
 
 @router.patch("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
@@ -309,4 +309,4 @@ def rename_workspace(
         distinct_id=str(t.workspace_id),
         properties={"workspace_id": str(t.workspace_id)},
     )
-    return WorkspaceInfo(id=str(ws.id), name=ws.name)
+    return WorkspaceInfo(id=str(ws.id), name=ws.name, plan=ws.plan)

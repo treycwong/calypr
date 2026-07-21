@@ -20,11 +20,14 @@ export function CodeView({
   getGraph,
   name,
   applyGraph,
+  plan,
 }: {
   getGraph: () => GraphSpec;
   name?: string;
   /** Load a parsed graph back onto the canvas. Absent → the round-trip UI stays hidden. */
   applyGraph?: (spec: GraphSpec) => void;
+  /** The workspace's entitlement tier; `beta`/`plus` unlock the round-trip. */
+  plan?: string;
 }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +47,7 @@ export function CodeView({
   // to subscribe to.
   const gateOpen = useSyncExternalStore(
     () => () => {},
-    roundtripEnabled,
+    () => roundtripEnabled(plan),
     () => false,
   );
 

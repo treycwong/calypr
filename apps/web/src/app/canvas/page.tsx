@@ -49,6 +49,7 @@ import {
   createAgent,
   createShare,
   getAgent,
+  getWorkspace,
   listTemplates,
   type Template,
   updateAgent,
@@ -112,6 +113,9 @@ function CanvasInner() {
     setActivePanel((cur) => (cur === p ? null : p));
   // The persistent right panel switches between node Properties and generated Code.
   const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
+  // Entitlement tier from the API (`free|beta|plus`); `free` until it loads, so a beta-only
+  // surface never flashes for someone who isn't entitled to it.
+  const [plan, setPlan] = useState("free");
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -132,6 +136,14 @@ function CanvasInner() {
     listTemplates()
       .then(setTemplates)
       .catch(() => setTemplates([]));
+  }, []);
+
+  // The workspace's entitlement tier, for gating beta features (the round-trip Code editor).
+  // Failure falls back to `free` — a gate that can't be read stays shut.
+  useEffect(() => {
+    getWorkspace()
+      .then((w) => setPlan(w.plan))
+      .catch(() => setPlan("free"));
   }, []);
 
   // Open an existing agent when arriving via /canvas?agent=<id> (from the dashboard), so Save
@@ -706,7 +718,12 @@ function CanvasInner() {
               )
             ) : (
               <div className="h-full" data-testid="code-panel">
-                <CodeView getGraph={getGraph} name={name} applyGraph={applyGraphToCanvas} />
+                <CodeView
+                  getGraph={getGraph}
+                  name={name}
+                  applyGraph={applyGraphToCanvas}
+                  plan={plan}
+                />
               </div>
             )}
           </div>
