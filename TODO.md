@@ -309,9 +309,43 @@ walkers over the closed `build_graph()` grammar, plus the `# calypr: {…}` meta
   to codegen quality (standing kill condition). **Still open.**
 - [x] **Week 6** — per-node config `parse()` recognizers (see the Week-6 section below). Done.
 
+## 🟢 Apply to canvas — the loop closes (MVP Week 8 — reverse round-trip) — DONE (2026-07-21)
+
+PR #31 (`feat/week8-apply-to-canvas`, open). Plan: `MVP-EXECUTION-PLAN.md` Week 8. The reverse
+round-trip finally reaches the user: edit the generated Python, press **Apply to canvas**, get
+nodes back. **Ships gated OFF** — deliberately not live in production yet.
+
+- [x] **`POST /parse`** beside `/codegen` (`routers/agents.py`) — pure + unauthenticated, returns
+  `{graph, warnings, degraded_nodes}`, **never 500s** (unrecognised functions degrade to Code
+  nodes and are reported). `calypr-roundtrip` added to `apps/api` deps; `graph_parse_requested`
+  → PostHog. Tests: round-trip, hand-edited prompt recovered, garbage input, degradation.
+- [x] **Web** — `/api/parse` proxy + `parseCode()`; `CodeView` editable mode + **Apply to canvas**
+  with inline warnings and an honest "N steps kept as custom code" notice. Reuses the canvas's
+  existing apply path (`applyAssistantGraph` → `applyGraphToCanvas`, now shared with the AI
+  assistant), so **an apply is undoable** like any other graph change.
+- [x] **Ceiling-resolution events** — `code_edited`, `parse_applied`, `parse_failed`,
+  `parse_degraded`. These are the Month-2 metrics (did the user who hit the ceiling come back?).
+- [x] **Gate** (`lib/flags.ts`): off unless `NEXT_PUBLIC_ROUNDTRIP_ENABLED=1` at build time **or**
+  `localStorage["calypr:roundtrip"]="1"` per browser; read via `useSyncExternalStore` (no
+  hydration mismatch). The per-browser route exists because the gate turns the Code tab into a
+  `<textarea>` (text in `.value`, not `textContent`) — **5 existing specs assert
+  `toContainText` on `code-output`**, so a global build flag would have broken them. It also lets
+  us dogfood a deployed build without shipping to users.
+- [x] **`e2e/tests/phase8-roundtrip.spec.ts`** — edit prompt → apply → canvas + config panel
+  reflect it; edited agent still streams; unparseable code reported with the canvas untouched;
+  hand-written step degrades to a custom-code node; **UI absent without the opt-in** (production
+  behaviour asserted, not assumed).
+- Verified: **840 pytest, 38 e2e (whole suite — no regression), ruff + tsc + eslint clean, prod
+  build green with the flag unset.**
+- [ ] **To go live:** set `NEXT_PUBLIC_ROUNDTRIP_ENABLED=1` on the deployment (rebuild required).
+  Holding per the decision to keep Weeks 6–8 out of production for now.
+- [ ] **Next: Month-2 gate review** — read `parse_applied` / `parse_degraded` in PostHog once
+  enabled, against the ≥50%-of-code-droppers-stay-14-days and ≥40%-30-day-retention bars. Then
+  Month 3 (Week 9 = Stripe billing core).
+
 ## 🟢 Edit-survival mutation suite (MVP Week 7 — reverse round-trip) — DONE (2026-07-21)
 
-PR #30 (`feat/week7-edit-survival`, open). Plan: `MVP-EXECUTION-PLAN.md` Week 7. Week 6 proved the
+MERGED to main (PR #30, squash `69efa73`). Plan: `MVP-EXECUTION-PLAN.md` Week 7. Week 6 proved the
 round-trip on *pristine* generated code; Week 7 measures what survives when a **human edits the
 code first** — the entire point of the round-trip. Survival is now a number, not a hope.
 
