@@ -10,6 +10,7 @@ then they run as single-or-looped model calls with type-specific framing."""
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from typing import Any, Literal
@@ -21,6 +22,13 @@ from pydantic import BaseModel
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._context import current_node_id
 from calypr_nodes._convert import lc_to_msgs, render_template, safe_stream_writer
+from calypr_nodes._parse import (
+    calls_named,
+    docstring,
+    return_dict_key,
+    state_get_keys,
+    str_const,
+)
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
@@ -28,6 +36,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
@@ -87,6 +96,57 @@ _DOC: dict[str, str] = {
     "learning": "Learning agent: adapt from feedback in the conversation.",
     "reflection": "Reflection agent: answer, then critique and revise.",
 }
+
+
+# Reverse of `_DOC` — the docstring the generator emits is a unique, stable marker of the
+# agent *type*, so it's the recogniser's primary discriminator (and separates an Agent from a
+# Router, whose docstrings live elsewhere).
+_DOC_REVERSE: dict[str, str] = {doc: agent_type for agent_type, doc in _DOC.items()}
+
+_CRITIQUE_PREFIX = "Critique the assistant's latest answer for "
+_CRITIQUE_SUFFIX = ". List concrete, actionable fixes. If it is already excellent, reply 'OK'."
+
+
+def _string_assign(fn: ast.FunctionDef, name: str) -> str | None:
+    """The value of the first `name = "<literal>"` assignment in the function (implicit string
+    concatenation is already joined by the parser, so a wrapped literal reads back whole)."""
+    for node in ast.walk(fn):
+        if (
+            isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == name for t in node.targets)
+            and (value := str_const(node.value)) is not None
+        ):
+            return value
+    return None
+
+
+def _recover_prompt(agent_type: str, system: str) -> tuple[str, str]:
+    """Undo `_scaffold`: split the emitted `system` string back into (system_prompt, goal).
+
+    The generator prepends type framing (`_SCAFFOLD`), plus ` Goal: <goal>` for a goal-based
+    agent, joined to the user prompt by a blank line. Recovery only has to be *codegen-exact*:
+    re-scaffolding the returned (prompt, goal) must reproduce `system` — so where the blank-line
+    split falls inside the prompt is irrelevant (it's all concatenation)."""
+    framing = _SCAFFOLD.get(agent_type, "")
+    if not framing or not system.startswith(framing):
+        return system, ""  # framing edited/absent — treat the whole thing as the prompt
+    rest = system[len(framing) :]
+    if agent_type == "goal_based" and rest.startswith(" Goal: "):
+        goal, _, base = rest[len(" Goal: ") :].partition("\n\n")
+        return base, goal
+    base = rest[2:] if rest.startswith("\n\n") else rest  # rest is "" or "\n\n" + prompt
+    return base, ""
+
+
+def _first_range_int(fn: ast.FunctionDef) -> int | None:
+    """The integer argument of the function's first `range(<n>)` call (the reflection loop
+    bound / utility candidate count the generator emits as a literal)."""
+    for call in calls_named(fn, "range"):
+        if call.args and isinstance(call.args[0], ast.Constant):
+            value = call.args[0].value
+            if isinstance(value, int):
+                return value
+    return None
 
 
 class AgentConfig(BaseModel):
@@ -360,3 +420,66 @@ class AgentNode(BaseNode):
         return CodeFragment(
             fn_name=fn_name, function="\n".join(head + body) + "\n", imports=imports
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> AgentConfig | None:
+        """Recover an Agent node from its generated function.
+
+        The type-specific docstring is the discriminator; `init_chat_model(...)` yields the
+        model + temperature; the `messages = state.get(...)` read and final return give the
+        I/O channels; the `system = "..."` literal (minus the type scaffold) gives the prompt.
+        Reflection/utility loop bounds and the critique criteria are read from the literals the
+        generator emitted for those types. Fields the code never expresses (`max_tokens`,
+        `max_steps`, cosmetic `label`, tool bindings — which come from wired edges, not config)
+        fall back to defaults; that's codegen-lossless."""
+        fn = ctx.func
+        if fn is None:
+            return None
+        agent_type = _DOC_REVERSE.get(docstring(fn) or "")
+        model_calls = calls_named(fn, "init_chat_model")
+        if agent_type is None or not model_calls:
+            return None  # not an Agent shape (or a Router — different docstring)
+
+        call = model_calls[0]
+        model = str_const(call.args[0]) if call.args else None
+        temperature = next(
+            (
+                kw.value.value
+                for kw in call.keywords
+                if kw.arg == "temperature" and isinstance(kw.value, ast.Constant)
+            ),
+            None,
+        )
+        keys = state_get_keys(fn)
+        output_channel = return_dict_key(fn)
+        if model is None or temperature is None or not keys or output_channel is None:
+            return None
+
+        system_prompt, goal = "", ""
+        raw_system = _string_assign(fn, "system")
+        if raw_system is not None:
+            system_prompt, goal = _recover_prompt(agent_type, raw_system)
+
+        cfg = AgentConfig(
+            agent_type=agent_type,
+            model=model,
+            temperature=float(temperature),
+            system_prompt=system_prompt,
+            input_channel=keys[0],
+            output_channel=output_channel,
+            goal=goal,
+        )
+        if agent_type == "reflection":
+            n = _first_range_int(fn)
+            if n is not None:
+                cfg.max_reflections = n
+            critique = _string_assign(fn, "critique_prompt") or ""
+            if critique.startswith(_CRITIQUE_PREFIX) and critique.endswith(_CRITIQUE_SUFFIX):
+                cfg.reflection_criteria = critique[
+                    len(_CRITIQUE_PREFIX) : -len(_CRITIQUE_SUFFIX)
+                ]
+        elif agent_type == "utility_based":
+            n = _first_range_int(fn)
+            if n is not None:
+                cfg.num_candidates = n
+        return cfg

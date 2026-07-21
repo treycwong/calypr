@@ -8,11 +8,19 @@ generated module owns the retriever against the user's Postgres."""
 
 from __future__ import annotations
 
+import ast
 from typing import Any, Literal
 
 from calypr_dsl import Reducer, StateChannel
 from pydantic import BaseModel
 
+from calypr_nodes._parse import (
+    dict_lookup,
+    docstring,
+    kwarg_const,
+    return_dict_key,
+    state_get_keys,
+)
 from calypr_nodes.knowledge_catalog import knowledge_source
 from calypr_nodes.registry import (
     BaseNode,
@@ -20,8 +28,11 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
 )
+
+_DOCSTRING = "Retrieve relevant context from the knowledge base (RAG)."
 
 
 def _query_text(value: Any) -> str:
@@ -115,3 +126,59 @@ class RetrieverNode(BaseNode):
         return CodeFragment(
             fn_name=fn_name, function=function + "\n", imports=spec.imports
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> RetrieverConfig | None:
+        """Recover a Knowledge/RAG node: its function reads the query, calls
+        `knowledge.invoke(query)`, and returns the joined `page_content`. The companion
+        `knowledge = ...` assignment carries the source — a `PGVector(...)` build is `pgvector`
+        (with its embedding model + collection), anything else is the keyless `demo` store.
+        `top_k` is read from the emitted `search_kwargs={"k": ...}`."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        keys = state_get_keys(fn)
+        out = return_dict_key(fn)
+        if not keys or out is None:
+            return None
+
+        kdef = ctx.defs.get("knowledge")
+        kval = kdef.value if isinstance(kdef, ast.Assign) else None
+        k_expr = dict_lookup(kval, "k")
+        top_k = k_expr.value if isinstance(k_expr, ast.Constant) else None
+        cfg = RetrieverConfig(
+            input_channel=keys[0],
+            output_channel=out,
+            top_k=top_k if isinstance(top_k, int) else 4,
+        )
+
+        pgvector = next(
+            (
+                n
+                for n in ast.walk(kval)
+                if isinstance(n, ast.Call)
+                and isinstance(n.func, ast.Name)
+                and n.func.id == "PGVector"
+            ),
+            None,
+        ) if kval is not None else None
+        if pgvector is not None:
+            cfg.source = "pgvector"
+            embeddings = next(
+                (
+                    n
+                    for n in ast.walk(pgvector)
+                    if isinstance(n, ast.Call)
+                    and isinstance(n.func, ast.Name)
+                    and n.func.id == "OpenAIEmbeddings"
+                ),
+                None,
+            )
+            model = kwarg_const(embeddings, "model") if embeddings else None
+            if isinstance(model, str):
+                cfg.embedding_model = model
+            coll = kwarg_const(pgvector, "collection_name")
+            if isinstance(coll, str):
+                # codegen emits f"kb_{collection or 'documents'}" — invert it.
+                cfg.collection = coll[len("kb_") :] if coll.startswith("kb_") else coll
+        return cfg

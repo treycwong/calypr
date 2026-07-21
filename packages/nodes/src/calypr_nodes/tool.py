@@ -8,12 +8,14 @@ loop. The provider is a dropdown (demo_search now; Tavily is codegen-only)."""
 
 from __future__ import annotations
 
+import ast
 from typing import Any, Literal
 
 from langchain_core.messages import ToolMessage
 from langgraph.prebuilt import ToolNode as LCToolNode
 from pydantic import BaseModel
 
+from calypr_nodes._parse import dict_lookup, kwarg_const, str_const
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
@@ -21,6 +23,7 @@ from calypr_nodes.registry import (
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
 )
 from calypr_nodes.tools_catalog import tool_spec
@@ -158,3 +161,51 @@ class ToolsNode(BaseNode):
         node_line = f"{fn_name} = ToolNode([{', '.join(refs)}])"
         function = f"{defs}\n\n\n{node_line}" if defs else node_line
         return CodeFragment(fn_name=fn_name, function=function, imports=imports)
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> ToolConfig | None:
+        """Recover a Tool node — the only node emitted as an *assignment*
+        (`node_x = ToolNode([...])`) rather than a function. The tool references discriminate
+        the provider: `*mcp_tools` → an MCP server (transport + whether a bearer is used come
+        from the emitted client); a `web_search` reference resolves through its own definition —
+        an `@tool` function is `demo_search`, a `TavilySearch(...)` assignment is `tavily`.
+
+        Runtime-only fields (`api_key`, `mcp_url`/`mcp_token` values, connector refs) are never
+        serialized into code and come back as defaults — codegen-lossless, since generation
+        keys only on the provider, transport, and whether a token is present."""
+        assign = ctx.assign
+        if assign is None or not isinstance(assign.value, ast.Call):
+            return None
+        call = assign.value
+        if not (isinstance(call.func, ast.Name) and call.func.id == "ToolNode"):
+            return None
+        if not call.args or not isinstance(call.args[0], ast.List):
+            return None
+        elts = call.args[0].elts
+
+        if any(isinstance(e, ast.Starred) for e in elts):  # ToolNode([*mcp_tools]) → MCP
+            client = ctx.defs.get("_mcp_client")
+            client_val = client.value if isinstance(client, ast.Assign) else None
+            transport = str_const(dict_lookup(client_val, "transport")) or "streamable_http"
+            has_headers = dict_lookup(client_val, "headers") is not None
+            return ToolConfig(
+                provider="mcp",
+                mcp_transport=transport,
+                mcp_token="x" if has_headers else "",  # presence only; the value reads from env
+            )
+
+        ref = elts[0].id if elts and isinstance(elts[0], ast.Name) else None
+        defn = ctx.defs.get(ref or "")
+        if isinstance(defn, ast.FunctionDef):  # @tool def web_search(...) → demo_search
+            return ToolConfig(provider="demo_search")
+        if (
+            isinstance(defn, ast.Assign)
+            and isinstance(defn.value, ast.Call)
+            and isinstance(defn.value.func, ast.Name)
+            and defn.value.func.id == "TavilySearch"
+        ):
+            mr = kwarg_const(defn.value, "max_results")
+            return ToolConfig(
+                provider="tavily", max_results=mr if isinstance(mr, int) else 3
+            )
+        return None

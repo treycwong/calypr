@@ -23,15 +23,25 @@ from pydantic import BaseModel, Field
 from calypr_nodes._assets import store_asset
 from calypr_nodes._context import current_node_id
 from calypr_nodes._convert import safe_stream_writer, text_of
+from calypr_nodes._parse import (
+    calls_named,
+    docstring,
+    kwarg_const,
+    return_dict_key,
+    state_get_keys,
+)
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
     tts_model_for_node,
 )
+
+_DOCSTRING = "Synthesize speech from the text and append it as a Markdown audio link."
 
 # response_format → file extension (identity for the ones we expose).
 _FORMAT_EXT = {"mp3": "mp3", "opus": "opus", "aac": "aac", "flac": "flac", "wav": "wav"}
@@ -157,3 +167,28 @@ class TTSNode(BaseNode):
             f'    return {{"{cfg.output_channel}": [AIMessage(content=markdown)]}}',
         ]
         return CodeFragment(fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports)
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> TTSConfig | None:
+        """Recover a Voice/TTS node. `model`/`voice`/`response_format` come from the
+        `OpenAI().audio.speech.create(...)` call; channels from the state read and return.
+        `speed`/`instructions` aren't emitted into code, so they keep their defaults."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        create = calls_named(fn, "create")
+        keys = state_get_keys(fn)
+        out = return_dict_key(fn)
+        if not create or not keys or out is None:
+            return None
+        call = create[0]
+        cfg = TTSConfig(input_channel=keys[0], output_channel=out)
+        for field, attr in (
+            ("model", "model"),
+            ("voice", "voice"),
+            ("response_format", "response_format"),
+        ):
+            val = kwarg_const(call, attr)
+            if isinstance(val, str):
+                setattr(cfg, field, val)
+        return cfg

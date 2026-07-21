@@ -7,14 +7,18 @@ from typing import Any
 from pydantic import BaseModel
 
 from calypr_nodes._convert import text_of
+from calypr_nodes._parse import docstring, last_return_dict, state_get_keys
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
 )
+
+_DOCSTRING = "Return the selected channel as the result."
 
 
 class OutputConfig(BaseModel):
@@ -68,3 +72,17 @@ class OutputNode(BaseNode):
             f'    return {{"{cfg.output_channel}": text}}\n'
         )
         return CodeFragment(fn_name=fn_name, function=fn)
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> OutputConfig | None:
+        """Recover an Output node: it reads `state.get("<source_channel>")`, narrows the value
+        with `isinstance(value, str)`, and returns `{"<output_channel>": text}`. Keyed on the
+        generator's stable docstring (Week-7 hardens against a rewritten one)."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        found = last_return_dict(fn)
+        keys = state_get_keys(fn)
+        if found is None or not keys:
+            return None
+        return OutputConfig(source_channel=keys[0], output_channel=found[0])

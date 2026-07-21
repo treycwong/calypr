@@ -7,14 +7,18 @@ from typing import Any, Literal
 from langchain_core.messages import HumanMessage
 from pydantic import BaseModel
 
+from calypr_nodes._parse import docstring, last_return_dict, state_get_keys
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     register,
 )
+
+_DOCSTRING = "Seed the conversation from the caller's input."
 
 
 class InputConfig(BaseModel):
@@ -69,3 +73,20 @@ class InputNode(BaseNode):
             function=fn,
             imports=["from langchain_core.messages import HumanMessage"],
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> InputConfig | None:
+        """Recover an Input node from its generated function: it reads
+        `state.get("<input_channel>")` and returns `{"<target_channel>": [HumanMessage(...)]}`.
+
+        Keyed on the stable docstring the generator emits — precise enough to never claim
+        another node type that also seeds a `HumanMessage` (e.g. Upload). Hardening against a
+        user-rewritten docstring is Week-7 edit-survival work."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        found = last_return_dict(fn)
+        keys = state_get_keys(fn)
+        if found is None or not keys:
+            return None
+        return InputConfig(input_channel=keys[0], target_channel=found[0])

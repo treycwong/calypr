@@ -7,6 +7,7 @@ the compiler's recursion_limit guarantee termination."""
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
@@ -15,15 +16,19 @@ from pydantic import BaseModel
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._convert import lc_to_msgs
 from calypr_nodes._llm import actor_message
+from calypr_nodes._parse import docstring, llm_actor_fields
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
+
+_DOCSTRING = "Reflexion revisor: improve using tool results; may search again."
 
 _REVISOR_PROMPT = (
     "You are the revisor in a Reflexion loop. Improve the previous answer using the new "
@@ -135,3 +140,23 @@ class RevisorNode(BaseNode):
             imports=imports,
             routing=True,
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> RevisorConfig | None:
+        """Recover a Reflexion Revisor: the LLM-actor shape plus the revision budget, read from
+        the `route_<ref>` companion's `if state.get("revision_count", 0) < <max_revisions>`."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        fields = llm_actor_fields(fn, _REVISOR_PROMPT)
+        if fields is None:
+            return None
+        cfg = RevisorConfig(**fields)
+        route_fn = ctx.defs.get(f"route_{ctx.ref_name}")
+        if isinstance(route_fn, ast.FunctionDef):
+            for cmp in (n for n in ast.walk(route_fn) if isinstance(n, ast.Compare)):
+                right = cmp.comparators[0] if cmp.comparators else None
+                if isinstance(right, ast.Constant) and isinstance(right.value, int):
+                    cfg.max_revisions = right.value
+                    break
+        return cfg

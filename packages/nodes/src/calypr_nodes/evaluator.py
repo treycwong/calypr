@@ -16,15 +16,32 @@ from pydantic import BaseModel
 
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._llm import collect_text
+from calypr_nodes._parse import (
+    calls_named,
+    docstring,
+    kwarg_const,
+    last_return_dict_items,
+    state_get_keys,
+    str_const,
+    string_assign,
+)
 from calypr_nodes.registry import (
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
+    NodeParseContext,
     model_for_node,
     register,
 )
+
+_DOCSTRING = "LLM-as-judge: score the latest answer and explain why."
+# Fixed spans of the emitted judge prompt (`_judge_prompt`) that bracket the recoverable
+# `scale_max` and `criteria`: "... from 1 to {scale_max} on {criteria}. Reply with ...".
+_JUDGE_MID = " on "
+_JUDGE_SCALE_PREFIX = "Score the answer from 1 to "
+_JUDGE_CRITERIA_SUFFIX = ". Reply with"
 
 _SCORE_RE = re.compile(r"SCORE:\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
 
@@ -135,3 +152,37 @@ class EvaluatorNode(BaseNode):
         return CodeFragment(
             fn_name=fn_name, function="\n".join(lines) + "\n", imports=imports
         )
+
+    @classmethod
+    def parse(cls, ctx: NodeParseContext) -> EvaluatorConfig | None:
+        """Recover an Evaluator (LLM-as-judge). Model + temperature come from
+        `init_chat_model`; the two return keys are `(score_channel, rationale_channel)` in
+        order; `scale_max` and `criteria` are read from the emitted judge prompt."""
+        fn = ctx.func
+        if fn is None or docstring(fn) != _DOCSTRING:
+            return None
+        calls = calls_named(fn, "init_chat_model")
+        if not calls or not calls[0].args:
+            return None
+        model = str_const(calls[0].args[0])
+        temperature = kwarg_const(calls[0], "temperature")
+        keys = state_get_keys(fn)
+        items = last_return_dict_items(fn)
+        if model is None or not isinstance(temperature, (int, float)) or not keys or len(items) < 2:
+            return None
+
+        cfg = EvaluatorConfig(
+            model=model,
+            temperature=float(temperature),
+            input_channel=keys[0],
+            score_channel=items[0][0],
+            rationale_channel=items[1][0],
+        )
+        system = string_assign(fn, "system") or ""
+        if _JUDGE_SCALE_PREFIX in system and _JUDGE_MID in system:
+            after = system.split(_JUDGE_SCALE_PREFIX, 1)[1]
+            scale_str, _, rest = after.partition(_JUDGE_MID)
+            if scale_str.isdigit():
+                cfg.scale_max = int(scale_str)
+            cfg.criteria = rest.split(_JUDGE_CRITERIA_SUFFIX, 1)[0]
+        return cfg

@@ -11,8 +11,10 @@ The equivalence relation (modulo what the code can't express):
 - **identity** (`id`/`name`/`description`) and **layout** (node positions) round-trip via the
   `# calypr:` trailer; **without** the trailer parsing still succeeds — positions become None,
   the id falls back to `"parsed"`, and the name is read from the module docstring;
-- **edge ids** and **node config** are not compared (every node still degrades to a `code` node
-  until the Week-6 recognisers land);
+- **node type + config** round-trip via the Week-6 recognisers (`parse()` beside each node's
+  `codegen()`): `generate ∘ parse ∘ generate` is a byte-identical fixed point for the corpus, and
+  a function no recogniser matches degrades to a `code` node rather than being misclassified;
+- **edge ids** are regenerated (not compared);
 - **edge conditions** round-trip for **Router** branches (the generator emits them as
   `add_conditional_edges(..., route_*, {cond: target})`, losslessly) but **not** for ReAct
   agent↔tool wiring: that goes through LangGraph's `tools_condition` prebuilt, whose fixed
@@ -106,11 +108,57 @@ def test_trailer_deletion_still_parses() -> None:
 
 
 @pytest.mark.parametrize("graph", CORPUS, ids=lambda g: g.id)
-def test_all_nodes_degrade_to_code_in_pr1(graph: GraphSpec) -> None:
-    # PR-1 has no node recognisers yet, so every node is reported degraded, with its source kept.
+def test_node_types_recovered(graph: GraphSpec) -> None:
+    # Week-6 recognisers recover every node's type + config for the shipped corpus — nothing
+    # degrades to a `code` node, and no node is mistaken for another type.
     result = parse_python(generate_python(graph))
-    assert set(result.degraded_nodes) == {n.id for n in graph.nodes}
-    assert all(n.type == "code" for n in result.spec.nodes)
+    assert result.degraded_nodes == []
+    got = {n.id: n.type for n in result.spec.nodes}
+    assert got == {n.id: n.type for n in graph.nodes}
+
+
+@pytest.mark.parametrize("graph", CORPUS, ids=lambda g: g.id)
+def test_codegen_fixed_point(graph: GraphSpec) -> None:
+    # The registry-wide equivalence the plan pins Week 6 to: parsing generated code and
+    # regenerating from the recovered spec is a fixed point (`generate ∘ parse ∘ generate`
+    # is byte-identical to `generate`). This proves the recovered config reproduces the code,
+    # which is the "no ceiling" guarantee — canvas → code → canvas → code is stable.
+    code = generate_python(graph)
+    assert generate_python(parse_python(code).spec) == code
+
+
+def test_every_registered_node_type_has_a_recogniser() -> None:
+    # Guards against a new node type shipping without a `parse()` inverse: every registered
+    # type (except the `code` fallback itself) must appear — recognised — somewhere in the
+    # corpus round-trip above. If this fails, add the node to a template and give it a parse().
+    from calypr_nodes import all_node_types
+
+    recovered: set[str] = set()
+    for graph in CORPUS:
+        recovered.update(n.type for n in parse_python(generate_python(graph)).spec.nodes)
+    missing = set(all_node_types()) - recovered - {"code"}
+    assert not missing, f"node types with no round-trip coverage: {sorted(missing)}"
+
+
+def test_unrecognised_node_degrades_to_code() -> None:
+    # The graceful-degradation contract: a node function no recogniser matches becomes a `code`
+    # node with its source preserved verbatim — the parser never rejects the surface.
+    code = (
+        "def node_mystery(state: State) -> dict:\n"
+        '    """Something no recogniser matches."""\n'
+        '    return {"out": weird_custom_logic(state)}\n'
+        "\n\n"
+        "def build_graph():\n"
+        "    graph = StateGraph(State)\n"
+        '    graph.add_node("mystery", node_mystery)\n'
+        '    graph.add_edge(START, "mystery")\n'
+        "    return graph.compile()\n"
+    )
+    result = parse_python(code)
+    assert result.degraded_nodes == ["mystery"]
+    node = result.spec.nodes[0]
+    assert node.type == "code"
+    assert "weird_custom_logic" in node.config["code"]
 
 
 def test_missing_build_graph_is_graceful() -> None:
