@@ -138,10 +138,75 @@ class ShareRunRequest(BaseModel):
 class WorkspaceInfo(BaseModel):
     id: str
     name: str
+    # Entitlement tier (`free|beta|plus`) — what the client gates optional features on.
+    plan: str = "free"
+    # The signed-in user's email as the API sees it (the address the beta invite list is matched
+    # against). Returned so the UI can say "you're signed in as X" when a feature is locked —
+    # an invited partner whose GitHub email differs from the one they gave us can then tell us
+    # which address to add. `None` in dev/CI, where there's no authenticating proxy.
+    signed_in_as: str | None = None
 
 
 class WorkspaceUpdate(BaseModel):
     name: str
+
+
+class WaitlistJoin(BaseModel):
+    """A pre-signup email from the landing form.
+
+    Validated loosely on purpose: the browser's `type="email"` handles the obvious cases, and the
+    only validation that actually matters for a waitlist is whether the address receives mail.
+    A light shape check keeps `pydantic[email]` out of the dependency list for one field."""
+
+    email: str
+    source: str | None = None
+
+    @field_validator("email")
+    @classmethod
+    def _looks_like_an_email(cls, v: str) -> str:
+        v = v.strip()
+        if len(v) > 320:  # RFC 3696 practical maximum
+            raise ValueError("email address too long")
+        # Reject whitespace/commas outright: they're never valid unquoted, and they're the
+        # shapes that arrive when someone pastes "Ada <ada@x.com>" or a list of addresses.
+        if v.count("@") != 1 or any(c in v for c in ", ;\t\n"):
+            raise ValueError("not a valid email address")
+        local, _, domain = v.partition("@")
+        if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
+            raise ValueError("not a valid email address")
+        return v
+
+
+class WaitlistEntry(BaseModel):
+    """One waitlist row — admin-only; never returned by the public join route."""
+
+    email: str
+    source: str
+    created_at: datetime
+    invited_at: datetime | None = None
+
+
+class InviteRequest(BaseModel):
+    """Addresses to add to the beta invite list (operator-only)."""
+
+    emails: list[str]
+
+
+class InviteResult(BaseModel):
+    """`invited` were newly stamped; `already_invited` were on the list already (re-running is
+    safe, so the split just tells you what actually changed)."""
+
+    invited: list[str] = []
+    already_invited: list[str] = []
+
+
+class PlanUpdate(BaseModel):
+    """Move a workspace between entitlement tiers (operator-only).
+
+    `email` is optional and only used to stamp the matching waitlist row as invited."""
+
+    plan: str
+    email: str | None = None
 
 
 class TemplateInfo(BaseModel):

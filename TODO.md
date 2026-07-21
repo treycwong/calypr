@@ -309,9 +309,44 @@ walkers over the closed `build_graph()` grammar, plus the `# calypr: {…}` meta
   to codegen quality (standing kill condition). **Still open.**
 - [x] **Week 6** — per-node config `parse()` recognizers (see the Week-6 section below). Done.
 
+## 🟢 Beta access — entitlement primitive + round-trip to a cohort — DONE (2026-07-21)
+
+PR #32 (`feat/beta-access-entitlements`, open). Gates the round-trip on a **workspace tier**
+instead of a dev flag, so it can run as a closed beta **in production**.
+
+**Why not leave it dark:** `ROADMAP-6M.md` §Month-2 — *"at the wall, do they drop into code and
+continue, or churn? This ratio is the whole thesis."* That ratio is unmeasurable while the feature
+is off (`parse_applied`/`parse_degraded` never fire), so the Month-2 gate can never close and we'd
+reach Month 3 (Stripe) having never validated the thesis we're charging for.
+
+**Decided: beta ≠ paywall.** `beta` gates on our confidence, `plus` on value capture. The
+round-trip stays **free core** — it *is* the "no ceiling" promise, and Week 11 OSSes the same
+parser on PyPI. Paid differentiation stays on capacity (projects/credits/platform models) per
+`PRICING-SPEC.md` §1, which is already fully decided — no pricing redesign needed.
+
+- [x] **Migration `0008`** — `workspace.plan` (`free|beta|plus`) + `waitlist` table. Documents why
+  `waitlist` is the one table with no `workspace_id`/RLS policy (pre-signup writers): write-only
+  publicly, readable only via the admin token.
+- [x] **`entitlements.py`** — `has_roundtrip()`; one line changes when the feature graduates.
+- [x] **`/workspaces/current` returns `plan`**; canvas gates `CodeView` on it. Build-env +
+  `localStorage` remain **dev** overrides — required, because the gate turns the Code tab into a
+  `<textarea>` and 5 other specs assert `toContainText` on `code-output`.
+- [x] **Waitlist actually stores** — it was silently discarding every signup behind a TODO.
+  `POST /waitlist` normalizes, is idempotent, returns 204 and never rows (non-enumerable).
+- [x] **Operator promote route**, `CALYPR_ADMIN_TOKEN`-guarded, **fails closed** (404 when unset
+  or wrong). No admin UI — a curl suits ~10–25 partners.
+- Verified: **853 pytest** (12 new), **39 e2e** (+2 — a `beta` workspace sees Apply with no local
+  opt-in, a clean A/B vs the `free` case; and the waitlist persisting), ruff/tsc/eslint/prod build
+  green, migration reversible.
+- [ ] **To run the beta:** set `CALYPR_ADMIN_TOKEN`, then
+  `curl -X POST $API/admin/workspaces/<id>/plan -H "x-admin-token: $TOKEN"
+  -d '{"plan":"beta","email":"partner@example.com"}'`. Manual SQL fallback:
+  `UPDATE workspace SET plan='beta' WHERE id='<uuid>';`
+- [ ] **Then:** watch `parse_applied` / `parse_degraded` in PostHog against the Month-2 gate.
+
 ## 🟢 Apply to canvas — the loop closes (MVP Week 8 — reverse round-trip) — DONE (2026-07-21)
 
-PR #31 (`feat/week8-apply-to-canvas`, open). Plan: `MVP-EXECUTION-PLAN.md` Week 8. The reverse
+MERGED to main (PR #31, squash `c47f6ff`). Plan: `MVP-EXECUTION-PLAN.md` Week 8. The reverse
 round-trip finally reaches the user: edit the generated Python, press **Apply to canvas**, get
 nodes back. **Ships gated OFF** — deliberately not live in production yet.
 

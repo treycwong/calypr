@@ -47,14 +47,24 @@ export function LandingHeader() {
           ))}
         </nav>
 
-        {/* waitlist CTA (desktop) */}
-        <Link
-          href="/waitlist"
-          className="hidden shrink-0 items-center gap-2 rounded-full border border-white/10 bg-black/40 px-5 py-2 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/60 md:inline-flex"
-        >
-          <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px] shadow-emerald-400/60" />
-          Join Waitlist
-        </Link>
+        {/* sign in + waitlist CTA (desktop). The hero CTA points at the waitlist because the
+            beta is invite-only, so this is the way back in for people who already have an
+            account — us, and the partners we've let in. */}
+        <div className="hidden shrink-0 items-center gap-2 md:flex">
+          <Link
+            href="/sign-in"
+            className="rounded-full px-4 py-2 text-sm text-white/70 transition-colors hover:text-white"
+          >
+            Sign in
+          </Link>
+          <Link
+            href="/waitlist"
+            className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-5 py-2 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/60"
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px] shadow-emerald-400/60" />
+            Join Waitlist
+          </Link>
+        </div>
 
         {/* hamburger (mobile) */}
         <button
@@ -82,6 +92,13 @@ export function LandingHeader() {
                 {label}
               </Link>
             ))}
+            <Link
+              href="/sign-in"
+              onClick={() => setOpen(false)}
+              className="rounded-xl px-4 py-3 text-sm text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            >
+              Sign in
+            </Link>
             <Link
               href="/waitlist"
               onClick={() => setOpen(false)}

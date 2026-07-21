@@ -26,6 +26,7 @@ from calypr_api.routers import (
     runs,
     share,
     uploads,
+    waitlist,
 )
 
 log = logging.getLogger("calypr_api")
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(uploads.router)
     app.include_router(connectors.router)
     app.include_router(provider_keys.router)
+    app.include_router(waitlist.router)
     return app
 
 

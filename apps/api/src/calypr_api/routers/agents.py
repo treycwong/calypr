@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from calypr_api import entitlements
 from calypr_api.db.models import Agent, ShareLink, Workspace
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
@@ -292,7 +293,18 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
     ws = t.session.get(Workspace, t.workspace_id)
     if ws is None:
         raise HTTPException(status_code=404, detail="workspace not found")
-    return WorkspaceInfo(id=str(ws.id), name=ws.name)
+    # Redeem a beta invite here rather than on every request: the client asks for its workspace
+    # once per page load, and this is exactly when it needs to know what it's entitled to.
+    if entitlements.grant_beta_if_invited(t.session, ws, t.email):
+        t.session.commit()
+        posthog_client.capture(
+            "beta_access_granted",
+            distinct_id=str(ws.id),
+            properties={"workspace_id": str(ws.id)},
+        )
+    return WorkspaceInfo(
+        id=str(ws.id), name=ws.name, plan=ws.plan, signed_in_as=t.email
+    )
 
 
 @router.patch("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
@@ -309,4 +321,4 @@ def rename_workspace(
         distinct_id=str(t.workspace_id),
         properties={"workspace_id": str(t.workspace_id)},
     )
-    return WorkspaceInfo(id=str(ws.id), name=ws.name)
+    return WorkspaceInfo(id=str(ws.id), name=ws.name, plan=ws.plan)

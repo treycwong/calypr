@@ -11,5 +11,9 @@ export async function internalHeaders(): Promise<Record<string, string>> {
   headers["x-calypr-internal-key"] = key;
   const session = await getSession();
   if (session?.userId) headers["x-calypr-user-id"] = session.userId;
+  // The verified email from the auth provider, so the API can match a signed-in user against
+  // the beta invite list. Same trust boundary as the user id above — only the proxy, holding
+  // the internal key, can assert it.
+  if (session?.email) headers["x-calypr-user-email"] = session.email;
   return headers;
 }

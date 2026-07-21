@@ -38,6 +38,10 @@ class Workspace(Base):
     # A user's personal workspace (= Better Auth user.id); NULL for the shared dev workspace.
     owner_user_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     name: Mapped[str] = mapped_column(String, nullable=False)
+    # Entitlement tier: `free | beta | plus`. Read through `calypr_api.entitlements` rather than
+    # compared inline, so gating rules live in one place. Billing (Stripe, credits) lands later —
+    # this column is only what feature gating reads.
+    plan: Mapped[str] = mapped_column(String, nullable=False, server_default="free")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -228,3 +232,26 @@ class ShareLink(Base):
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class Waitlist(Base):
+    """A pre-signup email from the landing form.
+
+    The one domain table with **no** `workspace_id` and no RLS tenant policy: rows are written by
+    unauthenticated visitors who don't have a workspace yet (see 0008_plan_and_waitlist). It is
+    write-only through the public endpoint — `POST /waitlist` never returns rows — and readable
+    only via the admin-token route."""
+
+    __tablename__ = "waitlist"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    # Normalized (trimmed + lowercased) by the API before insert, so uniqueness is meaningful.
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    source: Mapped[str] = mapped_column(String, nullable=False, server_default="landing")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Set when this address is invited into the beta.
+    invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

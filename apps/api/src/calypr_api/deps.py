@@ -27,6 +27,10 @@ class Tenant:
 
     session: Session
     workspace_id: uuid.UUID
+    # The signed-in user's verified email, asserted by the trusted proxy (None in dev/CI, where
+    # every request falls back to the shared dev workspace). Used to match against the beta
+    # invite list — see `entitlements.grant_beta_if_invited`.
+    email: str | None = None
 
 
 def _resolve_workspace_id(request: Request, session: Session) -> uuid.UUID:
@@ -49,7 +53,11 @@ def _resolve_workspace_id(request: Request, session: Session) -> uuid.UUID:
 def tenant(request: Request, session: Session = Depends(get_session)) -> Tenant:
     ws = _resolve_workspace_id(request, session)
     set_tenant(session, str(ws))
-    return Tenant(session=session, workspace_id=ws)
+    return Tenant(
+        session=session,
+        workspace_id=ws,
+        email=request.headers.get("x-calypr-user-email"),
+    )
 
 
 def request_workspace(request: Request) -> uuid.UUID:
