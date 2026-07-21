@@ -131,8 +131,10 @@ export default function Home() {
               Create your own AI apps easily.
             </p>
             <div className="mt-8">
-              <HoverButton href="/canvas">
-                Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
+              {/* The beta is invite-only, so the primary CTA collects an email rather than
+                  dropping people straight into the app. Returning users sign in from the header. */}
+              <HoverButton href="/waitlist">
+                Try Beta <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
               </HoverButton>
             </div>
           </div>

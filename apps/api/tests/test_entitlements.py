@@ -84,9 +84,29 @@ def test_waitlist_normalizes_and_is_idempotent(monkeypatch):
     assert matches[0]["invited_at"] is None
 
 
-def test_waitlist_rejects_a_non_email():
-    assert client.post("/waitlist", json={"email": "not-an-address"}).status_code == 422
-    assert client.post("/waitlist", json={"email": "missing@tld"}).status_code == 422
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "not-an-address",
+        "missing@tld",
+        "grace, hopper@example.com",  # pasted a list
+        "Ada <ada@example.com>",  # pasted a display name
+        "two@@example.com",
+        "@example.com",
+        "trailing@example.",
+    ],
+)
+def test_waitlist_rejects_a_non_email(bad: str):
+    assert client.post("/waitlist", json={"email": bad}).status_code == 422
+
+
+@pytest.mark.parametrize(
+    "good", ["ada@example.com", "ada.lovelace+beta@sub.example.co.uk", "a@b.io"]
+)
+def test_waitlist_accepts_real_addresses(good: str):
+    # 422 would mean the validator is too strict; anything else (204, or a DB error in a
+    # no-database environment) means it passed validation.
+    assert client.post("/waitlist", json={"email": good}).status_code != 422
 
 
 @requires_db

@@ -160,11 +160,15 @@ class WaitlistJoin(BaseModel):
     @classmethod
     def _looks_like_an_email(cls, v: str) -> str:
         v = v.strip()
+        if len(v) > 320:  # RFC 3696 practical maximum
+            raise ValueError("email address too long")
+        # Reject whitespace/commas outright: they're never valid unquoted, and they're the
+        # shapes that arrive when someone pastes "Ada <ada@x.com>" or a list of addresses.
+        if v.count("@") != 1 or any(c in v for c in ", ;\t\n"):
+            raise ValueError("not a valid email address")
         local, _, domain = v.partition("@")
         if not local or "." not in domain or domain.startswith(".") or domain.endswith("."):
             raise ValueError("not a valid email address")
-        if len(v) > 320:  # RFC 3696 practical maximum
-            raise ValueError("email address too long")
         return v
 
 
