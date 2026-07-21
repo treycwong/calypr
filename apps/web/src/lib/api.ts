@@ -10,7 +10,8 @@ export type RunEvent =
   // A frontier model ran on the cheap platform model because no BYO key was on file. Always
   // surface this — the output is not from the model the user selected.
   | { type: "notice"; message: string }
-  | { type: "error"; message: string };
+  // `code` is a stable hint for the UI; "provider_key_rejected" gets a Fix it action.
+  | { type: "error"; message: string; code?: string };
 
 /** POST a JSON body to a same-origin SSE proxy and yield parsed `data:` events until the
  * stream ends (`[DONE]`). Shared by `runAgent` and `assistAgent`. */
@@ -140,7 +141,7 @@ export type AssistEvent =
   | { type: "usage"; input_tokens: number; output_tokens: number; model: string }
   // The chosen model needed a BYO key that isn't on file, so the draft ran on the fallback.
   | { type: "notice"; message: string }
-  | { type: "error"; message: string; issues?: unknown[] };
+  | { type: "error"; message: string; code?: string; issues?: unknown[] };
 
 /** Ask the assistant to draft/refine a graph from natural language, streaming events. */
 export async function* assistAgent(

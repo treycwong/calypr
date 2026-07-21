@@ -195,3 +195,62 @@ test("a run on an unkeyed frontier model falls back and says so", async ({ page 
   await expect(reply).toContainText("kimi-k3");
   await expect(reply).toContainText("Settings");
 });
+
+test("a rejected provider key shows a Fix it link into Settings", async ({ page }) => {
+  // Force the server's key-rejected shape onto the run stream; the point under test is the
+  // client affordance, not how the provider reports the 401.
+  await page.route("**/api/runs", async (route) => {
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body:
+        `data: ${JSON.stringify({
+          type: "error",
+          message: "Your OpenAI API key was rejected. Check the key saved for this workspace.",
+          code: "provider_key_rejected",
+        })}\n\ndata: [DONE]\n\n`,
+    });
+  });
+
+  await page.goto("/canvas");
+  await page.getByTestId("dev-sign-in").click();
+  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("add-agent").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+
+  await page.getByTestId("toggle-playground").click();
+  await page.getByTestId("chat-input").fill("hello");
+  await page.getByTestId("chat-send").click();
+
+  await expect(page.getByTestId("msg-assistant").last()).toContainText("rejected");
+  const fix = page.getByTestId("fix-keys").getByRole("link");
+  await expect(fix).toBeVisible();
+  await fix.click();
+  await expect(page).toHaveURL(/\/dashboard\/settings/);
+});
+
+test("an ordinary run error shows no Fix it link", async ({ page }) => {
+  // Guards against the affordance appearing on failures a key change wouldn't fix.
+  await page.route("**/api/runs", async (route) => {
+    await route.fulfill({
+      contentType: "text/event-stream",
+      body: `data: ${JSON.stringify({ type: "error", message: "Something went wrong." })}\n\ndata: [DONE]\n\n`,
+    });
+  });
+
+  await page.goto("/canvas");
+  await page.getByTestId("dev-sign-in").click();
+  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await page.getByTestId("add-input").click();
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await page.getByTestId("add-agent").click();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+
+  await page.getByTestId("toggle-playground").click();
+  await page.getByTestId("chat-input").fill("hello");
+  await page.getByTestId("chat-send").click();
+
+  await expect(page.getByTestId("msg-assistant").last()).toContainText("Something went wrong");
+  await expect(page.getByTestId("fix-keys")).toHaveCount(0);
+});

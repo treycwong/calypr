@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import type { GraphSpec } from "@calypr/dsl";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   AttachButton,
@@ -15,9 +15,16 @@ import {
 import { Markdown } from "@/components/Markdown";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
+import { API_KEYS_HREF, PROVIDER_KEY_REJECTED } from "@/lib/errors";
 import { runAgent, uploadImage } from "@/lib/api";
 
-type ChatMsg = { role: "user" | "assistant"; text: string; images?: string[] };
+type ChatMsg = {
+  role: "user" | "assistant";
+  text: string;
+  images?: string[];
+  // A provider rejected the workspace's stored key — render the Fix it affordance.
+  keyRejected?: boolean;
+};
 
 export function Playground({
   getGraph,
@@ -79,6 +86,13 @@ export function Playground({
           onRunReset?.({ error: true });
           apply(`⚠️ ${ev.message}`);
           toast(ev.message, "error");
+          if (ev.code === PROVIDER_KEY_REJECTED) {
+            setMessages((m) => {
+              const copy = [...m];
+              copy[copy.length - 1] = { ...copy[copy.length - 1], keyRejected: true };
+              return copy;
+            });
+          }
         }
       }
       track(errored ? "run_errored" : "run_completed");
@@ -134,6 +148,16 @@ export function Playground({
                 </>
               )}
             </div>
+            {m.keyRejected ? (
+              <div className="mt-1.5" data-testid="fix-keys">
+                <a
+                  className={buttonVariants({ variant: "outline", size: "sm" })}
+                  href={API_KEYS_HREF}
+                >
+                  Fix it — check your API keys
+                </a>
+              </div>
+            ) : null}
           </div>
         ))}
       </div>

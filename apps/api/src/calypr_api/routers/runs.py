@@ -20,11 +20,18 @@ from calypr_api import engine, spend
 from calypr_api.connectors import resolve_graph
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
-from calypr_api.errors import run_error_message
+from calypr_api.errors import (
+    PROVIDER_KEY_REJECTED,
+    is_provider_auth_error,
+    provider_key_error_message,
+    run_error_message,
+)
 from calypr_api.metering import RunRecorder
 from calypr_api.model_access import (
     FALLBACK_MODEL,
+    byo_providers_in_play,
     frontier_substitution_notice,
+    provider_label,
     substitute_missing_frontier_models,
 )
 from calypr_api.posthog_client import posthog_client
@@ -35,6 +42,25 @@ router = APIRouter()
 
 def _sse(payload: dict) -> str:
     return f"data: {json.dumps(payload)}\n\n"
+
+
+def _error_payload(exc: Exception, graph=None, ctx=None) -> dict:
+    """The client `error` event. A rejected BYO key gets actionable copy plus a `code` the web
+    app turns into a "Fix it" link; everything else stays generic. `graph`/`ctx` are optional
+    because the failure may predate their assignment."""
+    if not is_provider_auth_error(exc):
+        return {"type": "error", "message": run_error_message(exc)}
+    provider = None
+    if graph is not None:
+        in_play = byo_providers_in_play(graph, getattr(ctx, "model_keys", None))
+        # Only name it when there is no ambiguity about which key was refused.
+        if len(in_play) == 1:
+            provider = provider_label(next(iter(in_play)))
+    return {
+        "type": "error",
+        "message": provider_key_error_message(provider),
+        "code": PROVIDER_KEY_REJECTED,
+    }
 
 
 @router.post("/runs", tags=["engine"])
@@ -70,6 +96,7 @@ async def create_run(
             thread_id=req.thread_id,
         )
         completed = False
+        graph = ctx = None
         try:
             # Resolve MCP connector refs → live url + headers (vault-decrypted, server-side)
             # before compile, off the event loop (DB I/O). No-ops when no connector is used.
@@ -129,6 +156,6 @@ async def create_run(
                     properties={"error": type(exc).__name__},
                 )
             await asyncio.to_thread(recorder.fail)
-            yield _sse({"type": "error", "message": run_error_message(exc)})
+            yield _sse(_error_payload(exc, graph, ctx))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

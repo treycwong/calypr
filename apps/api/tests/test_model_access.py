@@ -183,3 +183,18 @@ def test_substitution_notice_names_both_models_and_the_fix() -> None:
     msg = frontier_substitution_notice([("kimi-k3", "moonshot")])
     assert FALLBACK_MODEL in msg and "kimi-k3" in msg
     assert "Moonshot" in msg and "Settings" in msg
+
+
+def test_byo_providers_in_play_ignores_platform_served_models() -> None:
+    """Only workspace-stored keys can be 'fixed' by the user, so a platform-key model must
+    never be named as the culprit when a provider rejects credentials."""
+    from calypr_api.model_access import byo_providers_in_play
+
+    graph = input_agent_output(model="gpt-4o")  # runs on the platform key
+    graph.nodes.append(NodeSpec(id="a2", type="agent", config={"model": "kimi-k3"}))
+    # Only moonshot is BYO here; openai has no stored key.
+    assert byo_providers_in_play(graph, {"moonshot": "sk-x"}) == {"moonshot"}
+    # With no stored keys at all there is nothing the user could fix.
+    assert byo_providers_in_play(graph, {}) == set()
+    # Two BYO keys in play → ambiguous, and the caller declines to name one.
+    assert len(byo_providers_in_play(graph, {"moonshot": "x", "openai": "y"})) == 2

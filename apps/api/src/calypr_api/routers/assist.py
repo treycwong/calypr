@@ -20,11 +20,18 @@ from fastapi.responses import StreamingResponse
 from calypr_api import spend
 from calypr_api.config import settings
 from calypr_api.deps import request_workspace
+from calypr_api.errors import (
+    PROVIDER_KEY_REJECTED,
+    is_provider_auth_error,
+    provider_key_error_message,
+    run_error_message,
+)
 from calypr_api.metering import RunRecorder
 from calypr_api.model_access import (
     FALLBACK_MODEL,
     frontier_provider,
     frontier_substitution_notice,
+    provider_label,
 )
 from calypr_api.posthog_client import posthog_client
 from calypr_api.provider_keys import resolve_model_keys
@@ -157,9 +164,21 @@ async def create_assist(
                 yield _sse(payload)
             await asyncio.to_thread(recorder.finish, "completed")
             yield "data: [DONE]\n\n"
-        except Exception as exc:  # missing provider key, provider outage, etc.
+        except Exception as exc:  # rejected key, provider outage, etc.
             await asyncio.to_thread(recorder.fail)
-            yield _sse({"type": "error", "message": str(exc), "issues": []})
+            # `str(exc)` used to go straight to the client here, which leaked provider payloads
+            # (a rejected OpenAI key surfaced its whole 401 body, masked key included).
+            if is_provider_auth_error(exc):
+                label = provider_label(provider_of(run_model))
+                payload = {
+                    "type": "error",
+                    "message": provider_key_error_message(label),
+                    "code": PROVIDER_KEY_REJECTED,
+                    "issues": [],
+                }
+            else:
+                payload = {"type": "error", "message": run_error_message(exc), "issues": []}
+            yield _sse(payload)
             yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

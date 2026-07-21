@@ -72,7 +72,7 @@ _PROVIDER_LABELS = {
 }
 
 
-def _provider_label(provider: str) -> str:
+def provider_label(provider: str) -> str:
     return _PROVIDER_LABELS.get(provider, provider.title())
 
 
@@ -108,7 +108,7 @@ def frontier_substitution_notice(substituted: list[tuple[str, str]]) -> str:
     """User-facing copy for a substituted run. Names what was swapped and how to get the real
     thing — this is the message that keeps the fallback from being a silent downgrade."""
     models = ", ".join(sorted({m for m, _ in substituted}))
-    providers = ", ".join(sorted({_provider_label(p) for _, p in substituted}))
+    providers = ", ".join(sorted({provider_label(p) for _, p in substituted}))
     return (
         f"Ran on {FALLBACK_MODEL} instead of {models}, which needs your own API key. "
         f"Add your {providers} key in Settings → Workspace to use it."
@@ -118,10 +118,27 @@ def frontier_substitution_notice(substituted: list[tuple[str, str]]) -> str:
 def frontier_key_error(missing: list[tuple[str, str]]) -> str:
     """User-facing copy for a refused run. Names the model and where to fix it — no key values."""
     models = ", ".join(sorted({m for m, _ in missing}))
-    providers = ", ".join(sorted({_provider_label(p) for _, p in missing}))
+    providers = ", ".join(sorted({provider_label(p) for _, p in missing}))
     # "your <Provider> key", not "a <Provider> key" — sidesteps a/an agreement across providers
     # ("a Anthropic key") and reads correctly however many providers are listed.
     return (
         f"{models} needs your own API key. Add your {providers} key in "
         "Settings → Workspace, then run again."
     )
+
+
+def byo_providers_in_play(graph: GraphSpec, keys: dict[str, str] | None) -> set[str]:
+    """Providers whose *workspace-stored* key this graph would actually use.
+
+    Used to name the culprit when a provider rejects our credentials: if exactly one BYO key is
+    in play, the rejection is unambiguously that one. Models running on the platform key are
+    excluded — their failure isn't the user's key to fix."""
+    from calypr_model import provider_of  # local: keeps the DSL-only import surface small
+
+    on_file = set(keys or {})
+    return {
+        provider_of(m)
+        for node in graph.nodes
+        if isinstance(m := node.config.get("model"), str)
+        if provider_of(m) in on_file
+    }
