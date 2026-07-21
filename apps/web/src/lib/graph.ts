@@ -75,11 +75,28 @@ export const ROUTER_KIND_OPTIONS = [
   { value: "llm", label: "LLM — a classifier picks the branch" },
 ];
 
-export const MODEL_OPTIONS = [
+// `byoProvider` marks a *frontier* model: it runs only on the workspace's own API key, is not
+// part of the metered pricing model, and the picker disables it until that key is on file.
+// The server enforces this independently (apps/api `model_access.py`) — this is just the UI.
+export const MODEL_OPTIONS: {
+  value: string;
+  label: string;
+  byoProvider?: string;
+}[] = [
   { value: "fake", label: "Fake (no key, deterministic)" },
   { value: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini" },
   { value: "gpt-4o", label: "OpenAI · gpt-4o" },
   { value: "claude-sonnet-4-5", label: "Anthropic · claude-sonnet-4-5" },
+  {
+    value: "kimi-k3",
+    label: "Moonshot · kimi-k3 (reasoning, 1M ctx)",
+    byoProvider: "moonshot",
+  },
+  {
+    value: "claude-opus-4-8",
+    label: "Anthropic · Claude Opus 4.8",
+    byoProvider: "anthropic",
+  },
 ];
 
 // Image-generation models for the Image node. `fake` is key-free (a 1×1 PNG) for previewing the

@@ -7,7 +7,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { getWorkspace, renameWorkspace } from "@/lib/api";
+import {
+  type AssistantModelOption,
+  deleteProviderKey,
+  getWorkspace,
+  listAssistantModels,
+  type LLMProvider,
+  listLLMProviders,
+  renameWorkspace,
+  setAssistantModel,
+  setProviderKey,
+} from "@/lib/api";
+import { useProviderKeys } from "@/lib/use-provider-keys";
 
 export function SettingsView({
   name,
@@ -21,12 +32,73 @@ export function SettingsView({
   const initials = (name || email || "U").slice(0, 2).toUpperCase();
   const [wsName, setWsName] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
+  const [model, setModel] = useState("");
+  const [modelOptions, setModelOptions] = useState<AssistantModelOption[]>([]);
+  const [modelMsg, setModelMsg] = useState("");
+  const { keyed, refresh: refreshKeys } = useProviderKeys();
+  const [providers, setProviders] = useState<LLMProvider[]>([]);
+  // Per-provider status line, so saving an OpenAI key doesn't flash a message on the Kimi row.
+  const [keyMsg, setKeyMsg] = useState<Record<string, string>>({});
+
+  const setMsg = (provider: string, text: string) =>
+    setKeyMsg((prev) => ({ ...prev, [provider]: text }));
 
   useEffect(() => {
     getWorkspace()
-      .then((w) => setWsName(w.name))
+      .then((w) => {
+        setWsName(w.name);
+        setModel(w.assistant_model ?? "");
+      })
       .catch(() => {});
+    listAssistantModels()
+      .then(setModelOptions)
+      .catch(() => setModelOptions([]));
+    listLLMProviders()
+      .then(setProviders)
+      .catch(() => setProviders([]));
   }, []);
+
+  async function saveModel(value: string) {
+    const previous = model;
+    setModel(value); // optimistic: the select shouldn't stall on the round-trip
+    setModelMsg("Saving…");
+    try {
+      const w = await setAssistantModel(value);
+      setModel(w.assistant_model ?? "");
+      setModelMsg("Saved ✓");
+    } catch {
+      setModel(previous); // put the picker back on what's actually stored
+      setModelMsg("Save failed");
+    }
+  }
+
+  async function saveKey(provider: string, key: string) {
+    setMsg(provider, "Saving…");
+    try {
+      await setProviderKey(provider, key);
+      refreshKeys(); // unlocks that provider's frontier model in the picker above
+      setMsg(provider, "Key saved ✓");
+    } catch {
+      setMsg(provider, "Save failed");
+    }
+  }
+
+  async function removeKey(provider: string) {
+    setMsg(provider, "Removing…");
+    try {
+      await deleteProviderKey(provider);
+      refreshKeys();
+      // Removing a key un-selects the model it unlocked, so the stored setting can't point at
+      // something every run would now refuse.
+      const orphaned = modelOptions.find(
+        (o) => o.value === model && o.byo_provider === provider,
+      );
+      if (orphaned) await saveModel("");
+      setMsg(provider, "Key removed");
+    } catch {
+      setMsg(provider, "Remove failed");
+    }
+  }
 
   async function saveWorkspace() {
     setSavedMsg("Saving…");
@@ -95,8 +167,156 @@ export function SettingsView({
               ) : null}
             </div>
           </div>
+
+          <div className="mt-4 rounded-lg border border-border p-5">
+            <label htmlFor="ws-assistant-model" className="text-sm font-medium">
+              AI assistant model
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Which model drafts your graphs from a prompt in the chat box.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                id="ws-assistant-model"
+                data-testid="ws-assistant-model"
+                className="h-9 max-w-xs flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                value={model}
+                onChange={(e) => saveModel(e.target.value)}
+              >
+                {modelOptions.map((o) => {
+                  // Frontier models run only on your own key — disabled until it's saved.
+                  const locked = o.byo_provider !== null && !keyed.has(o.byo_provider);
+                  return (
+                    <option key={o.value} value={o.value} disabled={locked}>
+                      {locked ? `${o.label} — add your own key below` : o.label}
+                    </option>
+                  );
+                })}
+              </select>
+              {modelMsg ? (
+                <span className="text-xs text-muted-foreground">{modelMsg}</span>
+              ) : null}
+            </div>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Frontier models (kimi-k3) run on your own API key and aren&rsquo;t billed
+              through your plan.
+            </p>
+
+          </div>
+
+          <div className="mt-4 rounded-lg border border-border p-5">
+            <h2 className="text-sm font-medium">LLM providers</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Bring your own key for a provider. Keys are stored encrypted, never shown
+              again, and used only for your own runs.
+            </p>
+            <div className="mt-4 flex flex-col divide-y divide-border">
+              {providers.map((p) => (
+                <ProviderRow
+                  key={p.provider}
+                  provider={p}
+                  hasKey={keyed.has(p.provider)}
+                  message={keyMsg[p.provider] ?? ""}
+                  onSave={saveKey}
+                  onRemove={removeKey}
+                />
+              ))}
+            </div>
+          </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/** One provider in the list. A `coming_soon` provider is shown so the roadmap is visible, but
+ * its input is disabled — the server would have no code path to use a key stored for it. */
+function ProviderRow({
+  provider,
+  hasKey,
+  message,
+  onSave,
+  onRemove,
+}: {
+  provider: LLMProvider;
+  hasKey: boolean;
+  message: string;
+  onSave: (provider: string, key: string) => void;
+  onRemove: (provider: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const soon = provider.status === "coming_soon";
+  const id = `ws-key-${provider.provider}`;
+
+  return (
+    <div className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
+      <div className="flex items-center gap-2">
+        <label htmlFor={id} className="text-sm font-medium">
+          {provider.label}
+        </label>
+        <span className="font-mono text-xs text-muted-foreground">
+          {provider.model_label}
+        </span>
+        {soon ? (
+          <span
+            className="rounded-full border border-border px-2 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground"
+            data-testid={`${id}-soon`}
+          >
+            Coming soon
+          </span>
+        ) : null}
+        {hasKey && !soon ? (
+          <span
+            className="font-mono text-xs text-muted-foreground"
+            data-testid={`${id}-onfile`}
+          >
+            •••• key on file
+          </span>
+        ) : null}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          data-testid={id}
+          type="password"
+          className="max-w-xs"
+          disabled={soon}
+          placeholder={
+            soon ? "Not available yet" : hasKey ? "Replace key…" : "Paste key…"
+          }
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+        <Button
+          size="sm"
+          data-testid={`${id}-save`}
+          disabled={soon || !value.trim()}
+          onClick={() => {
+            onSave(provider.provider, value.trim());
+            setValue(""); // never keep the secret in component state after it's sent
+          }}
+        >
+          Save
+        </Button>
+        {hasKey && !soon ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            data-testid={`${id}-remove`}
+            onClick={() => onRemove(provider.provider)}
+          >
+            Remove
+          </Button>
+        ) : null}
+        {message ? (
+          <span className="text-xs text-muted-foreground">{message}</span>
+        ) : null}
+      </div>
+
+      {provider.note ? (
+        <p className="text-xs text-muted-foreground">{provider.note}</p>
+      ) : null}
     </div>
   );
 }

@@ -27,7 +27,9 @@ export type AnalyticsEvent =
   | "assistant_prompted"
   | "assistant_graph_applied"
   | "assistant_restore"
-  | "assistant_error";
+  | "assistant_error"
+  // A frontier model was swapped for the fallback because no BYO key was on file.
+  | "assistant_model_substituted";
 
 let initialized = false;
 

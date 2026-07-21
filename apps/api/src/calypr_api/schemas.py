@@ -19,9 +19,8 @@ def _validate_run_images(images: list[str]) -> list[str]:
     if len(images) > _MAX_RUN_IMAGES:
         raise ValueError(f"at most {_MAX_RUN_IMAGES} images per run")
     for url in images:
-        ok = (
-            url.startswith("data:image/")
-            or (url.startswith("https://") and ".blob.vercel-storage.com/" in url)
+        ok = url.startswith("data:image/") or (
+            url.startswith("https://") and ".blob.vercel-storage.com/" in url
         )
         if not ok:
             raise ValueError("image URLs must be uploads (blob storage) or data:image/ URIs")
@@ -145,10 +144,16 @@ class WorkspaceInfo(BaseModel):
     # an invited partner whose GitHub email differs from the one they gave us can then tell us
     # which address to add. `None` in dev/CI, where there's no authenticating proxy.
     signed_in_as: str | None = None
+    # The workspace's chosen AI-assistant model; "" = inherit the server default.
+    assistant_model: str = ""
 
 
 class WorkspaceUpdate(BaseModel):
-    name: str
+    """A partial update — only the fields present are applied, so the settings page can save
+    the name and the assistant model independently."""
+
+    name: str | None = None
+    assistant_model: str | None = None
 
 
 class WaitlistJoin(BaseModel):
@@ -280,13 +285,15 @@ class NotionCallback(BaseModel):
 
 #: The model providers a workspace can supply its own key for (BYO-key). Kept small and
 #: explicit — the model factory maps these to its provider clients.
-PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "tavily")
+#: `moonshot` is mandatory rather than optional — kimi-k3 is a frontier model and runs *only*
+#: on a workspace's own key (see `model_access`).
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily")
 
 
 class ProviderKeyInfo(BaseModel):
     """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
 
-    provider: Literal["openai", "anthropic", "tavily"]
+    provider: Literal["openai", "anthropic", "moonshot", "tavily"]
     has_key: bool
 
 

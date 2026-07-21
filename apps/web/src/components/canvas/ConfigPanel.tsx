@@ -25,6 +25,7 @@ import {
   TTS_MODEL_OPTIONS,
   TTS_VOICE_OPTIONS,
 } from "@/lib/graph";
+import { useProviderKeys } from "@/lib/use-provider-keys";
 
 type Setter = (patch: Record<string, unknown>) => void;
 type Config = Record<string, unknown>;
@@ -56,7 +57,7 @@ function SelectField({
   id: string;
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; disabled?: boolean }[];
   onChange: (value: string) => void;
 }) {
   return (
@@ -69,7 +70,7 @@ function SelectField({
         onChange={(e) => onChange(e.target.value)}
       >
         {options.map((o) => (
-          <option key={o.value} value={o.value}>
+          <option key={o.value} value={o.value} disabled={o.disabled}>
             {o.label}
           </option>
         ))}
@@ -79,12 +80,21 @@ function SelectField({
 }
 
 function ModelField({ config, set }: { config: Config; set: Setter }) {
+  // Frontier models run only on the workspace's own key, so they stay disabled (with the
+  // reason spelled out in the label) until that key is saved in Settings → API Keys.
+  const { keyed } = useProviderKeys();
+  const options = MODEL_OPTIONS.map((o) => {
+    const locked = o.byoProvider !== undefined && !keyed.has(o.byoProvider);
+    return locked
+      ? { ...o, label: `${o.label} — add your own key in Settings`, disabled: true }
+      : o;
+  });
   return (
     <SelectField
       id="cfg-model"
       label="Model"
       value={String(config.model ?? "fake")}
-      options={MODEL_OPTIONS}
+      options={options}
       onChange={(v) => set({ model: v })}
     />
   );

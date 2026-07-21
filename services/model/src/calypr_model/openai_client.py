@@ -71,6 +71,27 @@ def _to_openai_tools(tools: list[dict]) -> list[dict]:
     ]
 
 
+# Reasoning models that reject any `temperature` but their default — sending 0.7 is a hard
+# 400 ("only 1 is allowed for this model"), so we omit the field entirely for these and let
+# the provider apply its default. Verified live against kimi-k3 on 2026-07-21.
+# gpt-5* is included as a family: verified live on gpt-5.6-terra ("Unsupported value:
+# 'temperature' does not support 0.7 with this model. Only the default (1) value is supported").
+# Over-including here is safe — omitting the field just means the provider's default applies.
+_FIXED_TEMPERATURE_PREFIXES = ("kimi-k3", "gpt-5", "o1", "o3", "o4")
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not model.lower().strip().startswith(_FIXED_TEMPERATURE_PREFIXES)
+
+
+# Models that refuse function tools on Chat Completions while reasoning is on.
+_TOOLS_NEED_REASONING_OFF_PREFIXES = ("gpt-5.6",)
+
+
+def _needs_reasoning_off_for_tools(model: str) -> bool:
+    return model.lower().strip().startswith(_TOOLS_NEED_REASONING_OFF_PREFIXES)
+
+
 class OpenAIModelClient:
     """Reads OPENAI_API_KEY from the environment unless a key is passed.
 
@@ -100,13 +121,22 @@ class OpenAIModelClient:
         kwargs: dict = {
             "model": model,
             "messages": _to_openai(messages, system),
-            "temperature": temperature,
             "max_completion_tokens": max_tokens,
             "stream": True,
             "stream_options": {"include_usage": True},
         }
+        if _accepts_temperature(model):
+            kwargs["temperature"] = temperature
         if tools:
             kwargs["tools"] = _to_openai_tools(tools)
+            if _needs_reasoning_off_for_tools(model):
+                # gpt-5.6 rejects function tools on Chat Completions unless reasoning is off:
+                # "Function tools with reasoning_effort are not supported ... use /v1/responses
+                # or set reasoning_effort to 'none'" (verified live, 2026-07-21). We choose
+                # working tool calls over reasoning; a toolless call (the AI assistant's own
+                # path) still gets the model's full reasoning. Lifting this means porting the
+                # client to the Responses API.
+                kwargs["reasoning_effort"] = "none"
 
         parts: list[str] = []
         acc: dict[int, dict] = {}

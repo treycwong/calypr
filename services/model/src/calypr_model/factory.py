@@ -39,11 +39,17 @@ def provider_of(model_id: str) -> str:
     return "openai"  # sensible default for unknown ids
 
 
-def _key(provider: str, keys: dict[str, str] | None, env_var: str) -> str | None:
-    """A workspace's BYO key for `provider` (overrides), else the server env var (fallback)."""
+def _key(provider: str, keys: dict[str, str] | None, *env_vars: str) -> str | None:
+    """A workspace's BYO key for `provider` (overrides), else the first set server env var
+    (fallback). Several env names are accepted per provider because Moonshot's own console
+    hands out a key it calls `KIMI_API_KEY` while our routing name is `moonshot`."""
     if keys and keys.get(provider):
         return keys[provider]
-    return os.environ.get(env_var)
+    for env_var in env_vars:
+        value = os.environ.get(env_var)
+        if value:
+            return value
+    return None
 
 
 def model_for(model_id: str, keys: dict[str, str] | None = None) -> ModelClient:
@@ -57,7 +63,7 @@ def model_for(model_id: str, keys: dict[str, str] | None = None) -> ModelClient:
         return AnthropicModelClient(api_key=_key("anthropic", keys, "ANTHROPIC_API_KEY"))
     if provider == "moonshot":
         return OpenAIModelClient(
-            api_key=_key("moonshot", keys, "MOONSHOT_API_KEY"),
+            api_key=_key("moonshot", keys, "MOONSHOT_API_KEY", "KIMI_API_KEY"),
             base_url=os.environ.get("MOONSHOT_BASE_URL", _MOONSHOT_BASE_URL),
         )
     if provider == "deepseek":

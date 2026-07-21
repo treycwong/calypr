@@ -7,7 +7,11 @@ export type RunEvent =
   | { type: "node"; node_id: string; phase: "start" | "end" }
   | { type: "final"; output: string }
   | { type: "usage"; [k: string]: unknown }
-  | { type: "error"; message: string };
+  // A frontier model ran on the cheap platform model because no BYO key was on file. Always
+  // surface this — the output is not from the model the user selected.
+  | { type: "notice"; message: string }
+  // `code` is a stable hint for the UI; "provider_key_rejected" gets a Fix it action.
+  | { type: "error"; message: string; code?: string };
 
 /** POST a JSON body to a same-origin SSE proxy and yield parsed `data:` events until the
  * stream ends (`[DONE]`). Shared by `runAgent` and `assistAgent`. */
@@ -135,7 +139,9 @@ export type AssistEvent =
   | { type: "note"; text: string }
   | { type: "graph"; spec: GraphSpec }
   | { type: "usage"; input_tokens: number; output_tokens: number; model: string }
-  | { type: "error"; message: string; issues?: unknown[] };
+  // The chosen model needed a BYO key that isn't on file, so the draft ran on the fallback.
+  | { type: "notice"; message: string }
+  | { type: "error"; message: string; code?: string; issues?: unknown[] };
 
 /** Ask the assistant to draft/refine a graph from natural language, streaming events. */
 export async function* assistAgent(
@@ -295,7 +301,54 @@ export type WorkspaceInfo = {
   plan: string;
   /** The email the API sees us as — shown when a beta-gated feature is locked. */
   signed_in_as?: string | null;
+  /** The workspace's AI-assistant model; "" means inherit the server default. */
+  assistant_model?: string;
 };
+
+/** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
+ * once that provider's key is saved in API Keys. Served by the API so the picker and the
+ * validation on save can never drift apart. */
+export type AssistantModelOption = {
+  value: string;
+  label: string;
+  byo_provider: string | null;
+};
+
+/** A BYO-key provider row in Settings. `status` is the backend's honest state: "available"
+ * means a key can be saved and will actually be used; "coming_soon" means the input is
+ * disabled because nothing would read the key yet. */
+export type LLMProvider = {
+  provider: string;
+  label: string;
+  model_label: string;
+  status: "available" | "coming_soon";
+  note: string;
+};
+
+/** The provider list shown in Settings → Workspace. */
+export async function listLLMProviders(): Promise<LLMProvider[]> {
+  const res = await fetch("/api/llm-providers", { cache: "no-store" });
+  if (!res.ok) throw new Error(`llm providers failed (${res.status})`);
+  return res.json();
+}
+
+/** The models the AI assistant may be pointed at. */
+export async function listAssistantModels(): Promise<AssistantModelOption[]> {
+  const res = await fetch("/api/assistant-models", { cache: "no-store" });
+  if (!res.ok) throw new Error(`assistant models failed (${res.status})`);
+  return res.json();
+}
+
+/** Set the workspace's default AI-assistant model ("" = server default). */
+export async function setAssistantModel(model: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspace", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ assistant_model: model }),
+  });
+  if (!res.ok) throw new Error(`save assistant model failed (${res.status})`);
+  return res.json();
+}
 
 /** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
 export async function joinWaitlist(email: string, source = "landing"): Promise<void> {

@@ -14,9 +14,7 @@ load_dotenv(Path(__file__).resolve().parents[4] / ".env")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        env_prefix="CALYPR_", env_file=".env", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_prefix="CALYPR_", env_file=".env", extra="ignore")
 
     environment: str = "development"
     # Web origin(s) allowed to call the API directly (CORS). The web app normally
@@ -36,7 +34,7 @@ class Settings(BaseSettings):
     # → every request falls back to the shared dev workspace.
     internal_key: str = ""
     # Default model the AI assistant drafts graphs with. Unset → the keyless `fake` path, so
-    # dev/CI stay key-free (AI-ASSISTANT-SPEC.md §4). Set e.g. "kimi-k2" / "deepseek-chat" /
+    # dev/CI stay key-free (AI-ASSISTANT-SPEC.md §4). Set e.g. "kimi-k3" / "deepseek-chat" /
     # "gpt-4.1-mini" in prod (provider base URLs + keys come from the model factory's env).
     assistant_model: str = ""
     # Interim abuse guardrail before usage-based billing exists: max assist calls per

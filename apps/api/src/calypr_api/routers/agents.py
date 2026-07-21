@@ -19,8 +19,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from calypr_api import entitlements
+from calypr_api.assistant_models import (
+    AssistantModelOption,
+    assistant_model_options,
+    is_allowed,
+)
 from calypr_api.db.models import Agent, ShareLink, Workspace
 from calypr_api.deps import Tenant, tenant
+from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
     AgentCreate,
@@ -103,9 +109,7 @@ def parse_code(body: ParseRequest) -> ParseResponse:
 def list_templates() -> list[TemplateInfo]:
     """The canvas starter gallery: frameworks (agent patterns) + templates (use cases)."""
     return [
-        TemplateInfo(
-            id=t.id, name=t.name, description=t.description or "", kind=kind, graph=t
-        )
+        TemplateInfo(id=t.id, name=t.name, description=t.description or "", kind=kind, graph=t)
         for kind, group in (("framework", FRAMEWORKS), ("template", TEMPLATES))
         for t in group
     ]
@@ -124,9 +128,7 @@ def _get_owned(session: Session, workspace_id: uuid.UUID, agent_id: str) -> Agen
 
 @router.post("/agents", response_model=AgentDetail, tags=["agents"])
 def create_agent(body: AgentCreate, t: Tenant = Depends(tenant)) -> AgentDetail:
-    agent = Agent(
-        workspace_id=t.workspace_id, name=body.name, graph_spec=body.graph.model_dump()
-    )
+    agent = Agent(workspace_id=t.workspace_id, name=body.name, graph_spec=body.graph.model_dump())
     t.session.add(agent)
     t.session.commit()
     t.session.refresh(agent)
@@ -154,23 +156,17 @@ def list_agents(t: Tenant = Depends(tenant)) -> list[AgentSummary]:
         .scalars()
         .all()
     )
-    return [
-        AgentSummary(id=str(a.id), name=a.name, updated_at=a.updated_at) for a in rows
-    ]
+    return [AgentSummary(id=str(a.id), name=a.name, updated_at=a.updated_at) for a in rows]
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])
 def get_agent(agent_id: str, t: Tenant = Depends(tenant)) -> AgentDetail:
     a = _get_owned(t.session, t.workspace_id, agent_id)
-    return AgentDetail(
-        id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec)
-    )
+    return AgentDetail(id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec))
 
 
 @router.put("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])
-def update_agent(
-    agent_id: str, body: AgentUpdate, t: Tenant = Depends(tenant)
-) -> AgentDetail:
+def update_agent(agent_id: str, body: AgentUpdate, t: Tenant = Depends(tenant)) -> AgentDetail:
     a = _get_owned(t.session, t.workspace_id, agent_id)
     changed: list[str] = []
     if body.name is not None:
@@ -189,14 +185,10 @@ def update_agent(
             "fields_changed": changed,
         },
     )
-    return AgentDetail(
-        id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec)
-    )
+    return AgentDetail(id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec))
 
 
-@router.delete(
-    "/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["agents"]
-)
+@router.delete("/agents/{agent_id}", status_code=status.HTTP_204_NO_CONTENT, tags=["agents"])
 def delete_agent(agent_id: str, t: Tenant = Depends(tenant)) -> Response:
     a = _get_owned(t.session, t.workspace_id, agent_id)
     t.session.delete(a)
@@ -220,9 +212,7 @@ def _share_info(s: ShareLink) -> ShareInfo:
 
 
 @router.post("/agents/{agent_id}/share", response_model=ShareInfo, tags=["share"])
-def create_share(
-    agent_id: str, body: ShareCreate, t: Tenant = Depends(tenant)
-) -> ShareInfo:
+def create_share(agent_id: str, body: ShareCreate, t: Tenant = Depends(tenant)) -> ShareInfo:
     _get_owned(t.session, t.workspace_id, agent_id)  # 404s if not the tenant's agent
     cap = body.run_cap if body.run_cap is not None else DEFAULT_SHARE_RUN_CAP
     link = ShareLink(
@@ -303,22 +293,54 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
             properties={"workspace_id": str(ws.id)},
         )
     return WorkspaceInfo(
-        id=str(ws.id), name=ws.name, plan=ws.plan, signed_in_as=t.email
+        id=str(ws.id),
+        name=ws.name,
+        plan=ws.plan,
+        signed_in_as=t.email,
+        assistant_model=ws.assistant_model,
     )
+
+
+@router.get("/assistant-models", response_model=list[AssistantModelOption], tags=["workspace"])
+def list_assistant_models() -> list[AssistantModelOption]:
+    """The models the assistant may be pointed at. Served from the API so the settings picker
+    can never offer a value the PATCH below would reject."""
+    return assistant_model_options()
+
+
+@router.get("/llm-providers", response_model=list[LLMProvider], tags=["workspace"])
+def list_llm_providers() -> list[LLMProvider]:
+    """The BYO-key provider list for Settings, each row carrying whether it's wired up yet."""
+    return llm_providers()
 
 
 @router.patch("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
-def rename_workspace(
-    body: WorkspaceUpdate, t: Tenant = Depends(tenant)
-) -> WorkspaceInfo:
+def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> WorkspaceInfo:
+    """Partial update of the current workspace (name and/or assistant model)."""
     ws = t.session.get(Workspace, t.workspace_id)
     if ws is None:
         raise HTTPException(status_code=404, detail="workspace not found")
-    ws.name = body.name
+    if body.name is not None:
+        ws.name = body.name
+    if body.assistant_model is not None:
+        # Allow-listed: this value is persisted and later handed to the model factory, so an
+        # arbitrary string here would point the assistant at an unpriced model.
+        if not is_allowed(body.assistant_model):
+            raise HTTPException(status_code=422, detail="unsupported assistant model")
+        ws.assistant_model = body.assistant_model
     t.session.commit()
     posthog_client.capture(
-        "workspace_renamed",
+        "workspace_updated",
         distinct_id=str(t.workspace_id),
-        properties={"workspace_id": str(t.workspace_id)},
+        properties={
+            "workspace_id": str(t.workspace_id),
+            "renamed": body.name is not None,
+            "assistant_model": body.assistant_model,
+        },
     )
-    return WorkspaceInfo(id=str(ws.id), name=ws.name, plan=ws.plan)
+    return WorkspaceInfo(
+        id=str(ws.id),
+        name=ws.name,
+        plan=ws.plan,
+        assistant_model=ws.assistant_model,
+    )
