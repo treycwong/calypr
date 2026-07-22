@@ -39,6 +39,20 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
   fail, it *teaches* the mistake; that is precisely how PR #41 happened. `_anime_image` and
   `_spoken_assistant` had no coverage at all before this.
 
+- [x] **2b — live prod smoke** (2026-07-22): all **22 starters** production serves, run against
+  real models via `www.calypr.co/api/runs`. **22/22 answered.** Found the `fake`-model defect
+  below, which no test could have caught.
+- [x] **Bug found by 2b + fixed** — four starters shipped `model: "fake"` (the test seam that
+  answers `Echo: …`): **Reflexion** (both LLM nodes — the whole reply was an echo), **Routing**
+  (the classifier, so branch decisions were canned while the visible answer looked fine),
+  **Utility-based** (the evaluator), **Learning** (memory summarisation). Now `gpt-4o-mini`,
+  with a per-starter assertion. Invisible to CI by construction: the starter tests inject Fake
+  clients regardless of configured model. **Not live until the next deploy.**
+- [x] **Code preview paywall** — `/codegen` truncates to 14 lines for an unentitled workspace
+  (`may_export_code`); the Code tab shows real readable code fading out, plus an Upgrade CTA;
+  copy/download disabled. `code_upgrade_clicked` + `graph_codegen_requested {truncated}` give
+  the tab a conversion rate.
+
 ### Still open in the pivot
 
 - [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
@@ -46,8 +60,14 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
   doubles as the "no lock-in" reassurance that *sells* the plan). Flagged in `PRICING-SPEC.md` §1.
 - [ ] **2c — config-panel completeness**: every engine-read field editable, invalid values
   refused before a run is spent, validator codes rendered as actionable copy. NOT STARTED.
-- [ ] **2b — live template smoke in prod** (real models, all `STARTERS`, incl. a two-provider
-  agent). NOT STARTED — costs real API spend, so it needs a deliberate go.
+- [ ] **2b caveat — the smoke proves "answers", not "used its tools".** An anonymous prod run
+  has no connector or workspace key, so `tpl-mcp-react` / `tpl-notion-assistant` /
+  `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,
+  Notion or Unsplash. Tool *invocation* still needs a signed-in run with credentials attached —
+  worth a second pass now that Notion is live.
+- [ ] **Re-run 2b after the next deploy** to confirm the four `fake`-model starters answer for
+  real (they were verified locally with injected clients, which is exactly the blind spot that
+  hid the bug).
 - [ ] **`PRICING-SPEC.md` reconciliation before Week 9**: no credit rate exists for the Image or
   TTS nodes; the launch matrix predates BYO frontier models. Migration renumbered to **`0010`**
   (`0009_assistant_model` is taken); `provider_key`/`workspace.plan` already shipped in 0007/0008.
