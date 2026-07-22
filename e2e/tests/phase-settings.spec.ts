@@ -25,12 +25,18 @@ test("the Connectors tab opens the panel with all sections", async ({ page }) =>
   await page.getByTestId("connection-add-open").click();
   await expect(page.getByTestId("connect-notion")).toBeVisible();
   await page.keyboard.press("Escape");
-  // Tier B: the add-server form lives behind "Add MCP Server".
+  // Tier B ("paste your own MCP server URL") is no longer offered: it's a bring-your-own-server
+  // path and the servers people run are on their own machine, which this cloud backend can't
+  // reach. The section renders only for a workspace that already saved one, and never with an
+  // add form. App connections above are the supported path.
+  //
+  // Asserts the *add* affordances are gone, not that the section is absent: a workspace that
+  // saved a server before this change still lists it (so it stays removable), and this suite
+  // shares a workspace with whatever the developer has saved. Asserting absence here would pass
+  // on a clean machine and fail on a real one.
+  await expect(page.getByTestId("mcp-add-open")).toHaveCount(0);
   await expect(page.getByTestId("mcp-url")).toHaveCount(0);
-  await page.getByTestId("mcp-add-open").click();
-  await expect(page.getByTestId("mcp-url")).toBeVisible();
-  await expect(page.getByTestId("mcp-add")).toBeVisible();
-  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("mcp-name")).toHaveCount(0);
   // API Keys: a provider dropdown; the key input appears only after a provider is picked.
   await expect(page.getByTestId("key-provider")).toBeVisible();
   await expect(page.getByTestId("key-input")).toHaveCount(0);

@@ -1,18 +1,19 @@
 "use client";
 
 // The Settings sidebar panel (icon-rail "Settings" tab) — the one place workspace secrets are
-// entered. Two sections: Connected Accounts (Tier A OAuth, e.g. Notion) and MCP Servers (Tier B,
-// a pasted HTTPS URL + optional bearer). Secrets are sent to the API and stored encrypted; this
-// panel only ever displays a name + a lock/tools state, never a token.
+// entered. Two sections: Connected Accounts (Tier A OAuth, e.g. Notion) and API Keys. Secrets are
+// sent to the API and stored encrypted; this panel only ever displays a name + a lock/tools
+// state, never a token.
+//
+// Tier B ("paste your own MCP server URL") is deliberately not offered here — see the comment
+// above the `servers` section below. The backend route still exists and still works.
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -21,7 +22,6 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
   type Connector,
-  createConnector,
   deleteConnector,
   deleteProviderKey,
   listConnectors,
@@ -53,12 +53,6 @@ export function SettingsPanel() {
   const { toast } = useToast();
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
-  // Tier B add-server form.
-  const [name, setName] = useState("");
-  const [url, setUrl] = useState("");
-  const [secret, setSecret] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [addOpen, setAddOpen] = useState(false);
   const [connectOpen, setConnectOpen] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [providerKeys, setProviderKeys] = useState<ProviderKeyInfo[]>([]);
@@ -88,30 +82,15 @@ export function SettingsPanel() {
   const connectApp = async (kind: string) => {
     try {
       if (kind === "notion") {
-        window.location.href = await notionConnectUrl();
+        // `assign` rather than `location.href = …`: same navigation, but it isn't a write to a
+        // value outside the component, which the react-hooks/immutability rule (correctly)
+        // flags — that lint error predates this change and was the only one in the app.
+        window.location.assign(await notionConnectUrl());
         return;
       }
       toast("That connection isn't available yet.", "error");
     } catch (e) {
       toast(e instanceof Error ? e.message : "Couldn't start that connection.", "error");
-    }
-  };
-
-  const addServer = async () => {
-    if (!name.trim() || !url.trim()) return;
-    setSaving(true);
-    try {
-      await createConnector({ name: name.trim(), url: url.trim(), secret });
-      setName("");
-      setUrl("");
-      setSecret("");
-      setAddOpen(false);
-      await refresh();
-      toast("MCP server saved.", "default");
-    } catch {
-      toast("Couldn't save that server — check the URL.", "error");
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -222,75 +201,37 @@ export function SettingsPanel() {
         </Dialog>
       </section>
 
-      <section>
-        <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          MCP servers
-        </h3>
-        <div className="flex flex-col gap-2" data-testid="mcp-servers">
-          {servers.map((c) => (
-            <ConnectorRow
-              key={c.id}
-              connector={c}
-              testing={testing === c.id}
-              onTest={() => test(c.id)}
-              onRemove={() => remove(c.id)}
-            />
-          ))}
-          {!loading && servers.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No servers yet.</p>
-          ) : null}
-        </div>
-        <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger
-            render={<Button size="sm" variant="outline" className="mt-3 w-full" />}
-            data-testid="mcp-add-open"
-          >
-            Add MCP Server
-          </DialogTrigger>
-          <DialogContent data-testid="mcp-add-dialog">
-            <DialogHeader>
-              <DialogTitle>Add MCP server</DialogTitle>
-              <DialogDescription>
-                Paste an HTTPS MCP endpoint. The bearer token is stored encrypted and never shown
-                again.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="flex flex-col gap-2">
-              <Input
-                data-testid="mcp-name"
-                placeholder="Name (e.g. My server)"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
+      {/* Tier B ("paste your own MCP server URL") is hidden from Settings: it's a
+          bring-your-own-server path, and the servers people actually run are on their own
+          machine at localhost, which this cloud backend can't reach (and blocks reaching, as an
+          SSRF guard). App connections — Notion above — are the web-shaped path and stay.
+
+          A workspace that already saved servers still sees them, so nothing is orphaned: they
+          remain testable and removable, there's just no way to add more. Empty (every workspace
+          today) renders nothing at all. The Tool node's connector dropdown is untouched — Notion
+          rides the same `provider: "mcp"` plumbing and would break if this were ripped out. */}
+      {servers.length > 0 ? (
+        <section>
+          <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            MCP servers
+          </h3>
+          <p className="mb-2 text-xs text-muted-foreground">
+            Adding new servers is paused while we focus on app connections. Your existing servers
+            keep working.
+          </p>
+          <div className="flex flex-col gap-2" data-testid="mcp-servers">
+            {servers.map((c) => (
+              <ConnectorRow
+                key={c.id}
+                connector={c}
+                testing={testing === c.id}
+                onTest={() => test(c.id)}
+                onRemove={() => remove(c.id)}
               />
-              <Input
-                data-testid="mcp-url"
-                type="url"
-                placeholder="https://your-mcp-server/mcp"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-              />
-              <Input
-                data-testid="mcp-secret"
-                type="password"
-                placeholder="Bearer token (optional)"
-                value={secret}
-                onChange={(e) => setSecret(e.target.value)}
-              />
-            </div>
-            <DialogFooter>
-              <DialogClose render={<Button size="sm" variant="outline" />}>Cancel</DialogClose>
-              <Button
-                size="sm"
-                onClick={addServer}
-                disabled={saving || !name.trim() || !url.trim()}
-                data-testid="mcp-add"
-              >
-                {saving ? "Saving…" : "Add server"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      </section>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <ApiKeysSection
         providerKeys={providerKeys}
