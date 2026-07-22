@@ -283,17 +283,18 @@ class NotionCallback(BaseModel):
     code: str
 
 
-#: The model providers a workspace can supply its own key for (BYO-key). Kept small and
-#: explicit — the model factory maps these to its provider clients.
+#: The providers a workspace can supply its own key for (BYO-key). Kept small and explicit —
+#: the model factory maps the model providers to its clients, and `provider_keys.resolve_tool_keys`
+#: maps the tool providers (`unsplash`) onto the Tool nodes that use them.
 #: `moonshot` is mandatory rather than optional — kimi-k3 is a frontier model and runs *only*
 #: on a workspace's own key (see `model_access`).
-PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily")
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash")
 
 
 class ProviderKeyInfo(BaseModel):
     """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
 
-    provider: Literal["openai", "anthropic", "moonshot", "tavily"]
+    provider: Literal["openai", "anthropic", "moonshot", "tavily", "unsplash"]
     has_key: bool
 
 

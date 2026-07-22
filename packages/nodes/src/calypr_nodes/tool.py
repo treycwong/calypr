@@ -30,9 +30,17 @@ from calypr_nodes.tools_catalog import tool_spec
 
 
 class ToolConfig(BaseModel):
-    provider: Literal["demo_search", "tavily", "mcp"] = "demo_search"
+    provider: Literal["demo_search", "tavily", "mcp", "images_unsplash", "generic_http"] = (
+        "demo_search"
+    )
     api_key: str = ""  # runtime-only; never embedded in generated code
     max_results: int = 3
+    # HTTP-only — ignored unless provider == "generic_http". A GET against a fixed URL, with
+    # `{query}` in any param value filled from the agent's tool argument. GET only in v1.
+    http_url: str = ""
+    http_method: Literal["GET"] = "GET"
+    http_params: dict[str, str] = {}
+    jsonpath: str = ""  # dotted path into the response JSON (blank = the whole payload)
     # MCP-only — ignored unless provider == "mcp". An MCP server's tools become available to
     # any connected LLM through the same edge walk as demo_search/tavily.
     mcp_url: str = ""  # HTTP endpoint of the MCP server
@@ -45,6 +53,21 @@ class ToolConfig(BaseModel):
     # Runtime-only, server-injected connection headers from a resolved connector (e.g. Notion's
     # `Notion-Token`). Never set by the client, never serialized to codegen.
     mcp_headers: dict[str, str] = {}
+
+
+def _const(ctx: NodeParseContext, name: str, default):
+    """The literal value of a module-level `name = <literal>` the HTTP providers emit beside
+    their tool function (`_HTTP_URL`, `_UNSPLASH_RESULTS`, …), else `default`.
+
+    The generators hoist these out of the function body precisely so the inverse is a one-liner
+    — the same trick `parse()` uses to read the MCP client's `_mcp_client` assignment."""
+    node = ctx.defs.get(name)
+    if not isinstance(node, ast.Assign):
+        return default
+    try:
+        return ast.literal_eval(node.value)
+    except (ValueError, SyntaxError):
+        return default
 
 
 @register
@@ -71,6 +94,10 @@ class ToolsNode(BaseNode):
         return tool_spec(
             cfg.provider,
             max_results=cfg.max_results,
+            api_key=cfg.api_key,
+            http_url=cfg.http_url,
+            http_params=cfg.http_params,
+            jsonpath=cfg.jsonpath,
             mcp_url=cfg.mcp_url,
             mcp_transport=cfg.mcp_transport,
             mcp_token=cfg.mcp_token,
@@ -196,6 +223,18 @@ class ToolsNode(BaseNode):
 
         ref = elts[0].id if elts and isinstance(elts[0], ast.Name) else None
         defn = ctx.defs.get(ref or "")
+        if ref == "search_images" and isinstance(defn, ast.FunctionDef):
+            return ToolConfig(
+                provider="images_unsplash",
+                max_results=_const(ctx, "_UNSPLASH_RESULTS", 3),
+            )
+        if ref == "fetch" and isinstance(defn, ast.FunctionDef):
+            return ToolConfig(
+                provider="generic_http",
+                http_url=_const(ctx, "_HTTP_URL", ""),
+                http_params=_const(ctx, "_HTTP_PARAMS", {}),
+                jsonpath=_const(ctx, "_HTTP_JSONPATH", ""),
+            )
         if isinstance(defn, ast.FunctionDef):  # @tool def web_search(...) → demo_search
             return ToolConfig(provider="demo_search")
         if (
@@ -205,7 +244,5 @@ class ToolsNode(BaseNode):
             and defn.value.func.id == "TavilySearch"
         ):
             mr = kwarg_const(defn.value, "max_results")
-            return ToolConfig(
-                provider="tavily", max_results=mr if isinstance(mr, int) else 3
-            )
+            return ToolConfig(provider="tavily", max_results=mr if isinstance(mr, int) else 3)
         return None

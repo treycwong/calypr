@@ -33,6 +33,7 @@ client = TestClient(app)
 
 # --- DB-free resolution -------------------------------------------------------------------
 
+
 def test_resolve_mcp_maps_secret_to_bearer_header():
     cred = ConnectorCredential(
         workspace_id=uuid.uuid4(),
@@ -112,6 +113,7 @@ def test_resolve_graph_leaves_unresolvable_refs_unset():
 
 
 # --- DB-backed CRUD -----------------------------------------------------------------------
+
 
 def _db_available() -> bool:
     try:

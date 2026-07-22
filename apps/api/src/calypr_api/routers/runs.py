@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from calypr_api import engine, spend
-from calypr_api.connectors import resolve_graph
+from calypr_api.connectors import assert_tool_urls_allowed, resolve_graph
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
 from calypr_api.errors import (
@@ -35,6 +35,7 @@ from calypr_api.model_access import (
     substitute_missing_frontier_models,
 )
 from calypr_api.posthog_client import posthog_client
+from calypr_api.provider_keys import resolve_tool_keys
 from calypr_api.schemas import RunRequest
 
 router = APIRouter()
@@ -101,6 +102,10 @@ async def create_run(
             # Resolve MCP connector refs → live url + headers (vault-decrypted, server-side)
             # before compile, off the event loop (DB I/O). No-ops when no connector is used.
             graph = await asyncio.to_thread(resolve_graph, req.graph, workspace_id)
+            # Same idea for key-backed Tool providers (Unsplash): the DSL carries only the
+            # provider name; the key is vault-decrypted into the node just before compile.
+            graph = await asyncio.to_thread(resolve_tool_keys, graph, workspace_id)
+            assert_tool_urls_allowed(graph)  # SSRF guard on user-supplied HTTP tool URLs
             # Resolve the workspace's BYO provider keys (vault) so the run uses them over env.
             ctx = await asyncio.to_thread(context_for, graph, workspace_id)
             # Frontier models are BYO-key only. Without a key we degrade to the cheap

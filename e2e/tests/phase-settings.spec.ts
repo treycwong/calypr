@@ -20,10 +20,17 @@ test("the Connectors tab opens the panel with all sections", async ({ page }) =>
   const panel = page.getByTestId("connectors-panel");
   await expect(panel).toBeVisible();
   await expect(panel.getByText("Connected accounts")).toBeVisible();
+  // Tier A: the catalog lives behind "Add Connection"; Notion is the one entry today.
+  await expect(page.getByTestId("connect-notion")).toHaveCount(0);
+  await page.getByTestId("connection-add-open").click();
   await expect(page.getByTestId("connect-notion")).toBeVisible();
-  // The Tier B add-server form is present.
+  await page.keyboard.press("Escape");
+  // Tier B: the add-server form lives behind "Add MCP Server".
+  await expect(page.getByTestId("mcp-url")).toHaveCount(0);
+  await page.getByTestId("mcp-add-open").click();
   await expect(page.getByTestId("mcp-url")).toBeVisible();
   await expect(page.getByTestId("mcp-add")).toBeVisible();
+  await page.keyboard.press("Escape");
   // API Keys: a provider dropdown; the key input appears only after a provider is picked.
   await expect(page.getByTestId("key-provider")).toBeVisible();
   await expect(page.getByTestId("key-input")).toHaveCount(0);

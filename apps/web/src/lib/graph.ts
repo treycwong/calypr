@@ -52,6 +52,8 @@ export const TOOL_PROVIDER_OPTIONS = [
   { value: "demo_search", label: "Demo search (no key, deterministic)" },
   { value: "tavily", label: "Tavily · web search (code-gen)" },
   { value: "mcp", label: "MCP server (HTTP)" },
+  { value: "images_unsplash", label: "Unsplash · image search" },
+  { value: "generic_http", label: "HTTP · any public GET API" },
 ];
 
 // Transports an MCP Tool node can speak (HTTP only for now; stdio is code-gen-only, deferred).
@@ -210,6 +212,10 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     mcp_token: "",
     mcp_tool_filter: [],
     mcp_connector_ref: "",
+    http_url: "",
+    http_method: "GET",
+    http_params: {},
+    jsonpath: "",
   },
   responder: { model: "fake", system_prompt: "" },
   revisor: { model: "fake", system_prompt: "", max_revisions: 2 },

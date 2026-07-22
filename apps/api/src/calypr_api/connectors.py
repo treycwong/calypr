@@ -103,12 +103,24 @@ def resolve(cred: ConnectorCredential) -> ResolvedConnection:
     )
 
 
+def assert_tool_urls_allowed(graph: GraphSpec) -> None:
+    """Apply the SSRF egress guard to every user-supplied `generic_http` Tool URL in the graph.
+
+    The Tool node's HTTP provider fetches server-side, so CORS never applies but egress safety
+    does — same guard, same use-time (not save-time) placement as Tier B connector URLs."""
+    for n in graph.nodes:
+        if n.type == "tool" and n.config.get("provider") == "generic_http":
+            if url := n.config.get("http_url"):
+                assert_egress_allowed(url)
+
+
 def _connector_refs(graph: GraphSpec) -> set[str]:
     """The connector ids referenced by any MCP Tool node in the graph."""
     return {
         ref
         for n in graph.nodes
-        if n.type == "tool" and n.config.get("provider") == "mcp"
+        if n.type == "tool"
+        and n.config.get("provider") == "mcp"
         and (ref := n.config.get("mcp_connector_ref"))
     }
 

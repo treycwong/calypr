@@ -222,9 +222,7 @@ def test_admin_routes_404_without_a_configured_token(monkeypatch):
     assert client.get("/admin/waitlist").status_code == 404
     assert client.post("/admin/invite", json={"emails": ["x@example.com"]}).status_code == 404
     assert (
-        client.post(
-            f"/admin/workspaces/{uuid.uuid4()}/plan", json={"plan": "beta"}
-        ).status_code
+        client.post(f"/admin/workspaces/{uuid.uuid4()}/plan", json={"plan": "beta"}).status_code
         == 404
     )
 

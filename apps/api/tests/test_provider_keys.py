@@ -12,7 +12,8 @@ import pytest
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.session import engine
 from calypr_api.main import app
-from calypr_api.provider_keys import resolve_model_keys
+from calypr_api.provider_keys import resolve_model_keys, resolve_tool_keys
+from calypr_dsl import GraphSpec, NodeSpec
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -65,6 +66,55 @@ def test_set_list_resolve_delete_never_leaks_the_key():
     finally:
         # A mid-test failure must not leave a bogus key behind for the next run.
         client.delete("/provider-keys/openai")
+
+
+def _unsplash_graph(provider: str = "images_unsplash") -> GraphSpec:
+    return GraphSpec(
+        id="g",
+        name="g",
+        nodes=[NodeSpec(id="tools", type="tool", config={"provider": provider})],
+        edges=[],
+        entry="tools",
+    )
+
+
+def test_resolve_tool_keys_no_ops_without_a_key():
+    """Keyless is the canvas default: the graph comes back untouched (never `api_key: None`),
+    so the Unsplash tool falls through to its deterministic stub instead of failing the run."""
+    graph = _unsplash_graph()
+    out = resolve_tool_keys(graph, uuid.UUID(DEV_WORKSPACE_ID))
+    assert out.nodes[0].config.get("api_key", "") == ""
+
+
+def test_resolve_tool_keys_ignores_other_providers(monkeypatch):
+    monkeypatch.setattr(
+        "calypr_api.provider_keys.resolve_model_keys", lambda _ws: {"unsplash": "k-1"}
+    )
+    graph = _unsplash_graph("demo_search")
+    out = resolve_tool_keys(graph, uuid.UUID(DEV_WORKSPACE_ID))
+    assert "api_key" not in out.nodes[0].config  # untouched — no DB round trip either
+
+
+def test_resolve_tool_keys_injects_the_vault_key(monkeypatch):
+    monkeypatch.setattr(
+        "calypr_api.provider_keys.resolve_model_keys", lambda _ws: {"unsplash": "k-1"}
+    )
+    out = resolve_tool_keys(_unsplash_graph(), uuid.UUID(DEV_WORKSPACE_ID))
+    assert out.nodes[0].config["api_key"] == "k-1"
+
+
+@pytest_db
+def test_unsplash_key_round_trips():
+    """Unsplash is a *tool* key rather than a model key, but rides the same vault surface."""
+    ws = uuid.UUID(DEV_WORKSPACE_ID)
+    try:
+        r = client.put("/provider-keys/unsplash", json={"key": "unsplash-secret"})
+        assert r.status_code == 200 and r.json() == {"provider": "unsplash", "has_key": True}
+        graph = resolve_tool_keys(_unsplash_graph(), ws)
+        assert graph.nodes[0].config["api_key"] == "unsplash-secret"
+        assert client.delete("/provider-keys/unsplash").status_code == 204
+    finally:
+        client.delete("/provider-keys/unsplash")
 
 
 @pytest_db

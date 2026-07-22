@@ -28,22 +28,15 @@ router = APIRouter()
 def list_provider_keys(t: Tenant = Depends(tenant)) -> list[ProviderKeyInfo]:
     """One row per supported provider with a `has_key` flag (never the key itself)."""
     rows = (
-        t.session.execute(
-            select(ProviderKey).where(ProviderKey.workspace_id == t.workspace_id)
-        )
+        t.session.execute(select(ProviderKey).where(ProviderKey.workspace_id == t.workspace_id))
         .scalars()
         .all()
     )
     on_file = {r.provider for r in rows}
-    return [
-        ProviderKeyInfo(provider=p, has_key=p in on_file)
-        for p in PROVIDER_KEY_PROVIDERS
-    ]
+    return [ProviderKeyInfo(provider=p, has_key=p in on_file) for p in PROVIDER_KEY_PROVIDERS]
 
 
-@router.put(
-    "/provider-keys/{provider}", response_model=ProviderKeyInfo, tags=["provider-keys"]
-)
+@router.put("/provider-keys/{provider}", response_model=ProviderKeyInfo, tags=["provider-keys"])
 def set_provider_key(
     provider: str, body: ProviderKeySet, t: Tenant = Depends(tenant)
 ) -> ProviderKeyInfo:

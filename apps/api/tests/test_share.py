@@ -127,9 +127,7 @@ def test_tenant_isolation_cannot_touch_foreign_agent_shares():
     # `_get_owned` gates every share route → 404 for a foreign agent.
     assert client.get(f"/agents/{foreign_agent}/shares").status_code == 404
     assert client.post(f"/agents/{foreign_agent}/share", json={}).status_code == 404
-    assert (
-        client.delete(f"/agents/{foreign_agent}/share/{foreign_token}").status_code == 404
-    )
+    assert client.delete(f"/agents/{foreign_agent}/share/{foreign_token}").status_code == 404
 
 
 # --------------------------------------------------------------------- SQL resolvers
@@ -163,9 +161,7 @@ def test_share_agent_name_resolves_and_hides_revoked():
     live = _seed_link()
     revoked = _seed_link(revoked=True)
     with engine.connect() as conn:
-        assert (
-            conn.execute(text("SELECT share_agent_name(:t)"), {"t": live}).scalar() == "Shared"
-        )
+        assert conn.execute(text("SELECT share_agent_name(:t)"), {"t": live}).scalar() == "Shared"
         assert conn.execute(text("SELECT share_agent_name(:t)"), {"t": revoked}).scalar() is None
         assert conn.execute(text("SELECT share_agent_name('nope')")).scalar() is None
 
@@ -194,21 +190,15 @@ def test_claim_share_run_denies_cap_revoked_unknown():
     revoked = _seed_link(revoked=True)
     with engine.connect() as conn:
         assert (
-            conn.execute(
-                text("SELECT status FROM claim_share_run(:t)"), {"t": capped}
-            ).scalar()
+            conn.execute(text("SELECT status FROM claim_share_run(:t)"), {"t": capped}).scalar()
             == "cap"
         )
         assert (
-            conn.execute(
-                text("SELECT status FROM claim_share_run(:t)"), {"t": revoked}
-            ).scalar()
+            conn.execute(text("SELECT status FROM claim_share_run(:t)"), {"t": revoked}).scalar()
             == "revoked"
         )
         assert (
-            conn.execute(
-                text("SELECT status FROM claim_share_run('missing')")
-            ).scalar()
+            conn.execute(text("SELECT status FROM claim_share_run('missing')")).scalar()
             == "not_found"
         )
         conn.commit()
@@ -220,13 +210,9 @@ def test_claim_share_run_cap_gate_is_atomic():
     (not check-then-update) is what makes this race-free."""
     token = _seed_link(run_cap=1, run_count=0)
     with engine.connect() as conn:
-        first = conn.execute(
-            text("SELECT status FROM claim_share_run(:t)"), {"t": token}
-        ).scalar()
+        first = conn.execute(text("SELECT status FROM claim_share_run(:t)"), {"t": token}).scalar()
         conn.commit()
-        second = conn.execute(
-            text("SELECT status FROM claim_share_run(:t)"), {"t": token}
-        ).scalar()
+        second = conn.execute(text("SELECT status FROM claim_share_run(:t)"), {"t": token}).scalar()
         conn.commit()
     assert {first, second} == {"ok", "cap"}
 
@@ -248,9 +234,7 @@ def test_mint_then_public_run_streams_and_meters():
         set_tenant(s, DEV_WORKSPACE_ID)
         from calypr_api.db.models import Run
 
-        run = s.execute(
-            select(Run).where(Run.thread_id == f"share:{token}:t1")
-        ).scalar_one()
+        run = s.execute(select(Run).where(Run.thread_id == f"share:{token}:t1")).scalar_one()
         assert run.source == "share"
         assert str(run.workspace_id) == DEV_WORKSPACE_ID
         assert run.agent_id == agent_id

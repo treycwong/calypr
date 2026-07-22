@@ -82,9 +82,7 @@ def list_connectors(t: Tenant = Depends(tenant)) -> list[ConnectorInfo]:
 
 
 @router.post("/connectors", response_model=ConnectorInfo, tags=["connectors"])
-def create_connector(
-    body: ConnectorCreate, t: Tenant = Depends(tenant)
-) -> ConnectorInfo:
+def create_connector(body: ConnectorCreate, t: Tenant = Depends(tenant)) -> ConnectorInfo:
     """Save a Tier B MCP server. The bearer secret (if any) is encrypted before storage."""
     try:
         assert_egress_allowed(body.url)  # reject private/loopback hosts early (SSRF guard)
@@ -114,9 +112,7 @@ def create_connector(
     response_model=ConnectorTestResult,
     tags=["connectors"],
 )
-def test_connector(
-    connector_id: str, t: Tenant = Depends(tenant)
-) -> ConnectorTestResult:
+def test_connector(connector_id: str, t: Tenant = Depends(tenant)) -> ConnectorTestResult:
     """Resolve the connector and list its tools — the canvas/Settings 'Test' button. Errors are
     surfaced as a friendly message, never a stack trace or a leaked secret."""
     c = _get_owned(t, connector_id)
@@ -156,9 +152,7 @@ def notion_connect(t: Tenant = Depends(tenant)) -> OAuthStart:
         "response_type": "code",
         "owner": "user",
     }
-    return OAuthStart(
-        authorize_url=f"{NOTION_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}"
-    )
+    return OAuthStart(authorize_url=f"{NOTION_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}")
 
 
 @router.post("/connectors/notion/callback", response_model=ConnectorInfo, tags=["connectors"])
@@ -191,9 +185,7 @@ def notion_callback(body: NotionCallback, t: Tenant = Depends(tenant)) -> Connec
         resp.raise_for_status()
         data = resp.json()
     except httpx.HTTPError as exc:
-        raise HTTPException(
-            status_code=502, detail="Notion token exchange failed."
-        ) from exc
+        raise HTTPException(status_code=502, detail="Notion token exchange failed.") from exc
 
     access_token = data.get("access_token")
     if not access_token:
