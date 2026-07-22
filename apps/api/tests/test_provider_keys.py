@@ -78,9 +78,15 @@ def _unsplash_graph(provider: str = "images_unsplash") -> GraphSpec:
     )
 
 
-def test_resolve_tool_keys_no_ops_without_a_key():
+def test_resolve_tool_keys_no_ops_without_a_key(monkeypatch):
     """Keyless is the canvas default: the graph comes back untouched (never `api_key: None`),
-    so the Unsplash tool falls through to its deterministic stub instead of failing the run."""
+    so the Unsplash tool falls through to its deterministic stub instead of failing the run.
+
+    The vault lookup is stubbed rather than left to hit the dev workspace: this shares that
+    workspace with the developer's real Settings → API Keys state, so a "no key on file"
+    assertion starts failing the moment an actual Unsplash key is saved — the same trap
+    `test_set_list_resolve_delete_never_leaks_the_key` documents below."""
+    monkeypatch.setattr("calypr_api.provider_keys.resolve_model_keys", lambda _ws: {})
     graph = _unsplash_graph()
     out = resolve_tool_keys(graph, uuid.UUID(DEV_WORKSPACE_ID))
     assert out.nodes[0].config.get("api_key", "") == ""
