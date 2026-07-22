@@ -260,3 +260,7 @@ class Waitlist(Base):
     )
     # Set when this address is invited into the beta.
     invited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Set when that invite was actually redeemed (the owner signed in and got `beta`). An invite
+    # is a one-time key: without this the auto-grant re-ran on every sign-in, so demoting anyone
+    # back to `free` — trial over, beta over — silently undid itself at their next login.
+    granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

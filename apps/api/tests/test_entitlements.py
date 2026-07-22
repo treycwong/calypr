@@ -11,13 +11,13 @@ import uuid
 import pytest
 from calypr_api import deps, entitlements
 from calypr_api.config import settings
-from calypr_api.db.models import Workspace
+from calypr_api.db.models import Waitlist, Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
 from calypr_codegen import generate_python
 from calypr_compiler.golden import input_agent_output
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 client = TestClient(app)
 
@@ -438,3 +438,72 @@ def test_codegen_previews_when_the_internal_key_is_wrong(monkeypatch):
     monkeypatch.setattr(settings, "internal_key", "internal-test-key")
     r = client.post("/codegen", json=_graph(), headers={"x-calypr-internal-key": "wrong"})
     assert r.json()["truncated"] is True
+
+
+# --- an invite is a one-time key, not a standing entitlement ------------------------------------
+
+
+@requires_db
+def test_a_demotion_sticks_after_the_invite_has_been_redeemed(monkeypatch):
+    """The scenario that matters when the beta ends: demote someone to `free`, and they must
+    *stay* free through their next sign-in.
+
+    Before `granted_at`, the auto-grant re-ran on every sign-in, so this silently put them back
+    on `beta` — every demotion undid itself and the admin route only looked authoritative."""
+    monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
+    email = f"trial.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
+
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        original, ws.plan = ws.plan, entitlements.FREE
+        s.commit()
+        try:
+            # Day 1: they sign in and the invite is redeemed.
+            assert entitlements.grant_beta_if_invited(s, ws, email) is True
+            assert ws.plan == entitlements.BETA
+            s.commit()
+
+            # Day 14: the trial ends and we put them back on free.
+            ws.plan = entitlements.FREE
+            s.commit()
+
+            # Day 15: they sign in again. The invite is spent, so nothing happens.
+            assert entitlements.grant_beta_if_invited(s, ws, email) is False
+            assert ws.plan == entitlements.FREE, "a demotion must survive the next sign-in"
+        finally:
+            ws.plan = original
+            s.commit()
+
+
+@requires_db
+def test_re_inviting_someone_lets_them_back_in(monkeypatch):
+    """The deliberate way back: stamp a fresh invite and the key works again. Demoting is
+    reversible without touching workspace ids by hand."""
+    monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
+    email = f"return.{uuid.uuid4().hex[:8]}@example.com"
+    client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
+
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        original, ws.plan = ws.plan, entitlements.FREE
+        s.commit()
+        try:
+            assert entitlements.grant_beta_if_invited(s, ws, email) is True
+            ws.plan = entitlements.FREE
+            s.commit()
+            assert entitlements.grant_beta_if_invited(s, ws, email) is False
+
+            # Clearing the redemption is what "invite them again" means.
+            row = s.scalar(select(Waitlist).where(Waitlist.email == email))
+            row.granted_at = None
+            s.commit()
+            assert entitlements.grant_beta_if_invited(s, ws, email) is True
+            assert ws.plan == entitlements.BETA
+        finally:
+            ws.plan = original
+            s.commit()

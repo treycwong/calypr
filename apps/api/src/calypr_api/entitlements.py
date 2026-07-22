@@ -18,6 +18,8 @@ qualitative differentiator on top of it.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -62,16 +64,37 @@ def is_invited(session: Session, email: str | None) -> bool:
     )
 
 
+def _unredeemed_invite(session: Session, email: str | None) -> Waitlist | None:
+    """The invite row for this address that hasn't been spent yet, if any."""
+    if not email:
+        return None
+    return session.scalar(
+        select(Waitlist).where(
+            Waitlist.email == email.strip().lower(),
+            Waitlist.invited_at.is_not(None),
+            Waitlist.granted_at.is_(None),
+        )
+    )
+
+
 def grant_beta_if_invited(session: Session, workspace: Workspace, email: str | None) -> bool:
-    """Upgrade a `free` workspace to `beta` when its owner's email has been invited.
+    """Upgrade a `free` workspace to `beta` when its owner has an **unredeemed** invite.
 
     This is what makes an invite self-serve: you stamp an address, they sign in with it, and the
     beta switches on by itself — no looking up workspace ids by hand.
 
-    Deliberately one-way and only from `free`: it never downgrades, and never touches a `plus`
-    workspace, so the manual admin route stays authoritative for anything unusual. Returns
-    whether it changed anything. Callers commit."""
-    if workspace.plan != FREE or not is_invited(session, email):
+    The invite is a one-time key, and `granted_at` is what spends it. Before that existed this
+    re-ran on every sign-in, so a demotion could never stick: move someone from `beta` back to
+    `free` — a trial ending, or the beta itself ending — and their next login silently restored
+    it. The admin route was documented as authoritative and quietly wasn't.
+
+    Still one-way and only from `free`: it never downgrades, and never touches a `plus`
+    workspace. Returns whether it changed anything. Callers commit."""
+    if workspace.plan != FREE:
+        return False
+    invite = _unredeemed_invite(session, email)
+    if invite is None:
         return False
     workspace.plan = BETA
+    invite.granted_at = datetime.now(UTC)
     return True
