@@ -142,21 +142,16 @@ still fails independently (pre-existing infra issue above, not code).
   encrypted bot token → self-hosted `@notionhq/notion-mcp-server --enable-token-passthrough`
   (Docker, `infra/docker/compose.yaml`, port 3333). Live-tested: `/connectors/{id}/test` returns
   all 24 Notion tools through vault → decrypt → `Notion-Token` header → MCP server → Notion.
-- [ ] **Notion Tier A — DEFERRED in production** (not enabled at merge; tracked here so it isn't
-  lost). `CALYPR_NOTION_*` env vars are intentionally left unset in prod, so `Connect Notion`
-  returns 501 and no Notion code path is reachable — everything else in this section is live.
-  Needed before turning it on:
-  - [ ] **Host `notion-mcp` as its own long-running service** (Railway) — Vercel can't run it.
-    Start with **`--auth-token <secret>`** (not the local `--unsafe-disable-auth`); internal port
-    must equal the published port (the server's DNS-rebinding check validates the `Host` header
-    against its own host:port).
-  - [ ] **Add an OAuth `state` parameter** to `notion_connect`/`notion_callback`
-    (`apps/api/src/calypr_api/routers/connectors.py`) — CSRF hardening flagged in the security
-    review. Currently inert only because Notion is unconfigured; required before enabling it.
-  - [ ] Set `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`,
-    `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`; register the redirect URI
-    `https://calypr.co/api/connectors/notion/callback` in the Notion integration.
-  - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (full runbook + security posture).
+- [x] **Notion Tier A — LIVE in production** (2026-07-22). No longer deferred:
+  - [x] **`notion-mcp` hosted as its own Railway service** — packaged in `infra/notion-mcp/`
+    (PRs #39/#40). Bearer auth via `AUTH_TOKEN`; the "internal port == published port" rule
+    turned out to be local-only (with bearer auth the server skips `Host` validation).
+  - [x] **OAuth `state` parameter** shipped (PR #38) — `connect` mints a signed, workspace-bound,
+    10-minute state (`calypr_api/oauth_state.py`); `callback` refuses anything else *before* the
+    code is exchanged. Closes the CSRF gap from the security review.
+  - [x] `CALYPR_NOTION_*` set in prod; redirect URI registered.
+  - [x] **User-verified in production**: Notion + Tavily wired to one agent, working end to end.
+  - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (runbook + security posture).
 - [x] **Tavily wired to the vault key** — DONE (2026-07-22, see below): `resolve_tool_keys` now
   injects a workspace's saved Tavily key into `ToolConfig.api_key` the same way it already did
   for Unsplash.
