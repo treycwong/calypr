@@ -11,7 +11,7 @@ import pytest
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
-from calypr_api.workspace_model import apply_default_model
+from calypr_api.workspace_model import apply_default_model, strip_fake_models
 from calypr_compiler.golden import input_agent_output
 from calypr_nodes import NodeContext
 from calypr_nodes.registry import PLATFORM_DEFAULT_MODEL, effective_model
@@ -140,3 +140,45 @@ def test_the_dev_workspace_ships_inheriting():
             assert ws.default_model in ("", "gpt-4o", "gpt-4o-mini", "claude-sonnet-4-5"), (
                 "a workspace should not be left on some ad-hoc model id"
             )
+
+
+# --- repairing agents that were saved with `fake` (migration 0011) -----------------------------
+
+
+def test_strip_rewrites_fake_on_llm_nodes():
+    spec = {
+        "nodes": [
+            {"id": "responder", "type": "responder", "config": {"model": "fake"}},
+            {"id": "revisor", "type": "revisor", "config": {"model": "fake"}},
+        ]
+    }
+    patched, changed = strip_fake_models(spec)
+    assert changed == 2
+    assert [n["config"]["model"] for n in patched["nodes"]] == ["", ""]
+
+
+def test_strip_leaves_a_deliberate_real_model_alone():
+    spec = {"nodes": [{"id": "a", "type": "agent", "config": {"model": "gpt-4o"}}]}
+    _, changed = strip_fake_models(spec)
+    assert changed == 0
+
+
+def test_strip_ignores_media_nodes():
+    # `fake` means something different on these (a keyless *image*/*speech* stub) and they
+    # resolve through their own factories, so the workspace default must not touch them.
+    spec = {
+        "nodes": [
+            {"id": "img", "type": "image", "config": {"model": "fake"}},
+            {"id": "tts", "type": "tts", "config": {"model": "fake"}},
+        ]
+    }
+    _, changed = strip_fake_models(spec)
+    assert changed == 0
+
+
+@pytest.mark.parametrize("junk", [{}, {"nodes": None}, {"nodes": ["not-a-dict"]}, {"nodes": [{}]}])
+def test_strip_tolerates_rows_written_by_older_code(junk):
+    # A migration reads whatever is in the column, including shapes today's GraphSpec would
+    # refuse. It must not raise mid-upgrade.
+    _, changed = strip_fake_models(junk)
+    assert changed == 0

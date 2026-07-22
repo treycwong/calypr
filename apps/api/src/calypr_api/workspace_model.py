@@ -45,6 +45,31 @@ def workspace_default_model(workspace_id: uuid.UUID | None) -> str:
         return ""
 
 
+def strip_fake_models(spec: dict) -> tuple[dict, int]:
+    """Rewrite `model: "fake"` → `""` (inherit) on LLM nodes of a stored graph.
+
+    Repairs agents saved from the templates that shipped the test seam: their stored
+    `graph_spec` keeps whatever model it was saved with, so changing the *defaults* doesn't help
+    them — they'd go on answering "Echo: …" forever. Returns the (possibly new) spec and how
+    many nodes changed, so the migration can report what it touched.
+
+    Pure and dict-shaped rather than typed: a migration must be able to read rows written by
+    older code without the current `GraphSpec` refusing them. Only `fake` is rewritten — an
+    explicit real model is a choice, and Image/Voice nodes aren't in `LLM_NODE_TYPES` at all."""
+    nodes = spec.get("nodes")
+    if not isinstance(nodes, list):
+        return spec, 0
+    changed = 0
+    for node in nodes:
+        if not isinstance(node, dict) or node.get("type") not in LLM_NODE_TYPES:
+            continue
+        config = node.get("config")
+        if isinstance(config, dict) and config.get("model") == "fake":
+            config["model"] = ""
+            changed += 1
+    return spec, changed
+
+
 def apply_default_model(graph: GraphSpec, default_model: str) -> GraphSpec:
     """Fill in `model` on LLM nodes that don't name one, so codegen emits what a run would use.
 
