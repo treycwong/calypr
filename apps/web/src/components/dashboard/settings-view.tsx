@@ -2,7 +2,10 @@
 
 import { useEffect, useState } from "react";
 
+import Link from "next/link";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -20,6 +23,23 @@ import {
   setProviderKey,
 } from "@/lib/api";
 import { useProviderKeys } from "@/lib/use-provider-keys";
+
+/** What each tier means in the one place a user goes looking. `beta` keeps code export because
+ * we don't take a shipped feature back off the cohort already using it. */
+const PLAN_COPY: Record<string, { label: string; blurb: string }> = {
+  free: {
+    label: "Free",
+    blurb: "3 projects. Code export is a Plus feature.",
+  },
+  beta: {
+    label: "Beta",
+    blurb: "Early access, including code export — editing the generated Python and applying it back to the canvas.",
+  },
+  plus: {
+    label: "Plus",
+    blurb: "20 projects and code export — the generated Python is yours to edit, download and run anywhere.",
+  },
+};
 
 export function SettingsView({
   name,
@@ -40,6 +60,8 @@ export function SettingsView({
   // user may well want a cheap model drafting graphs and a stronger one running them.
   const [defaultModel, setDefaultModel] = useState("");
   const [defaultModelMsg, setDefaultModelMsg] = useState("");
+  // The entitlement tier, so "why can/can't I export my code?" has a visible answer.
+  const [plan, setPlan] = useState("free");
   const { keyed, refresh: refreshKeys } = useProviderKeys();
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   // Per-provider status line, so saving an OpenAI key doesn't flash a message on the Kimi row.
@@ -54,6 +76,7 @@ export function SettingsView({
         setWsName(w.name);
         setModel(w.assistant_model ?? "");
         setDefaultModel(w.default_model ?? "");
+        setPlan(w.plan ?? "free");
       })
       .catch(() => {});
     listAssistantModels()
@@ -151,13 +174,37 @@ export function SettingsView({
                 {image ? <AvatarImage src={image} alt="" /> : null}
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
-              <div>
-                <div className="text-sm font-medium">{name || "—"}</div>
-                <div className="text-xs text-muted-foreground">{email}</div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium">{name || "—"}</span>
+                  <Badge
+                    variant={plan === "free" ? "outline" : "default"}
+                    data-testid="account-plan"
+                  >
+                    {PLAN_COPY[plan]?.label ?? plan}
+                  </Badge>
+                </div>
+                <div className="truncate text-xs text-muted-foreground">{email}</div>
               </div>
             </div>
             <Separator className="my-4" />
-            <p className="text-xs text-muted-foreground">
+            {/* What the tier actually gets you, rather than a bare word: "Beta" on its own
+                tells you nothing about whether you can export your code. */}
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-muted-foreground">
+                {PLAN_COPY[plan]?.blurb ?? "Your workspace tier."}
+              </p>
+              {plan === "free" ? (
+                <Link
+                  href="/pricing"
+                  className="text-xs font-medium underline underline-offset-4"
+                  data-testid="account-upgrade"
+                >
+                  Upgrade to Plus
+                </Link>
+              ) : null}
+            </div>
+            <p className="mt-3 text-xs text-muted-foreground">
               Your account details come from your sign-in provider (GitHub).
             </p>
           </div>

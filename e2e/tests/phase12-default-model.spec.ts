@@ -47,3 +47,32 @@ test("a new Agent block inherits instead of naming a model", async ({ page }) =>
   await page.getByTestId("node-agent").click();
   await expect(page.getByTestId("cfg-model")).toHaveValue("");
 });
+
+// The plan indicator on Settings → Account. "Can I export my code?" should have a visible
+// answer where people look, rather than being inferred from whether the Code tab works.
+test("the Account tab shows the workspace plan", async ({ page }) => {
+  await page.goto("/dashboard/settings");
+  await page.getByTestId("dev-sign-in").click();
+
+  const badge = page.getByTestId("account-plan");
+  await expect(badge).toBeVisible();
+  // The E2E workspace is `free`, so the badge says so and offers the way out.
+  await expect(badge).toHaveText("Free");
+  await expect(page.getByText("Code export is a Plus feature.")).toBeVisible();
+  await expect(page.getByTestId("account-upgrade")).toHaveAttribute("href", "/pricing");
+});
+
+test("an entitled plan says what it includes and offers no upgrade", async ({ page }) => {
+  // The control: the copy has to be driven by the plan, not hard-coded next to the badge.
+  await page.route("**/api/workspace", async (route) => {
+    const upstream = await route.fetch();
+    const body = await upstream.json();
+    await route.fulfill({ json: { ...body, plan: "plus" } });
+  });
+  await page.goto("/dashboard/settings");
+  await page.getByTestId("dev-sign-in").click();
+
+  await expect(page.getByTestId("account-plan")).toHaveText("Plus");
+  await expect(page.getByText(/yours to edit, download and run anywhere/)).toBeVisible();
+  await expect(page.getByTestId("account-upgrade")).toHaveCount(0);
+});
