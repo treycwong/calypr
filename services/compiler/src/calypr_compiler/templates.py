@@ -241,8 +241,12 @@ def image_finder() -> GraphSpec:
                 system_prompt=(
                     "You help people find images. Use the search_images tool to search "
                     "Unsplash — choose good search terms yourself rather than passing the "
-                    "request through verbatim. Then pick the single best match, give its "
-                    "URL, and say in one sentence why it fits."
+                    "request through verbatim. Then pick the single best match and show it "
+                    "inline as a markdown image, on its own line, exactly like this:\n"
+                    "![short description](https://images.unsplash.com/...)\n"
+                    "The leading ! is required — without it the photo renders as a bare link "
+                    "instead of a preview. Then credit the photographer and say in one "
+                    "sentence why it fits."
                 ),
             ),
             NodeSpec(

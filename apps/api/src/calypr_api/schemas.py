@@ -278,9 +278,12 @@ class OAuthStart(BaseModel):
 
 
 class NotionCallback(BaseModel):
-    """The authorization code the browser returned from Notion's consent screen."""
+    """What the browser returned from Notion's consent screen: the authorization code, plus the
+    `state` we issued when the flow started (CSRF — see `oauth_state`). A callback without a
+    valid state is refused before the code is exchanged."""
 
     code: str
+    state: str = ""
 
 
 #: The providers a workspace can supply its own key for (BYO-key). Kept small and explicit —
