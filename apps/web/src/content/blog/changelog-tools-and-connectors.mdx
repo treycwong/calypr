@@ -1,0 +1,86 @@
+export const metadata = {
+  title: "Changelog: your agents can now reach the outside world",
+  description:
+    "Web search, image generation, voice, vision, and MCP connectors — including Notion over OAuth. Everything that shipped since the first five weeks.",
+  date: "2026-07-22",
+  category: "update",
+  tags: ["changelog", "tools", "mcp", "notion"],
+};
+
+The [first five weeks](/blog/changelog-weeks-1-5) were about making Calypr trustworthy —
+metering, durability, share links, honest errors. Since then the work has been about making
+agents *useful*: giving them senses, a voice, and a way to reach the tools you already use.
+
+## Agents that see, draw, and speak
+
+Three new blocks, each one drag-and-drop on the canvas:
+
+- **Image** — turn a prompt into a picture. A `style` field pins the look, so an agent can be
+  permanently an anime illustrator without you writing a word of prompt engineering downstream.
+- **Voice** — text to speech, with an `instructions` field that steers tone and pacing. The
+  **Translate & speak** template chains it after a translator agent: one run gives you the
+  Chinese transcript *and* the spoken audio.
+- **Upload** — attach an image and let a vision agent read it. Ships with two starters,
+  **Label & receipt reader** and **Generate alt text**, that are just this block plus a prompt.
+
+Generated images and audio render inline in the playground and on share links — a player, not
+a URL.
+
+## Web search that actually searches
+
+The Tools block now runs **Tavily** for real. Add your key in Settings and your agent searches
+the live web; without one it says so plainly rather than inventing results. Two more providers
+landed alongside it:
+
+- **Unsplash** — real photos by search term. The **Image Finder** template previews them inline.
+- **Generic HTTP** — point a tool at any JSON API you like.
+
+## MCP: one plug shape for everything else
+
+The bigger change is **MCP** support. MCP is a standard socket for tools: a vendor publishes an
+MCP server for their product, and any app that speaks the protocol can plug in and immediately
+ask *"what can you do?"* — no per-vendor integration code.
+
+Your Tools block can now point at any MCP server over HTTPS. Paste a URL (and a token if it
+needs one), and the tools that server offers become tools your agent can call. It's encrypted at
+rest and resolved server-side at run time — the secret never touches your graph or the generated
+code.
+
+## Notion, in two clicks
+
+The first connector built on top of that: **connect your Notion account** from
+Settings → Connectors. It's a normal OAuth flow — you approve it on Notion's side, we store the
+token encrypted, and your agent gets all 24 Notion tools: search pages, read them, create them.
+
+The **Notion assistant** template is a working starting point — ask it about your workspace and
+it goes and looks.
+
+## One agent, several tools
+
+Agents can now be wired to **more than one** Tools block at once, and each call is dispatched to
+the block that owns it. So a single agent can search the web *and* read your Notion — a research
+assistant that checks your own notes before it checks the internet.
+
+This is subtler than it sounds, and getting it wrong is quiet: the earlier version bound every
+tool correctly but could only route calls to one block, so the agent would insist it had no
+access to something it was, in fact, holding. Fixed, and pinned with tests that fail if it
+regresses.
+
+## Bring your own keys
+
+Settings → **API Keys** lets you paste your own OpenAI, Anthropic or Tavily key. When present,
+your workspace's key is used instead of ours — shown masked once saved, encrypted at rest, never
+returned by any API. It's also how the frontier models (Opus 4.8, Kimi K3) run: those are
+BYO-key only.
+
+## Quieter, but worth knowing
+
+The canvas validator got stricter about graphs that would *look* fine and then do nothing —
+a Tools block wired somewhere that can't bind it, a branching step whose paths aren't labelled.
+These now fail loudly on the canvas, before a run spends anything, and name the block to fix.
+A test suite wires every pair of block types together to keep it that way.
+
+---
+
+Everything above is live at [calypr.co](https://www.calypr.co). If you build something with the
+new connectors, [tell us what broke](/waitlist) — that's what the next changelog is made of.
