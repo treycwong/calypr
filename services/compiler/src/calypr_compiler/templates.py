@@ -45,7 +45,7 @@ def _agent(agent_type: str, **config) -> NodeSpec:
         type="agent",
         config={
             "agent_type": agent_type,
-            "model": "gpt-4o-mini",
+            "model": "",
             "input_channel": "messages",
             "output_channel": "messages",
             **config,
@@ -61,7 +61,7 @@ def _role_agent(node_id: str, system_prompt: str, label: str | None = None) -> N
         id=node_id,
         type="agent",
         config={
-            "model": "gpt-4o-mini",
+            "model": "",
             "label": label or node_id.replace("_", " ").title(),
             "system_prompt": system_prompt,
             "input_channel": "messages",
@@ -149,7 +149,7 @@ def utility_based() -> GraphSpec:
             NodeSpec(
                 id="eval",
                 type="evaluator",
-                config={"model": "gpt-4o-mini", "input_channel": "messages"},
+                config={"model": "", "input_channel": "messages"},
             ),
             _output(),
         ],
@@ -183,7 +183,7 @@ def learning() -> GraphSpec:
                 type="memory",
                 config={
                     "operation": "summary",
-                    "model": "gpt-4o-mini",
+                    "model": "",
                     "input_channel": "messages",
                     "memory_channel": "memory",
                 },
@@ -348,12 +348,12 @@ def reflexion() -> GraphSpec:
         ],
         nodes=[
             _input(),
-            NodeSpec(id="responder", type="responder", config={"model": "gpt-4o-mini"}),
+            NodeSpec(id="responder", type="responder", config={"model": ""}),
             NodeSpec(id="tools", type="tool", config={"provider": "demo_search"}),
             NodeSpec(
                 id="revisor",
                 type="revisor",
-                config={"model": "gpt-4o-mini", "max_revisions": 2},
+                config={"model": "", "max_revisions": 2},
             ),
             _output(),
         ],
@@ -402,7 +402,7 @@ def routing() -> GraphSpec:
                 type="router",
                 config={
                     "kind": "llm",
-                    "model": "gpt-4o-mini",
+                    "model": "",
                     "input_channel": "messages",
                     "route_channel": "task_type",
                     "branches": [
@@ -619,7 +619,7 @@ def translate_and_speak() -> GraphSpec:
                 id="translator",
                 type="agent",
                 config={
-                    "model": "gpt-4o-mini",
+                    "model": "",
                     "label": "Translator",
                     "system_prompt": (
                         "You are a professional English→Chinese translator. Translate the user's "

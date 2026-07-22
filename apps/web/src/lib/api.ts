@@ -303,6 +303,8 @@ export type WorkspaceInfo = {
   signed_in_as?: string | null;
   /** The workspace's AI-assistant model; "" means inherit the server default. */
   assistant_model?: string;
+  /** The model canvas LLM nodes inherit; "" means the platform default (gpt-4o-mini). */
+  default_model?: string;
 };
 
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
@@ -347,6 +349,17 @@ export async function setAssistantModel(model: string): Promise<WorkspaceInfo> {
     body: JSON.stringify({ assistant_model: model }),
   });
   if (!res.ok) throw new Error(`save assistant model failed (${res.status})`);
+  return res.json();
+}
+
+/** The model every LLM block inherits unless it names one itself. "" = platform default. */
+export async function setDefaultModel(model: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspace", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ default_model: model }),
+  });
+  if (!res.ok) throw new Error(`save default model failed (${res.status})`);
   return res.json();
 }
 

@@ -25,7 +25,13 @@ from calypr_api.assistant_models import (
     is_allowed,
 )
 from calypr_api.db.models import Agent, ShareLink, Workspace
-from calypr_api.deps import Tenant, may_export_code, require_code_export, tenant
+from calypr_api.deps import (
+    Tenant,
+    may_export_code,
+    require_code_export,
+    run_workspace,
+    tenant,
+)
 from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -43,6 +49,7 @@ from calypr_api.schemas import (
     WorkspaceInfo,
     WorkspaceUpdate,
 )
+from calypr_api.workspace_model import apply_default_model, workspace_default_model
 
 router = APIRouter()
 
@@ -81,6 +88,10 @@ def codegen_spec(graph: GraphSpec, request: Request) -> CodegenResponse:
     `truncated` flag the client turns into a blurred tail plus an upgrade prompt. The cut is
     made **here** rather than in the browser — a CSS blur over the full text is a decoration,
     not a paywall, since the response sits in the network tab either way."""
+    # Resolve inherited models first: nodes ship `model: ""`, and generated code has to name a
+    # concrete one. Without this the file would show the platform default while the same graph
+    # ran on the workspace's preference — the artifact would quietly disagree with the product.
+    graph = apply_default_model(graph, workspace_default_model(run_workspace(request)))
     code = generate_python(graph)
     total_lines = code.count("\n") + 1
     truncated = not may_export_code(request)
@@ -320,6 +331,7 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
         plan=ws.plan,
         signed_in_as=t.email,
         assistant_model=ws.assistant_model,
+        default_model=ws.default_model,
     )
 
 
@@ -350,6 +362,13 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
         if not is_allowed(body.assistant_model):
             raise HTTPException(status_code=422, detail="unsupported assistant model")
         ws.assistant_model = body.assistant_model
+    if body.default_model is not None:
+        # Same allow-list as the assistant: this value is persisted and later handed to the
+        # model factory for every node that inherits, so an arbitrary string here would point
+        # the whole canvas at an unpriced model.
+        if not is_allowed(body.default_model):
+            raise HTTPException(status_code=422, detail="unsupported default model")
+        ws.default_model = body.default_model
     t.session.commit()
     posthog_client.capture(
         "workspace_updated",
@@ -358,6 +377,7 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
             "workspace_id": str(t.workspace_id),
             "renamed": body.name is not None,
             "assistant_model": body.assistant_model,
+            "default_model": body.default_model,
         },
     )
     return WorkspaceInfo(
@@ -365,4 +385,5 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
         name=ws.name,
         plan=ws.plan,
         assistant_model=ws.assistant_model,
+        default_model=ws.default_model,
     )

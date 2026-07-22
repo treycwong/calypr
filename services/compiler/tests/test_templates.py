@@ -100,6 +100,22 @@ def test_image_finder_prompts_for_an_inline_preview():
 
 
 @pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
+def test_starter_llm_nodes_inherit_the_workspace_model(graph):
+    """LLM nodes in a starter carry `model: ""` — inherit — not a hard-coded id.
+
+    A template that names `gpt-4o-mini` outright ignores the workspace's Settings preference:
+    someone who set their default to Claude picks a starter and silently gets GPT anyway. Empty
+    resolves through `effective_model` to the workspace default, then to
+    `PLATFORM_DEFAULT_MODEL` — so an un-configured workspace still gets a working agent.
+
+    Image and Voice nodes are excluded: they resolve through separate seams
+    (`image_model_for` / `tts_model_for`) and name their own models."""
+    llm = [n for n in graph.nodes if n.type not in ("image", "tts") and isinstance(n.config, dict)]
+    named = {n.id: n.config["model"] for n in llm if n.config.get("model")}
+    assert named == {}, f"{graph.id} hard-codes a model on {named} instead of inheriting"
+
+
+@pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
 def test_no_starter_ships_the_fake_model(graph):
     """A starter must not be configured with the keyless `fake` model.
 

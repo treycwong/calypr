@@ -30,6 +30,7 @@ from calypr_nodes._parse import (
     str_const,
 )
 from calypr_nodes.registry import (
+    PLATFORM_DEFAULT_MODEL,
     BaseNode,
     CodeFragment,
     CodegenContext,
@@ -37,6 +38,7 @@ from calypr_nodes.registry import (
     NodeFn,
     NodeMeta,
     NodeParseContext,
+    effective_model,
     model_for_node,
     register,
 )
@@ -152,7 +154,8 @@ def _first_range_int(fn: ast.FunctionDef) -> int | None:
 class AgentConfig(BaseModel):
     agent_type: AgentType = "model_based"
     # Model id is resolved against the provider at runtime; the fake client ignores it.
-    model: str = "claude-sonnet-4-5"
+    #: Empty = inherit (workspace default → PLATFORM_DEFAULT_MODEL). See `effective_model`.
+    model: str = ""
     system_prompt: str = ""
     # Optional display name on the canvas (e.g. "Orchestrator", "Flights"). Cosmetic only —
     # the engine + codegen ignore it; it distinguishes role-specialized agents in the UI.
@@ -221,6 +224,7 @@ class AgentNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: AgentConfig, ctx: NodeContext) -> NodeFn:
+        model_id = effective_model(ctx, cfg.model)
         model = model_for_node(ctx, cfg.model)  # each agent uses its own provider
         tool_schemas = ctx.tools or []  # bound by the compiler from wired Tool nodes
 
@@ -231,7 +235,7 @@ class AgentNode(BaseNode):
             text = ""
             calls: list[ToolCall] = []
             async for ev in model.stream(
-                model=cfg.model,
+                model=model_id,
                 system=system,
                 messages=messages,
                 tools=tool_schemas,
@@ -358,7 +362,10 @@ class AgentNode(BaseNode):
         msg_imports: set[str] = {"SystemMessage"} if system else set()
         out = cfg.output_channel
 
-        model_expr = f"init_chat_model({json.dumps(cfg.model)}, temperature={cfg.temperature})"
+        model_expr = (
+            f"init_chat_model({json.dumps(cfg.model or PLATFORM_DEFAULT_MODEL)}, "
+            f"temperature={cfg.temperature})"
+        )
         tool_refs = ctx.tool_refs if ctx else []
         if tool_refs:
             model_expr += f".bind_tools([{', '.join(tool_refs)}])"

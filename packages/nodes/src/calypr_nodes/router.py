@@ -28,12 +28,14 @@ from calypr_nodes._llm import collect_text
 from calypr_nodes._parse import calls_named, state_get_keys, str_const, string_assign
 from calypr_nodes.code import custom_code_allowed
 from calypr_nodes.registry import (
+    PLATFORM_DEFAULT_MODEL,
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
     NodeParseContext,
+    effective_model,
     model_for_node,
     register,
 )
@@ -89,7 +91,8 @@ class RouterConfig(BaseModel):
     input_channel: str = "messages"
     branches: list[Branch] = []
     default: str = ""  # branch name to use when none match
-    model: str = "fake"  # llm kind: the classifier model
+    #: Empty = inherit (workspace default → PLATFORM_DEFAULT_MODEL). See `effective_model`.
+    model: str = ""  # llm kind: the classifier model
     route_channel: str = "task_type"  # llm kind: where the chosen branch is written
 
 
@@ -154,6 +157,7 @@ class RouterNode(BaseNode):
             return _passthrough
 
         # llm: classify the latest input into a branch, written to route_channel.
+        model_id = effective_model(ctx, cfg.model)
         model = model_for_node(ctx, cfg.model)
         default = cls._default_branch(cfg)
 
@@ -161,7 +165,7 @@ class RouterNode(BaseNode):
             query = _last_text(state.get(cfg.input_channel))
             reply = await collect_text(
                 model,
-                model_id=cfg.model,
+                model_id=model_id,
                 system=_classify_prompt(cfg),
                 messages=[Msg(role=Role.user, content=query)],
                 temperature=0.0,
@@ -234,7 +238,8 @@ class RouterNode(BaseNode):
         lines = [
             f"def {fn_name}(state: State) -> dict:",
             '    """Routing classifier: pick a branch for the latest request."""',
-            f"    model = init_chat_model({cfg.model!r}, temperature=0.0)",
+            f"    model = init_chat_model({(cfg.model or PLATFORM_DEFAULT_MODEL)!r}, "
+            "temperature=0.0)",
             f'    messages = state.get("{cfg.input_channel}") or []',
             '    query = messages[-1].content if messages else ""',
             *assign_str("system", _classify_prompt(cfg)),

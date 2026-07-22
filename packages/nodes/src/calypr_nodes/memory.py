@@ -24,12 +24,14 @@ from calypr_nodes._parse import (
     str_const,
 )
 from calypr_nodes.registry import (
+    PLATFORM_DEFAULT_MODEL,
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
     NodeParseContext,
+    effective_model,
     model_for_node,
     register,
 )
@@ -47,7 +49,8 @@ class MemoryConfig(BaseModel):
     operation: Literal["buffer", "summary"] = "buffer"
     input_channel: str = "messages"
     memory_channel: str = "memory"
-    model: str = "claude-sonnet-4-5"  # used by `summary`
+    #: Empty = inherit (workspace default → PLATFORM_DEFAULT_MODEL). See `effective_model`.
+    model: str = ""  # used by `summary`
     temperature: float = 0.0
 
 
@@ -99,13 +102,14 @@ class MemoryNode(BaseNode):
 
             return _buffer
 
+        model_id = effective_model(ctx, cfg.model)
         model = model_for_node(ctx, cfg.model)
 
         async def _summary(state: dict[str, Any]) -> dict[str, Any]:
             transcript = _transcript(state.get(cfg.input_channel))
             summary = await collect_text(
                 model,
-                model_id=cfg.model,
+                model_id=model_id,
                 system=_SUMMARY_PROMPT,
                 messages=[Msg(role=Role.user, content=transcript)],
                 temperature=cfg.temperature,
@@ -134,7 +138,8 @@ class MemoryNode(BaseNode):
         lines = [
             f"def {fn_name}(state: State) -> dict:",
             '    """Summarise the conversation into long-term memory."""',
-            f"    model = init_chat_model({cfg.model!r}, temperature={cfg.temperature})",
+            f"    model = init_chat_model({(cfg.model or PLATFORM_DEFAULT_MODEL)!r}, "
+            f"temperature={cfg.temperature})",
             f'    messages = state.get("{cfg.input_channel}") or []',
             '    transcript = "\\n".join(getattr(m, "content", str(m)) for m in messages)',
             *assign_str("system", _SUMMARY_PROMPT),

@@ -85,6 +85,10 @@ export const MODEL_OPTIONS: {
   label: string;
   byoProvider?: string;
 }[] = [
+  // "" = inherit the workspace default (Settings → Workspace), which itself falls back to
+  // gpt-4o-mini. First in the list because it's what every new block and every starter ships
+  // with — a block you never touch still runs on a real model.
+  { value: "", label: "Workspace default" },
   { value: "fake", label: "Fake (no key, deterministic)" },
   { value: "gpt-4o-mini", label: "OpenAI · gpt-4o-mini" },
   { value: "gpt-4o", label: "OpenAI · gpt-4o" },
@@ -161,7 +165,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
   input: { input_channel: "input", target_channel: "messages" },
   agent: {
     agent_type: "model_based",
-    model: "gpt-4o-mini",
+    model: "",
     label: "",
     system_prompt: "You are a helpful assistant.",
     input_channel: "messages",
@@ -186,11 +190,11 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     input_channel: "input",
     branches: [],
     default: "next",
-    model: "fake",
+    model: "",
     route_channel: "task_type",
   },
   evaluator: {
-    model: "fake",
+    model: "",
     input_channel: "messages",
     criteria: "accuracy, clarity, and completeness",
     scale_max: 10,
@@ -201,7 +205,7 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     operation: "buffer",
     input_channel: "messages",
     memory_channel: "memory",
-    model: "fake",
+    model: "",
   },
   tool: {
     provider: "demo_search",
@@ -217,8 +221,8 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     http_params: {},
     jsonpath: "",
   },
-  responder: { model: "fake", system_prompt: "" },
-  revisor: { model: "fake", system_prompt: "", max_revisions: 2 },
+  responder: { model: "", system_prompt: "" },
+  revisor: { model: "", system_prompt: "", max_revisions: 2 },
   retriever: {
     source: "pgvector",
     collection: "",

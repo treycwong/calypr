@@ -46,6 +46,11 @@ class Workspace(Base):
     # string = inherit `CALYPR_ASSISTANT_MODEL` (the server default); validated on write against
     # `calypr_api.assistant_models.ASSISTANT_MODELS`.
     assistant_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
+    # The model this workspace's LLM *nodes* run on when they don't name one themselves
+    # (node configs ship `model: ""`). Empty = `PLATFORM_DEFAULT_MODEL` (gpt-4o-mini).
+    # Same allow-list as `assistant_model`; resolved into runs and codegen by
+    # `calypr_api.workspace_model.apply_default_model`.
+    default_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

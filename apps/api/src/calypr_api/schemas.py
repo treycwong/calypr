@@ -152,6 +152,8 @@ class WorkspaceInfo(BaseModel):
     signed_in_as: str | None = None
     # The workspace's chosen AI-assistant model; "" = inherit the server default.
     assistant_model: str = ""
+    # The model canvas LLM nodes inherit; "" = the platform default (gpt-4o-mini).
+    default_model: str = ""
 
 
 class WorkspaceUpdate(BaseModel):
@@ -160,6 +162,7 @@ class WorkspaceUpdate(BaseModel):
 
     name: str | None = None
     assistant_model: str | None = None
+    default_model: str | None = None
 
 
 class WaitlistJoin(BaseModel):
