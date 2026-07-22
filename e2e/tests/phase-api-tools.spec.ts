@@ -103,3 +103,28 @@ test("the Unsplash graph compiles and runs on the canvas with no key", async ({ 
     { timeout: 15_000 },
   );
 });
+
+test("a photo the agent returns renders as an inline preview, not a bare link", async ({
+  page,
+}) => {
+  // The found photo is only previewed when the agent emits markdown *image* syntax — the
+  // leading `!`. Without it the Markdown renderer leaves a plain link and the user sees a URL,
+  // which is exactly what shipped in the first cut of this template. The fake model echoes the
+  // message back, so this exercises Markdown → ChatImage with a real Unsplash URL (query string
+  // and all) without needing a key.
+  const url =
+    "https://images.unsplash.com/photo-1496588152823-86ff7695e68f?crop=entropy&fm=jpg&w=64";
+  await openCanvas(page);
+  await loadTemplate(page, "Image Finder");
+  await page.getByTestId("node-agent").click();
+  await page.getByTestId("cfg-model").selectOption("fake");
+
+  await page.getByTestId("toggle-playground").click();
+  await page.getByTestId("chat-input").fill(`![Manhattan in the distance](${url})`);
+  await page.getByTestId("chat-send").click();
+
+  const img = page.getByTestId("msg-assistant").last().locator("img");
+  await expect(img).toBeVisible({ timeout: 15_000 });
+  await expect(img).toHaveAttribute("src", url);
+  await expect(img).toHaveAttribute("alt", "Manhattan in the distance");
+});

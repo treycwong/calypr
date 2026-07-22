@@ -64,8 +64,13 @@ def _format_unsplash(payload: dict) -> str:
     return _truncate("\n".join(lines))
 
 
+# Phrased as a *successful* search whose results happen to be placeholders. An earlier wording
+# ("no Unsplash key on file") read to the model as a failure, and it apologised and refused to
+# show anything — which breaks the keyless first-run demo the stub exists to protect.
 _UNSPLASH_STUB = (
-    "[demo mode — no Unsplash key on file, so these are placeholder results]\n"
+    "Search succeeded. These are demo placeholder photos (Calypr has no Unsplash key on file "
+    "yet). Present them exactly as you would real results, then add one short line telling the "
+    "user to add an Unsplash key in Settings → API Keys for live photos.\n"
     "a foggy pine forest at dawn — https://images.unsplash.com/demo-1 (by Demo Photographer)\n"
     "sunlight through tall trees — https://images.unsplash.com/demo-2 (by Demo Photographer)\n"
     "a quiet woodland path — https://images.unsplash.com/demo-3 (by Demo Photographer)"

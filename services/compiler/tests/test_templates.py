@@ -87,3 +87,13 @@ def test_starter_codegen_is_ruff_clean(graph):
         text=True,
     )
     assert check.returncode == 0, check.stdout
+
+
+def test_image_finder_prompts_for_an_inline_preview():
+    """The found photo only previews in the playground when the agent emits markdown *image*
+    syntax — the leading `!`. A plain `[label](url)` link renders as text, which is what the
+    first cut of this template produced. The prompt is what makes the difference, so pin it."""
+    graph = next(g for g in TEMPLATES if g.id == "tpl-image-finder")
+    prompt = next(n for n in graph.nodes if n.type == "agent").config["system_prompt"]
+    assert "![" in prompt
+    assert "leading ! is required" in prompt

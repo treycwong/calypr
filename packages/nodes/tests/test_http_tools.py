@@ -46,8 +46,11 @@ def test_unsplash_without_key_returns_deterministic_stub():
     spec = tool_spec("images_unsplash")
     out = _invoke(spec, query="foggy forest")
     assert out == _invoke(spec, query="anything else")  # deterministic, query-independent
-    assert "demo mode" in out
     assert "unsplash.com" in out
+    # Reads as a *successful* search with placeholder results, never as a failure — an earlier
+    # wording made the model apologise and show nothing, breaking the keyless first run.
+    assert out.startswith("Search succeeded.")
+    assert "Settings → API Keys" in out
 
 
 def test_unsplash_with_key_formats_photos(monkeypatch):

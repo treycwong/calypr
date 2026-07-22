@@ -60,7 +60,10 @@ unconfigured.
 2. Set `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`,
    `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`, and register the redirect URI
    `https://calypr.co/api/connectors/notion/callback` in the Notion integration.
-3. **Add an OAuth `state` parameter** to the connect/callback flow (CSRF hardening) — tracked as
-   a required pre-Notion fix (see the security review).
+3. ~~**Add an OAuth `state` parameter** to the connect/callback flow (CSRF hardening).~~ **Done.**
+   `connect` mints a signed, workspace-bound, 10-minute state (`calypr_api/oauth_state.py`) and
+   `callback` refuses anything else *before* the code is exchanged. Signed with
+   `CALYPR_VAULT_KEY` when set, else the Notion client secret — so no new env var, but set the
+   vault key in prod anyway (it is already required). Steps 1–2 remain.
 
 See `infra/CONNECTORS.md` for the full connector setup.

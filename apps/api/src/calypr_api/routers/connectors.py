@@ -17,6 +17,7 @@ from calypr_nodes.tools_catalog import mcp_tools
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 
+from calypr_api import oauth_state
 from calypr_api.config import settings
 from calypr_api.connectors import (
     ConnectorResolutionError,
@@ -25,6 +26,7 @@ from calypr_api.connectors import (
 )
 from calypr_api.db.models import ConnectorCredential
 from calypr_api.deps import Tenant, tenant
+from calypr_api.oauth_state import OAuthStateError
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
     ConnectorCreate,
@@ -151,6 +153,9 @@ def notion_connect(t: Tenant = Depends(tenant)) -> OAuthStart:
         "redirect_uri": _notion_redirect_uri(),
         "response_type": "code",
         "owner": "user",
+        # CSRF: binds this consent flow to the caller's workspace. The callback refuses any code
+        # that doesn't come back with a state we issued for that same workspace.
+        "state": oauth_state.issue(t.workspace_id),
     }
     return OAuthStart(authorize_url=f"{NOTION_AUTHORIZE_URL}?{urllib.parse.urlencode(params)}")
 
@@ -165,6 +170,14 @@ def notion_callback(body: NotionCallback, t: Tenant = Depends(tenant)) -> Connec
         raise HTTPException(
             status_code=501, detail="Notion connector is not configured on this server."
         )
+    # Verify the CSRF state *before* spending the code: an unsolicited callback must not reach
+    # Notion's token endpoint, let alone attach an attacker's account to this workspace.
+    try:
+        oauth_state.verify(body.state, t.workspace_id)
+    except OAuthStateError as exc:
+        raise HTTPException(
+            status_code=400, detail="This Notion connection request is invalid or expired."
+        ) from exc
     basic = base64.b64encode(
         f"{settings.notion_client_id}:{settings.notion_client_secret}".encode()
     ).decode()

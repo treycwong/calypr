@@ -11,6 +11,9 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const code = url.searchParams.get("code");
+  // The CSRF state we issued when the flow started; Notion echoes it back unchanged. The API
+  // rejects the callback if it is missing or doesn't belong to this workspace.
+  const state = url.searchParams.get("state") ?? "";
   const error = url.searchParams.get("error");
   const done = (status: string) =>
     Response.redirect(new URL(`/canvas?connected=notion&status=${status}`, url.origin), 303);
@@ -20,7 +23,7 @@ export async function GET(req: Request) {
   const r = await fetch(`${API_URL}/connectors/notion/callback`, {
     method: "POST",
     headers: { "content-type": "application/json", ...(await internalHeaders()) },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify({ code, state }),
   });
   return done(r.ok ? "ok" : "error");
 }
