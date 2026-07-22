@@ -45,7 +45,7 @@ def resolve_model_keys(workspace_id: uuid.UUID) -> dict[str, str]:
 #: Tool-node providers that run on a workspace's BYO key, mapped to the provider-key row that
 #: holds it. A Tool node whose provider is listed here gets `api_key` injected just before
 #: compile; without a key the tool falls back to its deterministic stub (see `tools_catalog`).
-_TOOL_KEY_PROVIDERS = {"images_unsplash": "unsplash"}
+_TOOL_KEY_PROVIDERS = {"images_unsplash": "unsplash", "tavily": "tavily"}
 
 
 def resolve_tool_keys(graph: GraphSpec, workspace_id: uuid.UUID) -> GraphSpec:

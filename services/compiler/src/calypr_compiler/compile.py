@@ -59,13 +59,19 @@ def _emit_node_event(node_id: str, phase: str) -> None:
         pass
 
 
-def _tools_bound_to(spec: GraphSpec) -> dict[str, list[dict]]:
-    """Map each LLM node id → the tool bind-schemas of the Tool nodes it points to.
+def _tools_bound_to(spec: GraphSpec) -> tuple[dict[str, list[dict]], dict[str, dict[str, str]]]:
+    """Map each LLM node id → the tool bind-schemas of the Tool nodes it points to, and (for
+    the nodes wired to more than one) → which Tool node owns each tool name.
 
     Edge-driven binding: an Agent/Responder/Revisor wired to a Tool node both *binds* that
-    tool (here) and *executes* it (the Tool node + the conditional loop)."""
+    tool (here) and *executes* it (the Tool node + the conditional loop).
+
+    Binding unions across every wired Tool node, so the model can already choose freely between
+    (say) Notion and web search. The owners map is what lets *dispatch* keep up: every ReAct
+    edge is labelled `tools`, so without it a second Tool node is bound but unreachable. It's
+    left empty for the single-node case, where `tools` is already unambiguous."""
     if not has_node("tool"):
-        return {}
+        return {}, {}
     tool_cls = get_node("tool")
     schemas_by_tool: dict[str, list[dict]] = {
         n.id: tool_cls.bind_schemas(tool_cls.config_model.model_validate(n.config))
@@ -73,10 +79,22 @@ def _tools_bound_to(spec: GraphSpec) -> dict[str, list[dict]]:
         if n.type == "tool"
     }
     bound: dict[str, list[dict]] = {}
+    tool_targets: dict[str, list[str]] = {}
     for e in spec.edges:
         if e.target in schemas_by_tool:
             bound.setdefault(e.source, []).extend(schemas_by_tool[e.target])
-    return bound
+            tool_targets.setdefault(e.source, []).append(e.target)
+    owners = {
+        source: {
+            schema["name"]: tool_id
+            for tool_id in targets
+            for schema in schemas_by_tool[tool_id]
+            if schema.get("name")
+        }
+        for source, targets in tool_targets.items()
+        if len(targets) > 1
+    }
+    return bound, owners
 
 
 class CompileError(Exception):
@@ -106,14 +124,18 @@ def compile_graph(
     state_type = build_state_type(graph_channels(spec.nodes, spec.state))
     builder = StateGraph(state_type)
 
-    bound_tools = _tools_bound_to(spec)
+    bound_tools, tool_owners = _tools_bound_to(spec)
 
     compiled: dict[str, tuple] = {}
     for node in spec.nodes:
         node_cls = get_node(node.type)
         cfg = node_cls.config_model.model_validate(node.config)
         # Inject the node's bound tools (if any) so it binds + routes like the generated code.
-        node_ctx = replace(ctx, tools=bound_tools[node.id]) if node.id in bound_tools else ctx
+        node_ctx = (
+            replace(ctx, tools=bound_tools[node.id], tool_owners=tool_owners.get(node.id))
+            if node.id in bound_tools
+            else ctx
+        )
         compiled[node.id] = (node_cls, cfg, node_ctx)
         builder.add_node(node.id, _with_node_id(node.id, node_cls.compile(cfg, node_ctx)))
 
@@ -131,6 +153,12 @@ def compile_graph(
         path_map = {
             e.condition: e.target for e in spec.edges if e.source == node.id and e.condition
         }
+        # Several Tool nodes on one agent all share the `tools` condition, so the dict above
+        # keeps only the last of them. The router returns owning node *ids* in that case
+        # (see `AgentNode.routing`), so add an identity entry per Tool node to make each one
+        # reachable — `tools` stays in the map as the fallback branch.
+        for tool_id in tool_owners.get(node.id, {}).values():
+            path_map[tool_id] = tool_id
         builder.add_conditional_edges(node.id, path_fn, path_map)
 
     for edge in spec.edges:

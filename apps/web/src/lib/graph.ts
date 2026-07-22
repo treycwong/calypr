@@ -47,10 +47,10 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
 };
 
 // 3rd-party tool providers a Tool node can run or generate. `demo_search` is deterministic
-// and key-free; `tavily` is code-gen only for now (runs in the generated code with a key).
+// and key-free; `tavily` runs live on the workspace's Tavily key (Settings → API Keys).
 export const TOOL_PROVIDER_OPTIONS = [
   { value: "demo_search", label: "Demo search (no key, deterministic)" },
-  { value: "tavily", label: "Tavily · web search (code-gen)" },
+  { value: "tavily", label: "Tavily · web search" },
   { value: "mcp", label: "MCP server (HTTP)" },
   { value: "images_unsplash", label: "Unsplash · image search" },
   { value: "generic_http", label: "HTTP · any public GET API" },

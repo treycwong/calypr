@@ -320,15 +320,32 @@ class AgentNode(BaseNode):
         `ctx.tools is None` means the agent has no wired Tool node at all → plain node. An
         empty list means it *is* wired to a Tool node that currently exposes zero tools (e.g.
         an unconfigured MCP server) — still install the router so it routes `respond` and
-        terminates, rather than letting the ReAct edges collapse into an infinite loop."""
+        terminates, rather than letting the ReAct edges collapse into an infinite loop.
+
+        With *several* Tool nodes wired (say Notion and web search), `tools` is ambiguous —
+        every such edge carries the same branch name, so a single `tools` branch can only ever
+        reach one of them while the agent binds all of their tools. `ctx.tool_owners` resolves
+        the call by name to its owning node id instead, and a turn that calls tools from two
+        different nodes fans out to both (each Tool node answers only its own calls)."""
         if ctx.tools is None:
             return None
         out = cfg.output_channel
+        owners = ctx.tool_owners
 
-        def _route(state: dict[str, Any]) -> str:
+        def _route(state: dict[str, Any]) -> str | list[str]:
             messages = state.get(out) or []
             last = messages[-1] if messages else None
-            return "tools" if getattr(last, "tool_calls", None) else "respond"
+            calls = getattr(last, "tool_calls", None)
+            if not calls:
+                return "respond"
+            if not owners:
+                return "tools"
+            # dict.fromkeys: dedupe (two calls to one node visit it once) but keep order, so
+            # the branch taken is stable for a given turn rather than set-iteration order.
+            targets = list(dict.fromkeys(o for c in calls if (o := owners.get(c.get("name")))))
+            if not targets:
+                return "tools"  # unknown tool name — let the wired node explain itself
+            return targets if len(targets) > 1 else targets[0]
 
         return _route
 

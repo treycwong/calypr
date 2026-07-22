@@ -79,15 +79,14 @@ async def test_react_loop_runs_the_tool_and_terminates():
     assert any("demo results" in c for c in contents)
 
 
-async def test_codegen_only_tool_answers_each_call_instead_of_crashing():
-    # A codegen-only provider (tavily) must answer the agent's tool call with a ToolMessage,
-    # not raise — raising leaves a dangling tool_call that poisons the next OpenAI turn.
+async def test_unrunnable_tool_answers_each_call_instead_of_crashing():
+    # A Tool node with nothing to execute (here: an MCP node with no server configured) must
+    # answer the agent's tool call with a ToolMessage, not raise — raising leaves a dangling
+    # tool_call that poisons the next OpenAI turn.
     graph = _react_graph().model_copy(
         update={
             "nodes": [
-                n.model_copy(update={"config": {"provider": "tavily"}})
-                if n.id == "tools"
-                else n
+                n.model_copy(update={"config": {"provider": "mcp"}}) if n.id == "tools" else n
                 for n in _react_graph().nodes
             ]
         }
@@ -97,7 +96,7 @@ async def test_codegen_only_tool_answers_each_call_instead_of_crashing():
 
     assert result["output"] == "Calypr is a no-code agent builder."  # the agent still answered
     contents = [getattr(m, "content", "") for m in result["messages"]]
-    assert any("codegen-only" in c for c in contents)  # the tool explained itself, gracefully
+    assert any("could not run" in c for c in contents)  # the tool explained itself, gracefully
 
 
 def test_react_codegen_is_canonical_and_ruff_clean():
@@ -118,3 +117,104 @@ def test_react_codegen_is_canonical_and_ruff_clean():
         text=True,
     )
     assert check.returncode == 0, check.stdout
+
+
+# ── Several Tool nodes on one agent ───────────────────────────────────────────────────────
+# Binding has always unioned across every wired Tool node, so the model can pick freely. These
+# cover the other half — that the *dispatch* reaches the node owning the tool it picked. Each
+# ReAct edge is labelled `tools`, so the branch map used to collapse to whichever Tool node was
+# declared last, leaving the others bound but unreachable.
+
+
+class _CallsThenAnswers:
+    """Calls the named tools on the first turn (all in one message), then answers."""
+
+    def __init__(self, *names: str) -> None:
+        self.names = names
+        self.calls = 0
+        self.tools_seen: list[list[dict]] = []
+
+    async def stream(self, *, model, messages, system="", tools=None, **_):
+        self.calls += 1
+        self.tools_seen.append(tools or [])
+        if self.calls == 1:
+            tcs = [
+                ToolCall(id=f"c{i}", name=n, args={"query": "q"})
+                for i, n in enumerate(self.names)
+            ]
+            for tc in tcs:
+                yield tc
+            yield Done(text="", tool_calls=tcs)
+        else:
+            yield Done(text="done.", tool_calls=[])
+
+
+def _two_tool_graph() -> GraphSpec:
+    """The shape the AI assistant generates for "search the web AND read my Notion": one agent,
+    two Tool nodes, both wired with a `tools` branch."""
+    base = _react_graph()
+    nodes = [n for n in base.nodes if n.id != "tools"]
+    nodes.append(NodeSpec(id="search", type="tool", config={"provider": "demo_search"}))
+    nodes.append(
+        NodeSpec(
+            id="photos", type="tool", config={"provider": "images_unsplash"}
+        )  # keyless → deterministic stub, no network
+    )
+    return base.model_copy(
+        update={
+            "nodes": nodes,
+            "edges": [
+                EdgeSpec(id="e1", source="in", target="agent"),
+                EdgeSpec(id="e2", source="agent", target="search", condition="tools"),
+                EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+                EdgeSpec(id="e4", source="search", target="agent"),
+                EdgeSpec(id="e5", source="agent", target="photos", condition="tools"),
+                EdgeSpec(id="e6", source="photos", target="agent"),
+            ],
+        }
+    )
+
+
+def _tool_messages(result) -> dict[str, str]:
+    return {
+        m.name: str(m.content)
+        for m in result["messages"]
+        if m.__class__.__name__ == "ToolMessage"
+    }
+
+
+async def test_agent_binds_every_wired_tool_node():
+    fake = _CallsThenAnswers("web_search")
+    await run(_two_tool_graph(), NodeContext(model=fake), "hi")
+    assert sorted(t["name"] for t in fake.tools_seen[0]) == ["search_images", "web_search"]
+
+
+async def test_call_reaches_the_tool_node_that_owns_it():
+    # `search` is declared *before* `photos`, so a collapsed branch map would send this to
+    # `photos` and the demo search would never run.
+    fake = _CallsThenAnswers("web_search")
+    msgs = _tool_messages(await run(_two_tool_graph(), NodeContext(model=fake), "hi"))
+    assert "demo results" in msgs["web_search"]
+    assert "search_images" not in msgs  # the sibling stayed out of it
+
+
+async def test_call_reaches_the_later_declared_tool_node_too():
+    fake = _CallsThenAnswers("search_images")
+    msgs = _tool_messages(await run(_two_tool_graph(), NodeContext(model=fake), "hi"))
+    assert "unsplash.com" in msgs["search_images"]
+    assert "web_search" not in msgs
+
+
+async def test_one_turn_calling_both_nodes_fans_out_and_answers_each_call_once():
+    # The dangling-tool_call hazard: every id the assistant asked for must come back exactly
+    # once, or the next OpenAI turn is poisoned.
+    fake = _CallsThenAnswers("web_search", "search_images")
+    result = await run(_two_tool_graph(), NodeContext(model=fake), "hi")
+    tool_msgs = [m for m in result["messages"] if m.__class__.__name__ == "ToolMessage"]
+    assert sorted(m.tool_call_id for m in tool_msgs) == ["c0", "c1"]
+    # Answered *once each and for real*: before the fix both ids came back too, but one of them
+    # carried "is not a valid tool" from the node that didn't own it.
+    msgs = _tool_messages(result)
+    assert "demo results" in msgs["web_search"]
+    assert "unsplash.com" in msgs["search_images"]
+    assert result["output"] == "done."

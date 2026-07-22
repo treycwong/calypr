@@ -90,6 +90,86 @@ def test_unsplash_network_failure_is_explained_not_raised(monkeypatch):
     assert "network error" in _invoke(tool_spec("images_unsplash", api_key="k"), query="x")
 
 
+# ── Tavily ────────────────────────────────────────────────────────────────────────────────
+# Note the deliberate asymmetry with Unsplash: a keyless Tavily says so plainly instead of
+# serving stub results. Placeholder photos are harmless; placeholder *search results* would be
+# fabricated facts the agent relays as real.
+
+_RESULTS = {
+    "results": [
+        {
+            "title": "Gordon Ryan wins again",
+            "url": "https://example.test/adcc",
+            "content": "He submitted the field.",
+        }
+    ]
+}
+
+
+def test_tavily_without_key_refuses_instead_of_inventing_results():
+    out = _invoke(tool_spec("tavily"), query="latest bjj news")
+    assert "no Tavily API key" in out
+    assert "Settings → API Keys" in out
+    assert "Do not invent results." in out
+
+
+def test_tavily_with_key_posts_and_formats_results(monkeypatch):
+    def fake_post(url, **kwargs):
+        assert url == "https://api.tavily.com/search"
+        assert kwargs["json"] == {"query": "latest bjj news", "max_results": 2}
+        assert kwargs["headers"]["Authorization"] == "Bearer tvly-123"
+        return httpx.Response(200, json=_RESULTS, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", fake_post)
+    out = _invoke(tool_spec("tavily", api_key="tvly-123", max_results=2), query="latest bjj news")
+    assert out == "Gordon Ryan wins again — https://example.test/adcc\nHe submitted the field."
+
+
+def test_tavily_key_is_never_baked_into_the_bind_schema():
+    # The schema goes to the model provider verbatim — a key leaking in would ship to OpenAI.
+    spec = tool_spec("tavily", api_key="tvly-secret")
+    assert spec.bind_schema["name"] == "web_search"  # same name as demo_search: swapping the
+    assert "tvly-secret" not in str(spec.bind_schema)  # provider must not rename the tool
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (401, "rejected the API key"),
+        (429, "Rate-limited"),
+        (432, "plan limit"),
+        (500, "HTTP 500"),
+    ],
+)
+def test_tavily_errors_are_explained_not_raised(monkeypatch, status: int, expected: str):
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda url, **kw: httpx.Response(status, request=httpx.Request("POST", url)),
+    )
+    assert expected in _invoke(tool_spec("tavily", api_key="k"), query="x")
+
+
+def test_tavily_network_failure_is_explained_not_raised(monkeypatch):
+    def boom(url, **kwargs):
+        raise httpx.ConnectError("no route")
+
+    monkeypatch.setattr(httpx, "post", boom)
+    assert "network error" in _invoke(tool_spec("tavily", api_key="k"), query="x")
+
+
+def test_tavily_empty_results_do_not_look_like_a_failure(monkeypatch):
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda url, **kw: httpx.Response(
+            200, json={"results": []}, request=httpx.Request("POST", url)
+        ),
+    )
+    out = _invoke(tool_spec("tavily", api_key="k"), query="x")
+    assert out == "No web results matched that search."
+
+
 # ── generic_http ──────────────────────────────────────────────────────────────────────────
 
 
@@ -218,6 +298,18 @@ async def test_agent_searches_images_through_the_react_loop():
     assert tool_msgs, "expected a search_images ToolMessage in the transcript"
     assert "unsplash.com" in str(tool_msgs[0].content)
     assert result["output"] == "Here's the best match."
+
+
+@pytest.mark.skipif(
+    not os.environ.get("TAVILY_API_KEY"), reason="no TAVILY_API_KEY — offline dev"
+)
+def test_live_tavily_search():
+    out = _invoke(
+        tool_spec("tavily", api_key=os.environ["TAVILY_API_KEY"], max_results=2),
+        query="latest brazilian jiu-jitsu news",
+    )
+    assert "http" in out  # real result lines carry URLs
+    assert "unavailable" not in out
 
 
 @pytest.mark.skipif(
