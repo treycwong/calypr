@@ -5,6 +5,50 @@ context. The visual canvas → LangGraph compile → ownable-Python round-trip i
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
 production** and the **RAG ingestion** next pass.
 
+## 🟢 Tavily live + multi-Tool-node dispatch — DONE (2026-07-22), merged to main (PR #41, `4a7ae75`)
+
+Surfaced by the user wiring Notion (MCP) + Tavily to one agent and getting "I can't access the
+web/Notion" from a model that had (unknowingly) been given zero tools. Four bugs, all found while
+chasing that one report; each is independently gated by a test that fails when its fix is
+reverted. **User-confirmed working end-to-end in production** (Tavily + Notion together, one
+agent) — the strongest kind of proof this file has for a Tools-node change.
+
+- [x] **Tavily now executes on the canvas** (`packages/nodes/src/calypr_nodes/tools_catalog.py`)
+  — was `runtime=None` (codegen-only); every call came back as a canned "codegen-only" message
+  regardless of a saved key, which the model then relayed as if the integration were broken. Now
+  a real `httpx.post` against Tavily's REST API, same never-raise/never-inline-a-key contract as
+  the Unsplash/generic-HTTP providers. Keyless deliberately does **not** serve stub results the
+  way Unsplash does — placeholder search results would be facts the agent relays as real, so it
+  says plainly that search is unavailable instead. Codegen unchanged (still emits
+  `TavilySearch(...)`), so the round-trip parser's recognizer needed no changes.
+- [x] **An agent wired to >1 Tool node could only reach one of them** (`agent.py`, `tool.py`,
+  `compile.py`) — binding already unioned across every wired Tool node (the model could always
+  *choose* between Notion and Tavily); dispatch couldn't keep up, because every ReAct edge shares
+  the `tools` condition, so the branch map collapsed to whichever node was declared last. A call
+  routed to the wrong node came back `"web_search is not a valid tool, try one of
+  [search_images]"`. Fixed with `ctx.tool_owners` (call name → owning node id) on the router, plus
+  fan-out + own-calls-only scoping on the Tool node so two nodes called in one turn don't
+  double-answer the same `tool_call_id`. Single-Tool-node graphs are untouched. **Known gap,
+  tracked separately:** generated Python still has this collapse — needs the round-trip parser
+  updated in step (it discriminates Router vs. ReAct by the routing function's name).
+- [x] **A Tool node wired from a Router bound nothing** (`validate.py`) — only
+  Agent/Responder/Revisor consume bound tool schemas; a Tool node hanging off a Router (which is
+  what the AI assistant had generated for "read my Notion workspace") handed its schemas to a
+  node that discards them, so the agent silently got zero tools. `validate_graph` now rejects an
+  unbound Tool node (`tool_node_unbound`) — the assistant repairs against this same validator, so
+  it self-corrects rather than shipping the broken shape.
+- [x] **The assistant had never seen a Tool node wired correctly** (`services/assistant/.../
+  prompt.py`) — not one of its six few-shots contained a Tool node, so on "read my Notion
+  workspace" it reached for the one control-flow shape it *had* seen (a Router branch) and
+  produced exactly the broken topology above. Added `notion_assistant()` as a worked ReAct
+  few-shot, plus a hard rule for the multi-tool case (one Tool node per provider, each wired
+  straight to the agent, no router needed to choose between them).
+- [x] **LLM Router leaked its branch decision into the transcript** (`router.py`) — found while
+  testing the above, unrelated to tools. `collect_text`'s streaming defaulted on, so the
+  classifier's reply (a branch name like `"respond"`) streamed to the playground and landed glued
+  to the end of the actual answer (`"...ask!respond"`). `stream=False` on that one call; reverting
+  it reproduces as a doubled/glued reply in the test.
+
 ## 🟢 MCP tool node + credential vault + connectors + BYO keys — DONE (2026-07-20), merged to main (PR #27, `8a79e0e`)
 
 Universal MCP support for the Tools node, plus the credential-vault subsystem it needed
@@ -57,13 +101,15 @@ still fails independently (pre-existing infra issue above, not code).
     `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`; register the redirect URI
     `https://calypr.co/api/connectors/notion/callback` in the Notion integration.
   - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (full runbook + security posture).
+- [x] **Tavily wired to the vault key** — DONE (2026-07-22, see below): `resolve_tool_keys` now
+  injects a workspace's saved Tavily key into `ToolConfig.api_key` the same way it already did
+  for Unsplash.
 - [ ] **Fast-follows, not started:** stdio transport for MCP (codegen-only, local dev escape
   hatch); egress allowlist toggle per workspace (the SSRF guard is a blanket private-range block,
   not configurable); token refresh/reconnect job for Notion (OAuth refresh tokens expire — no
-  "Reconnect" badge yet); migrate `ToolConfig.api_key` (Tavily's old per-node field) into the
-  Settings API Keys section for consistency; `FORCE ROW LEVEL SECURITY` on `connector_credential`/
-  `provider_key` if the prod DB role turns out to be the table owner (app-level `workspace_id`
-  filters already cover this, so it's belt-and-suspenders, not urgent).
+  "Reconnect" badge yet); `FORCE ROW LEVEL SECURITY` on `connector_credential`/`provider_key` if
+  the prod DB role turns out to be the table owner (app-level `workspace_id` filters already
+  cover this, so it's belt-and-suspenders, not urgent).
 
 ## 🟢 Image + Voice (TTS) + Upload blocks — DONE (2026-07-18), merged + confirmed live in prod
 
@@ -142,10 +188,16 @@ gpt-4o-mini review) after the blob-token incident below was fixed.
 - [ ] **Rotate the Neon prod DB credential** — the pooler `DATABASE_URL` (with password) lives in
   the repo-root `.env` and surfaced in a debug session. Rotate in Neon; confirm `.env` is
   gitignored; update the Railway/Vercel copies on rotation.
-- [ ] **Vercel PREVIEW builds fail** (`Resource provisioning failed`) while **production** builds
-  succeed — a preview-env/account issue, not code (usage is far under limits). PR preview URLs
-  don't build until resolved (ping Vercel support: "prod deploys succeed, previews fail at
-  provisioning"). Not blocking prod shipping — merge → production build works.
+- [x] **Vercel PREVIEW builds fail** — DONE (2026-07-22). Root cause found: Neon (the Postgres
+  Marketplace integration) provisions one database branch per preview deployment and never
+  deletes it when the PR closes; the workspace's plan branch limit was hit around 2026-07-12
+  (first broken preview was PR #10 — a Python-only change, confirming it was never the code).
+  Every failing deployment showed `Builds ╶ . [0ms]` with the real error one layer down, under
+  "Provisioning Integrations": `Branch limit reached. Upgrade your plan or delete unused
+  branches.` Fixed by deleting old preview branches in the Neon console; confirmed with a clean
+  preview deploy (draft PR #42, closed after). **Not yet fixed**: nothing auto-deletes a preview's
+  Neon branch when its PR closes, so the count will climb back up over the next few weeks unless
+  Neon's Vercel integration has an auto-cleanup setting — worth checking before this recurs.
 - [x] **Friendlier run-error surfacing** — DONE (Week 4 PR #12, `a6d76d7`). `run_stream` catches
   `GraphRecursionError` → `RunError` (clean copy); `run_error_message` maps exceptions (RunError →
   verbatim, CompileError → first issue, else → generic) so raw `str(exc)` never reaches clients.
