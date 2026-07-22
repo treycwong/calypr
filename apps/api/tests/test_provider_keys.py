@@ -111,8 +111,16 @@ def test_resolve_tool_keys_injects_the_vault_key(monkeypatch):
 
 @pytest_db
 def test_unsplash_key_round_trips():
-    """Unsplash is a *tool* key rather than a model key, but rides the same vault surface."""
+    """Unsplash is a *tool* key rather than a model key, but rides the same vault surface.
+
+    Skips outright when a key is already on file. This runs against the shared dev workspace,
+    so the PUT below would overwrite a developer's real Unsplash key and the cleanup DELETE
+    would then destroy it — losing data that only exists in the vault. CI starts empty, so
+    coverage is unaffected."""
     ws = uuid.UUID(DEV_WORKSPACE_ID)
+    on_file = {p["provider"]: p["has_key"] for p in client.get("/provider-keys").json()}
+    if on_file.get("unsplash"):
+        pytest.skip("an Unsplash key is on file — refusing to overwrite/delete a real secret")
     try:
         r = client.put("/provider-keys/unsplash", json={"key": "unsplash-secret"})
         assert r.status_code == 200 and r.json() == {"provider": "unsplash", "has_key": True}
