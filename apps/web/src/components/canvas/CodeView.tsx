@@ -245,21 +245,21 @@ export function CodeView({
         />
       ) : locked ? (
         // Paywalled preview. The opening lines are real and readable — imports, the State class
-        // — because a fully obscured blob proves nothing about the quality we're selling. Below
-        // them the text fades out under a gradient, and the CTA sits on top. The tail isn't in
-        // the DOM to un-blur: the server never sent it.
+        // — because a fully obscured blob proves nothing about the quality we're selling. The
+        // last of them dissolve into the CTA below. Nothing here is a client-side trick: the
+        // tail isn't in the DOM to reveal, because the server never sent it.
         <div className="flex flex-1 flex-col overflow-hidden bg-card">
-          <div className="relative shrink-0">
-            <pre
-              className="overflow-x-auto p-3 pb-8 font-mono text-xs leading-relaxed"
-              data-testid="code-output"
-            >
-              {error ? error : code}
-            </pre>
-            {/* Fade the last lines out so the cut reads as "the file continues", not "the file
-                ends here" — the point is that there's more, and it's worth paying for. */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card via-card/90 to-transparent" />
-          </div>
+          {/* The fade is a *mask on the text*, not a gradient rectangle laid over it. An overlay
+              has to end somewhere, and that edge is visible as a band across the code — worse on
+              a dark theme, where it also tinted the caption underneath. Masking dissolves the
+              glyphs themselves: no edge, nothing overlapping the CTA, and it can't be defeated
+              by selecting the text, because the tail was never sent. */}
+          <pre
+            className="shrink-0 overflow-x-auto p-3 pb-6 font-mono text-xs leading-relaxed [mask-image:linear-gradient(to_bottom,black_calc(100%-4rem),transparent)] [-webkit-mask-image:linear-gradient(to_bottom,black_calc(100%-4rem),transparent)]"
+            data-testid="code-output"
+          >
+            {error ? error : code}
+          </pre>
           <div
             className="flex flex-col items-center gap-2 px-4 pb-5 text-center"
             data-testid="code-locked"
