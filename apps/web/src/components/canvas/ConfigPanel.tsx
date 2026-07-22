@@ -363,6 +363,59 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
             />
           </Field>
         </>
+      ) : provider === "images_unsplash" ? (
+        <>
+          <MaxResultsField config={config} set={set} />
+          <p className="text-xs text-muted-foreground">
+            Add an Unsplash key in Settings → API Keys for live photos. Without one the tool
+            returns placeholder results so the canvas still runs.
+          </p>
+        </>
+      ) : provider === "generic_http" ? (
+        <>
+          <Field id="cfg-http-url" label="URL (GET)">
+            <Input
+              id="cfg-http-url"
+              data-testid="cfg-http-url"
+              type="url"
+              placeholder="https://api.example.com/search"
+              value={String(config.http_url ?? "")}
+              onChange={(e) => set({ http_url: e.target.value })}
+            />
+          </Field>
+          <Field id="cfg-http-params" label="Query params (k=v per line, {query} = the agent's input)">
+            <Input
+              id="cfg-http-params"
+              data-testid="cfg-http-params"
+              type="text"
+              placeholder="q={query}, limit=5"
+              value={Object.entries((config.http_params ?? {}) as Record<string, string>)
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ")}
+              onChange={(e) =>
+                set({
+                  http_params: Object.fromEntries(
+                    e.target.value
+                      .split(",")
+                      .map((pair) => pair.split("="))
+                      .filter((kv) => kv.length === 2)
+                      .map(([k, v]) => [k.trim(), v.trim()]),
+                  ),
+                })
+              }
+            />
+          </Field>
+          <Field id="cfg-jsonpath" label="Response path (dotted, blank = whole response)">
+            <Input
+              id="cfg-jsonpath"
+              data-testid="cfg-jsonpath"
+              type="text"
+              placeholder="e.g. results.0.name"
+              value={String(config.jsonpath ?? "")}
+              onChange={(e) => set({ jsonpath: e.target.value })}
+            />
+          </Field>
+        </>
       ) : (
         <>
           <Field id="cfg-api-key" label="API key">
@@ -375,18 +428,24 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
               onChange={(e) => set({ api_key: e.target.value })}
             />
           </Field>
-          <Field id="cfg-max-results" label="Max results">
-            <Input
-              id="cfg-max-results"
-              type="number"
-              min={1}
-              value={Number(config.max_results ?? 3)}
-              onChange={(e) => set({ max_results: Number(e.target.value) })}
-            />
-          </Field>
+          <MaxResultsField config={config} set={set} />
         </>
       )}
     </>
+  );
+}
+
+function MaxResultsField({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <Field id="cfg-max-results" label="Max results">
+      <Input
+        id="cfg-max-results"
+        type="number"
+        min={1}
+        value={Number(config.max_results ?? 3)}
+        onChange={(e) => set({ max_results: Number(e.target.value) })}
+      />
+    </Field>
   );
 }
 

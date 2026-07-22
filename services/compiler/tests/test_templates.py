@@ -43,6 +43,7 @@ def test_use_case_templates_present():
         "tpl-label-reader",
         "tpl-alt-text",
         "tpl-notion-assistant",
+        "tpl-image-finder",
     ]
 
 
@@ -77,9 +78,7 @@ async def test_starter_runs_with_fake_model(graph):
 @pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
 def test_starter_codegen_is_ruff_clean(graph):
     code = generate_python(graph)
-    fmt = subprocess.run(
-        ["ruff", "format", "-"], input=code, capture_output=True, text=True
-    )
+    fmt = subprocess.run(["ruff", "format", "-"], input=code, capture_output=True, text=True)
     assert fmt.stdout == code, f"{graph.id} codegen is not ruff-formatted"
     check = subprocess.run(
         ["ruff", "check", "--stdin-filename", "generated.py", "-"],

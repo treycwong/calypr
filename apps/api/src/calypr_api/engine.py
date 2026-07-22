@@ -16,9 +16,7 @@ from calypr_api.provider_keys import resolve_model_keys
 checkpointer = InMemorySaver()
 
 
-def context_for(
-    graph: GraphSpec, workspace_id: uuid.UUID | None = None
-) -> NodeContext:
+def context_for(graph: GraphSpec, workspace_id: uuid.UUID | None = None) -> NodeContext:
     """Build the run context. Each LLM node still resolves its *own* provider from its `model`
     id (so a Reflexion graph's Responder/Revisor use their configured models). When a workspace
     is given, its BYO provider keys are resolved from the vault and carried on the context so

@@ -9,9 +9,11 @@ canvas, tests, and keyless playground stay deterministic; `tavily` is codegen-on
 from __future__ import annotations
 
 import asyncio
+import json
 import threading
 from dataclasses import dataclass, field
 
+import httpx
 from langchain_core.tools import BaseTool, tool
 from langchain_core.utils.function_calling import convert_to_openai_function
 
@@ -26,6 +28,174 @@ _DEMO_DEF = '''@tool
 def web_search(query: str) -> str:
     """Search the web for `query` and return a short result snippet."""
     return f"[demo results for {query!r}]"'''
+
+
+# ── HTTP providers ────────────────────────────────────────────────────────────────────────
+# API access as a *tool*: the agent decides when to call and judges the results (the ReAct
+# shape), rather than a node fetching deterministically. Both providers execute on the canvas.
+#
+# Two rules hold for every HTTP tool here:
+#   1. **Never raise.** A raised exception leaves the assistant's `tool_calls` unanswered and
+#      corrupts the thread for the next turn (same reasoning as `tool.py`'s codegen-only note).
+#      Failures come back as a sentence the agent can relay.
+#   2. **Never inline a key.** The runtime takes it as an argument (vault-injected server-side);
+#      the generated code reads `os.environ`.
+
+_MAX_TOOL_CHARS = 4000  # keep a single tool result from swamping the context window
+
+UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos"
+
+
+def _truncate(text: str) -> str:
+    return text[:_MAX_TOOL_CHARS]
+
+
+def _format_unsplash(payload: dict) -> str:
+    """Agent-shaped photo lines, not 4 KB of JSON — description, URL, photographer."""
+    results = payload.get("results") or []
+    if not results:
+        return "No photos matched that search."
+    lines = []
+    for photo in results:
+        desc = photo.get("description") or photo.get("alt_description") or "untitled"
+        url = (photo.get("urls") or {}).get("regular", "")
+        who = ((photo.get("user") or {}).get("name")) or "unknown"
+        lines.append(f"{desc} — {url} (by {who})")
+    return _truncate("\n".join(lines))
+
+
+_UNSPLASH_STUB = (
+    "[demo mode — no Unsplash key on file, so these are placeholder results]\n"
+    "a foggy pine forest at dawn — https://images.unsplash.com/demo-1 (by Demo Photographer)\n"
+    "sunlight through tall trees — https://images.unsplash.com/demo-2 (by Demo Photographer)\n"
+    "a quiet woodland path — https://images.unsplash.com/demo-3 (by Demo Photographer)"
+)
+
+
+def _unsplash_tool(api_key: str, max_results: int) -> BaseTool:
+    """The Unsplash search tool. Without a key it returns deterministic stub results, so the
+    canvas, CI, and E2E run with zero setup — exactly like `demo_search`."""
+
+    @tool
+    def search_images(query: str) -> str:
+        """Search Unsplash for photos matching `query`. Returns one line per photo:
+        description, image URL, and photographer."""
+        if not api_key:
+            return _UNSPLASH_STUB
+        try:
+            r = httpx.get(
+                UNSPLASH_SEARCH_URL,
+                params={"query": query, "per_page": max_results},
+                headers={"Authorization": f"Client-ID {api_key}"},
+                timeout=10,
+            )
+        except httpx.HTTPError:
+            return "Could not reach Unsplash (network error) — try again in a moment."
+        if r.status_code == 401:
+            return "Unsplash rejected the API key — check it in Settings → API Keys."
+        if r.status_code == 403:
+            return "Rate-limited by Unsplash (free tier is 50 requests/hour) — try again later."
+        if r.status_code >= 400:
+            return f"Unsplash returned an error (HTTP {r.status_code})."
+        try:
+            return _format_unsplash(r.json())
+        except ValueError:
+            return "Unsplash returned a response that could not be read."
+
+    return search_images
+
+
+_UNSPLASH_DEFS = [
+    "_UNSPLASH_RESULTS = {max_results}",
+    '''@tool
+def search_images(query: str) -> str:
+    """Search Unsplash for photos matching `query`. Returns one line per photo:
+    description, image URL, and photographer."""
+    r = httpx.get(
+        "https://api.unsplash.com/search/photos",
+        params={"query": query, "per_page": _UNSPLASH_RESULTS},
+        headers={"Authorization": f"Client-ID {os.environ['UNSPLASH_ACCESS_KEY']}"},
+        timeout=10,
+    )
+    r.raise_for_status()
+    lines = []
+    for photo in r.json().get("results", []):
+        desc = photo.get("description") or photo.get("alt_description") or "untitled"
+        url = photo.get("urls", {}).get("regular", "")
+        who = photo.get("user", {}).get("name", "unknown")
+        lines.append(f"{desc} — {url} (by {who})")
+    return "\\n".join(lines)[:4000] or "No photos matched that search."''',
+]
+
+
+def _dig(payload, path: str):
+    """Follow a dotted path (`a.b.0.c`) into parsed JSON; None when it doesn't resolve. A
+    deliberately tiny stand-in for a JSONPath dependency — enough for the long-tail GET APIs
+    `generic_http` targets."""
+    cur = payload
+    for part in path.split("."):
+        if isinstance(cur, list) and part.isdigit():
+            idx = int(part)
+            cur = cur[idx] if idx < len(cur) else None
+        elif isinstance(cur, dict):
+            cur = cur.get(part)
+        else:
+            return None
+        if cur is None:
+            return None
+    return cur
+
+
+def _http_tool(url: str, params: dict[str, str], jsonpath: str) -> BaseTool:
+    """A GET against a fixed URL, with `{query}` in any param value filled from the agent's
+    argument. Same never-raise contract as the Unsplash tool."""
+
+    @tool
+    def fetch(query: str) -> str:
+        """Fetch live data from the configured API for `query` and return the result."""
+        if not url:
+            return "No URL is configured on this HTTP tool — set one in the node's config."
+        try:
+            r = httpx.get(
+                url,
+                params={k: v.replace("{query}", query) for k, v in params.items()},
+                timeout=10,
+            )
+        except httpx.HTTPError:
+            return "Could not reach the API (network error) — try again in a moment."
+        if r.status_code >= 400:
+            return f"The API returned an error (HTTP {r.status_code})."
+        try:
+            payload = r.json()
+        except ValueError:
+            return _truncate(r.text)
+        if jsonpath:
+            payload = _dig(payload, jsonpath)
+            if payload is None:
+                return f"The response had nothing at {jsonpath!r}."
+        return _truncate(json.dumps(payload))
+
+    return fetch
+
+
+_HTTP_DEFS = [
+    "_HTTP_URL = {url!r}",
+    "_HTTP_PARAMS = {params!r}",
+    "_HTTP_JSONPATH = {jsonpath!r}",
+    '''@tool
+def fetch(query: str) -> str:
+    """Fetch live data from the configured API for `query` and return the result."""
+    r = httpx.get(
+        _HTTP_URL,
+        params={k: v.replace("{query}", query) for k, v in _HTTP_PARAMS.items()},
+        timeout=10,
+    )
+    r.raise_for_status()
+    payload = r.json()
+    for part in filter(None, _HTTP_JSONPATH.split(".")):
+        payload = payload[int(part)] if isinstance(payload, list) else payload[part]
+    return json.dumps(payload)[:4000]''',
+]
 
 
 @dataclass
@@ -141,6 +311,10 @@ def tool_spec(
     provider: str,
     *,
     max_results: int = 3,
+    api_key: str = "",
+    http_url: str = "",
+    http_params: dict[str, str] | None = None,
+    jsonpath: str = "",
     mcp_url: str = "",
     mcp_transport: str = "streamable_http",
     mcp_token: str = "",
@@ -175,6 +349,40 @@ def tool_spec(
                 "import asyncio",
                 "import os",
                 "from langchain_mcp_adapters.client import MultiServerMCPClient",
+            ],
+        )
+    if provider == "images_unsplash":
+        runtime = _unsplash_tool(api_key, max_results)
+        return ToolSpec(
+            provider="images_unsplash",
+            runtime=runtime,
+            bind_schema=_schema_of(runtime),
+            code_defs=[_UNSPLASH_DEFS[0].format(max_results=max_results), _UNSPLASH_DEFS[1]],
+            code_ref="search_images",
+            imports=[
+                "import os",
+                "import httpx",
+                "from langchain_core.tools import tool",
+            ],
+        )
+    if provider == "generic_http":
+        params = http_params or {}
+        runtime = _http_tool(http_url, params, jsonpath)
+        return ToolSpec(
+            provider="generic_http",
+            runtime=runtime,
+            bind_schema=_schema_of(runtime),
+            code_defs=[
+                _HTTP_DEFS[0].format(url=http_url),
+                _HTTP_DEFS[1].format(params=params),
+                _HTTP_DEFS[2].format(jsonpath=jsonpath),
+                _HTTP_DEFS[3],
+            ],
+            code_ref="fetch",
+            imports=[
+                "import json",
+                "import httpx",
+                "from langchain_core.tools import tool",
             ],
         )
     if provider == "tavily":

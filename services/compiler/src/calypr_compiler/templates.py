@@ -74,9 +74,7 @@ def _knowledge(node_id: str = "knowledge") -> NodeSpec:
     """A Knowledge (RAG) node: retrieve the top chunks for the latest query into `context`.
     Defaults to the `pgvector` source (your own Postgres + a collection); switch to the keyless
     `demo` source to retrieve deterministically on the canvas without a database."""
-    return NodeSpec(
-        id=node_id, type="retriever", config={"source": "pgvector", "top_k": 4}
-    )
+    return NodeSpec(id=node_id, type="retriever", config={"source": "pgvector", "top_k": 4})
 
 
 def _chain(*node_ids: str) -> list[EdgeSpec]:
@@ -214,6 +212,44 @@ def react() -> GraphSpec:
                 ),
             ),
             NodeSpec(id="tools", type="tool", config={"provider": "demo_search"}),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
+        ],
+        entry="in",
+    )
+
+
+def image_finder() -> GraphSpec:
+    """ReAct over the Unsplash API: the agent picks the search terms, reads the results, and
+    chooses the best photo. Runs on the canvas with no setup — the Tool node returns
+    deterministic stub photos until an Unsplash key is saved in Settings → API Keys."""
+    return GraphSpec(
+        id="tpl-image-finder",
+        name="Image Finder",
+        description="Ask for an image; the agent searches Unsplash and picks the best match. "
+        "Add an Unsplash key in Settings for live results.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You help people find images. Use the search_images tool to search "
+                    "Unsplash — choose good search terms yourself rather than passing the "
+                    "request through verbatim. Then pick the single best match, give its "
+                    "URL, and say in one sentence why it fits."
+                ),
+            ),
+            NodeSpec(
+                id="tools",
+                type="tool",
+                config={"provider": "images_unsplash", "max_results": 5},
+            ),
             _output(),
         ],
         edges=[
@@ -739,6 +775,7 @@ TEMPLATES: list[GraphSpec] = [
     label_reader(),
     alt_text(),
     notion_assistant(),
+    image_finder(),
 ]
 
 # Everything the canvas gallery offers.

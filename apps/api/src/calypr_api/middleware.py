@@ -22,13 +22,11 @@ class PostHogMiddleware:
         headers = {k.lower(): v for k, v in scope.get("headers", [])}
 
         distinct_id: str | None = (
-            headers.get(b"x-posthog-distinct-id", b"").decode("utf-8") or
-            headers.get(b"x-calypr-user-id", b"").decode("utf-8") or
-            None
+            headers.get(b"x-posthog-distinct-id", b"").decode("utf-8")
+            or headers.get(b"x-calypr-user-id", b"").decode("utf-8")
+            or None
         )
-        session_id: str | None = (
-            headers.get(b"x-posthog-session-id", b"").decode("utf-8") or None
-        )
+        session_id: str | None = headers.get(b"x-posthog-session-id", b"").decode("utf-8") or None
 
         with new_context():
             if distinct_id:

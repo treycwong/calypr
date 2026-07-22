@@ -49,9 +49,7 @@ def _sse(payload: dict) -> str:
 def _agent_name(token: str) -> str | None:
     """The shared agent's name, or None if the token is unknown/revoked. Never the spec."""
     with SessionLocal() as session:
-        return session.execute(
-            text("SELECT share_agent_name(:t)"), {"t": token}
-        ).scalar()
+        return session.execute(text("SELECT share_agent_name(:t)"), {"t": token}).scalar()
 
 
 def _claim(token: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, dict | None]:
@@ -59,9 +57,7 @@ def _claim(token: str) -> tuple[str, uuid.UUID | None, uuid.UUID | None, dict | 
     (status, workspace_id, agent_id, graph_spec). Only status='ok' carries the spec."""
     with SessionLocal() as session:
         row = session.execute(
-            text(
-                "SELECT status, workspace_id, agent_id, graph_spec FROM claim_share_run(:t)"
-            ),
+            text("SELECT status, workspace_id, agent_id, graph_spec FROM claim_share_run(:t)"),
             {"t": token},
         ).one()
         session.commit()  # the UPDATE inside claim_share_run must persist the incremented count

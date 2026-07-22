@@ -86,9 +86,7 @@ def create_app() -> FastAPI:
         checkpointer the lifespan installed — `postgres` (durable) vs `memory` (fallback) —
         so durable-vs-fallback is queryable in prod instead of buried in an INFO log."""
         checkpointer = (
-            "memory"
-            if isinstance(engine_mod.checkpointer, InMemorySaver)
-            else "postgres"
+            "memory" if isinstance(engine_mod.checkpointer, InMemorySaver) else "postgres"
         )
         try:
             with engine.connect() as conn:

@@ -24,18 +24,13 @@ pytestmark = pytest.mark.skipif(not _db_available(), reason="Postgres not availa
 
 def test_pgvector_extension_installed():
     with engine.connect() as conn:
-        ext = conn.execute(
-            text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")
-        ).scalar()
+        ext = conn.execute(text("SELECT 1 FROM pg_extension WHERE extname = 'vector'")).scalar()
         assert ext == 1
 
 
 def test_workspace_table_and_rls():
     with engine.connect() as conn:
-        assert (
-            conn.execute(text("SELECT to_regclass('public.workspace')")).scalar()
-            == "workspace"
-        )
+        assert conn.execute(text("SELECT to_regclass('public.workspace')")).scalar() == "workspace"
         rls_on = conn.execute(
             text("SELECT relrowsecurity FROM pg_class WHERE relname = 'workspace'")
         ).scalar()
@@ -50,7 +45,5 @@ def test_set_tenant_sets_guc():
     with SessionLocal() as session:
         wid = str(uuid.uuid4())
         set_tenant(session, wid)
-        got = session.execute(
-            text("SELECT current_setting('calypr.workspace_id', true)")
-        ).scalar()
+        got = session.execute(text("SELECT current_setting('calypr.workspace_id', true)")).scalar()
         assert got == wid
