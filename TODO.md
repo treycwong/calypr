@@ -1,5 +1,61 @@
 # Calypr — TODO
 
+## 🔀 PIVOT (2026-07-22): closed product, code export is paid
+
+The lead differentiator is no longer "your graph is yours, here's the Python." The product goes
+**closed**; code export becomes a **paid** feature; the near-term bar is that the **nodes are
+well connected and workable**, then pricing. Consequences, so nothing downstream reads stale:
+
+- **Week-11 OSS launch is cancelled** — `packages/dsl`, `services/codegen`, `services/roundtrip`
+  stay proprietary. `MVP-EXECUTION-PLAN.md` Week 11 and `ROADMAP-6M.md` §Month-3 still describe
+  the Show HN; that was also the planned top-of-funnel, so **acquisition needs a new story**.
+- **The Month-2 gate is retired** (≥50% ceiling-resolution, ≥40% 30-day retention). It measured
+  the open product's thesis — do users who hit the wall drop into code and stay. Not a go/no-go
+  any more; at most a feature metric.
+- **Code export = `plus`** (`has_roundtrip` never graduates), enforced by
+  `deps.require_code_export` on `POST /parse`, not just hidden in the UI. `beta` keeps it.
+- **Deferred, not dropped:** the codegen multi-Tool dispatch collapse (below). It only affects
+  *exported* code, so it moves behind the MVP — but it must be fixed **before any Plus customer
+  exports**, or they get code that behaves differently from their canvas.
+
+### Shipped in the pivot
+
+- [x] **Code export retiered + paywalled** — `require_code_export` (402 `{reason: "plan",
+  feature: "code_export"}`), `/api/parse` proxy forwards `internalHeaders()`, 4 tests incl. the
+  402 and both entitled plans. Enforced only where `CALYPR_INTERNAL_KEY` is set (dev/CI/e2e all
+  resolve to the shared dev workspace, which is `free`).
+- [x] **Wiring matrix** (`services/compiler/tests/test_wiring_matrix.py`) — Input → A → B →
+  Output for all **144 ordered pairs** of node types, configs harvested from the starters so it
+  can't drift. Two invariants: **accepted ⇒ runnable** and **rejected ⇒ actionable** (a code,
+  and a node/edge to highlight). Plus a meta-test that reads the validator's vocabulary out of
+  its own source, so a new rule without a test fails the suite.
+- [x] **Bug found by the matrix + fixed** — `routing_edge_unconditional`. `compile.py` wires a
+  branch-deciding node with `add_conditional_edges` (labelled edges only) and skips it in the
+  plain-edge pass, so an **unlabelled out-edge is discarded, not merely unlabelled**. A Revisor
+  wired straight to Output — the obvious thing to draw — validated clean, ran, and returned
+  `output: None`, with nothing anywhere to explain it.
+- [x] **Few-shot regression suite** (`services/assistant/tests/test_few_shot_graphs.py`) — every
+  prompt example validates, runs, and obeys the rules the prompt states. A bad few-shot doesn't
+  fail, it *teaches* the mistake; that is precisely how PR #41 happened. `_anime_image` and
+  `_spoken_assistant` had no coverage at all before this.
+
+### Still open in the pivot
+
+- [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
+  tab renders to everyone; only edit + Apply is gated. Decide before Plus goes on sale (it
+  doubles as the "no lock-in" reassurance that *sells* the plan). Flagged in `PRICING-SPEC.md` §1.
+- [ ] **2c — config-panel completeness**: every engine-read field editable, invalid values
+  refused before a run is spent, validator codes rendered as actionable copy. NOT STARTED.
+- [ ] **2b — live template smoke in prod** (real models, all `STARTERS`, incl. a two-provider
+  agent). NOT STARTED — costs real API spend, so it needs a deliberate go.
+- [ ] **`PRICING-SPEC.md` reconciliation before Week 9**: no credit rate exists for the Image or
+  TTS nodes; the launch matrix predates BYO frontier models. Migration renumbered to **`0010`**
+  (`0009_assistant_model` is taken); `provider_key`/`workspace.plan` already shipped in 0007/0008.
+- [ ] **`e2e/tests/phase-assistant-model.spec.ts:166` is environment-sensitive** — passes in CI
+  and on a machine with no `.env`, fails identically on unmodified `main` when real provider keys
+  are present (it asserts `.last()`, which becomes a real model answer). Pre-existing, not a
+  regression; needs a stable assertion on the notice itself.
+
 Outstanding work, roughly in priority order. Shipped phases are summarised at the bottom for
 context. The visual canvas → LangGraph compile → ownable-Python round-trip is built through
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
