@@ -53,14 +53,38 @@ so Calypr uses a **public Notion integration** + a **self-hosted** Notion MCP se
    `infra/notion-mcp/` holds a Dockerfile + `railway.json` for this. Deploy it as a **second
    Railway service in the same project** as the API:
 
-   1. New service → same GitHub repo → set its config path to `infra/notion-mcp/railway.json`
-      (or point the service's Dockerfile path at `infra/notion-mcp/Dockerfile`).
-   2. On that service set **`AUTH_TOKEN`** to a long random secret. The image reads it from the
-      environment rather than the command line, so the bearer never sits in a start command or
-      a build log. Generate one with `openssl rand -hex 32`.
-   3. Give it a public domain (or use private networking — see below) and note the URL.
-   4. On the **API** service set `CALYPR_NOTION_MCP_URL=https://<that-domain>/mcp` and
-      `CALYPR_NOTION_MCP_AUTH=<the same AUTH_TOKEN>`.
+   ```bash
+   # 1. an empty service (the Dockerfile is self-contained — it needs no repo files)
+   railway add --service notion-mcp
+
+   # 2. the shared bearer, set on BOTH services in one shot so the value is never echoed
+   TOKEN=$(openssl rand -hex 32)
+   railway variables set "AUTH_TOKEN=$TOKEN" --service notion-mcp --skip-deploys
+   railway variables set "CALYPR_NOTION_MCP_AUTH=$TOKEN" --service calypr-api --skip-deploys
+
+   # 3. pin the port, so the domain's target port can't drift from what the app binds
+   railway variables set "PORT=8080" --service notion-mcp --skip-deploys
+
+   # 4. deploy — from a COPY of infra/notion-mcp/ outside the repo (see gotcha below)
+   cd "$(mktemp -d)" && cp <repo>/infra/notion-mcp/{Dockerfile,railway.json} . \
+     && railway up --service notion-mcp --project <project-id> --environment production --ci
+
+   # 5. a public domain, with an explicit target port
+   railway domain --service notion-mcp --port 8080
+
+   # 6. point the API at it
+   railway variables set "CALYPR_NOTION_MCP_URL=https://<domain>/mcp" --service calypr-api
+   ```
+
+   Two CLI gotchas, both hit during the first real deploy:
+   - **`railway up` uploads from the git root, not the current directory.** Run it inside
+     `infra/notion-mcp/` and it still uploads the whole repo and applies the *root*
+     `railway.json` — which builds `apps/api/Dockerfile`, i.e. the Python API under the wrong
+     service name. Deploy from a copy outside the repo, or connect the service to GitHub in the
+     dashboard and set its **root directory** to `infra/notion-mcp`.
+   - **`railway domain` creates the domain with no target port** (`Target port: -`) and requests
+     then hang. Pass `--port`, or fix it after with
+     `railway domain update <id> --port 8080 --service notion-mcp`.
 
    Three things worth knowing, all verified against `@notionhq/notion-mcp-server@2.4.1`:
 
