@@ -14,7 +14,7 @@ from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
 from calypr_roundtrip import parse_python
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,7 @@ from calypr_api.assistant_models import (
     is_allowed,
 )
 from calypr_api.db.models import Agent, ShareLink, Workspace
-from calypr_api.deps import Tenant, require_code_export, tenant
+from calypr_api.deps import Tenant, may_export_code, require_code_export, tenant
 from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -67,17 +67,33 @@ def compile_spec(graph: GraphSpec) -> CompileResponse:
     return CompileResponse(ok=ok, issues=issues)
 
 
+#: Lines of the generated file an unentitled workspace sees. Enough to reach the `State` class —
+#: real imports, real channel names — because a preview that shows nothing proves nothing: the
+#: pitch is that this code is good, so the reader has to see some of it to want the rest.
+PREVIEW_LINES = 14
+
+
 @router.post("/codegen", response_model=CodegenResponse, tags=["engine"])
-def codegen_spec(graph: GraphSpec) -> CodegenResponse:
-    """The 'code' altitude: render the graph as ownable Python (LangGraph)."""
+def codegen_spec(graph: GraphSpec, request: Request) -> CodegenResponse:
+    """The 'code' altitude: render the graph as ownable Python (LangGraph).
+
+    Entitled workspaces get the whole file; everyone else gets `PREVIEW_LINES` of it and a
+    `truncated` flag the client turns into a blurred tail plus an upgrade prompt. The cut is
+    made **here** rather than in the browser — a CSS blur over the full text is a decoration,
+    not a paywall, since the response sits in the network tab either way."""
     code = generate_python(graph)
+    total_lines = code.count("\n") + 1
+    truncated = not may_export_code(request)
+    if truncated:
+        code = "\n".join(code.split("\n")[:PREVIEW_LINES]) + "\n"
     posthog_client.capture(
         "graph_codegen_requested",
         properties={
             "node_count": len(graph.nodes) if graph.nodes else 0,
+            "truncated": truncated,
         },
     )
-    return CodegenResponse(code=code)
+    return CodegenResponse(code=code, truncated=truncated, total_lines=total_lines)
 
 
 @router.post(

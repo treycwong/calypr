@@ -15,6 +15,10 @@ export type AnalyticsEvent =
   | "parse_applied"
   | "parse_failed"
   | "parse_degraded"
+  // paywall funnel: a free workspace saw the code preview and clicked through to pricing.
+  // Paired with the server's `graph_codegen_requested {truncated: true}`, this is the
+  // conversion rate of the code tab — the reason export is the paid feature at all.
+  | "code_upgrade_clicked"
   // playground runs
   | "run_started"
   | "run_completed"

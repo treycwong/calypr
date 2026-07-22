@@ -358,3 +358,83 @@ def test_parse_serves_an_entitled_workspace(monkeypatch, plan: str):
         with SessionLocal() as s:
             s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
             s.commit()
+
+
+# --- the code preview on /codegen -------------------------------------------------------------
+#
+# `/codegen` always answers — opening a tab should never be an error — so the gate here is how
+# *much* of the file comes back. The cut is server-side: a CSS blur over a full response is a
+# decoration, not a paywall.
+
+
+def _graph() -> dict:
+    return input_agent_output(model="fake").model_dump(mode="json")
+
+
+def test_codegen_returns_the_whole_file_when_no_internal_key_is_set(monkeypatch):
+    monkeypatch.setattr(settings, "internal_key", None)
+    body = client.post("/codegen", json=_graph()).json()
+    assert body["truncated"] is False
+    assert "def build_graph" in body["code"]
+    assert body["code"].count("\n") + 1 == body["total_lines"]
+
+
+@requires_db
+@pytest.mark.parametrize(
+    ("plan", "expect_truncated"),
+    [
+        (entitlements.FREE, True),
+        (entitlements.PLUS, False),
+        (entitlements.BETA, False),
+    ],
+)
+def test_codegen_serves_the_file_only_to_an_entitled_plan(monkeypatch, plan, expect_truncated):
+    """Both outcomes through the same code path, so the truncation is demonstrably driven by
+    the plan column — not by an unresolvable user, which is a different reason to get a
+    preview and would make a free-only test pass for the wrong reason."""
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        ws_id, original, ws.plan = ws.id, ws.plan, plan
+        s.commit()
+    monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
+    try:
+        r = client.post(
+            "/codegen",
+            json=_graph(),
+            headers={"x-calypr-internal-key": "internal-test-key", "x-calypr-user-id": "u"},
+        )
+        body = r.json()
+        assert r.status_code == 200, "opening the Code tab must never error"
+        assert body["truncated"] is expect_truncated
+        if expect_truncated:
+            # The preview is real, readable code — that's what makes it worth upgrading for —
+            # but it must stop before the part being sold.
+            assert "import" in body["code"]
+            assert "def build_graph" not in body["code"]
+            assert body["total_lines"] > body["code"].count("\n")
+        else:
+            assert "def build_graph" in body["code"]
+    finally:
+        with SessionLocal() as s:
+            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
+            s.commit()
+
+
+def test_codegen_previews_for_a_signed_out_caller(monkeypatch):
+    # No user id behind a configured internal key = signed out. Preview, not 401.
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    r = client.post(
+        "/codegen", json=_graph(), headers={"x-calypr-internal-key": "internal-test-key"}
+    )
+    assert r.status_code == 200
+    assert r.json()["truncated"] is True
+
+
+def test_codegen_previews_when_the_internal_key_is_wrong(monkeypatch):
+    # Fail closed: a misconfigured proxy must not hand out the paid artifact.
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    r = client.post("/codegen", json=_graph(), headers={"x-calypr-internal-key": "wrong"})
+    assert r.json()["truncated"] is True

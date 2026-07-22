@@ -34,6 +34,12 @@ class CompileResponse(BaseModel):
 
 class CodegenResponse(BaseModel):
     code: str
+    #: True when `code` is only the opening lines because the workspace isn't entitled to the
+    #: full file. The client blurs the tail and offers the upgrade — but the truncation itself
+    #: happens here, so the paid artifact never reaches an unentitled browser.
+    truncated: bool = False
+    #: Lines in the *full* file, so the preview can say how much is behind the upgrade.
+    total_lines: int | None = None
 
 
 class ParseRequest(BaseModel):

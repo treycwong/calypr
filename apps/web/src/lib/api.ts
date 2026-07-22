@@ -394,14 +394,27 @@ export async function listTemplates(): Promise<Template[]> {
 }
 
 /** The 'code' altitude: get the agent as ownable Python (LangGraph). */
-export async function generateCode(graph: GraphSpec): Promise<string> {
+export type GeneratedCode = {
+  code: string;
+  /** The server sent only the opening lines — this workspace isn't entitled to the full file. */
+  truncated: boolean;
+  /** Lines in the full file, so a preview can say how much is behind the upgrade. */
+  totalLines: number | null;
+};
+
+export async function generateCode(graph: GraphSpec): Promise<GeneratedCode> {
   const res = await fetch("/api/codegen", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(graph),
   });
   if (!res.ok) throw new Error(`codegen failed (${res.status})`);
-  return (await res.json()).code as string;
+  const body = await res.json();
+  return {
+    code: body.code as string,
+    truncated: Boolean(body.truncated),
+    totalLines: (body.total_lines as number | null) ?? null,
+  };
 }
 
 export type ParseResult = {
