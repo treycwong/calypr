@@ -429,6 +429,13 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
             />
           </Field>
           <MaxResultsField config={config} set={set} />
+          {provider === "tavily" ? (
+            <p className="text-xs text-muted-foreground">
+              A Tavily key in Settings → API Keys is used automatically and overrides this field.
+              Without either, the tool tells the agent that search is unavailable rather than
+              inventing results.
+            </p>
+          ) : null}
         </>
       )}
     </>

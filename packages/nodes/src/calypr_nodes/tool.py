@@ -4,7 +4,7 @@ It's LangGraph's `ToolNode` over a provider from the catalog: it reads the lates
 AIMessage's tool calls from `messages`, runs the matching tool, and appends the results as
 ToolMessages. An agent/responder/revisor wired *to* this node both binds its tool (the
 compiler resolves the schema) and routes here when it asks for a tool — the canonical ReAct
-loop. The provider is a dropdown (demo_search now; Tavily is codegen-only)."""
+loop. The provider is a dropdown (demo_search, Tavily, Unsplash, a generic GET, or MCP)."""
 
 from __future__ import annotations
 
@@ -122,6 +122,27 @@ class ToolsNode(BaseNode):
             return spec.code_ref_list
         return [spec.code_ref]
 
+    @staticmethod
+    def _own_calls_only(state: dict[str, Any], owned: set[str]) -> dict[str, Any] | None:
+        """`state` narrowed to the pending tool calls this node's own tools can serve, or None
+        when there are none to run.
+
+        An agent wired to several Tool nodes can emit calls for two of them in one turn, and
+        the router fans out to both. Each node must answer *only* its own calls: handing the
+        untouched message to `ToolNode` would make it fail the sibling's calls by name and
+        double-answer the same `tool_call_id`."""
+        messages = state.get("messages") or []
+        last = messages[-1] if messages else None
+        calls = getattr(last, "tool_calls", None)
+        if not calls:
+            return None  # nothing to run (e.g. the actor asked no tool this turn)
+        mine = [c for c in calls if c.get("name") in owned]
+        if not mine:
+            return None
+        if len(mine) == len(calls):
+            return state  # sole owner — pass the state through untouched
+        return {**state, "messages": [*messages[:-1], last.model_copy(update={"tool_calls": mine})]}
+
     @classmethod
     def compile(cls, cfg: ToolConfig, ctx: NodeContext) -> NodeFn:
         spec = cls._spec(cfg)
@@ -130,23 +151,27 @@ class ToolsNode(BaseNode):
             # nothing) falls through to the codegen-only note below.
             if spec.runtimes:
                 lc_node = LCToolNode(spec.runtimes)
+                owned = {t.name for t in spec.runtimes}
 
                 async def _run_mcp(state: dict[str, Any], config) -> dict[str, Any]:
-                    messages = state.get("messages") or []
-                    last = messages[-1] if messages else None
-                    if not getattr(last, "tool_calls", None):
+                    scoped = cls._own_calls_only(state, owned)
+                    if scoped is None:
                         return {}
-                    return await lc_node.ainvoke(state, config)
+                    return await lc_node.ainvoke(scoped, config)
 
                 return _run_mcp
         if spec.runtime is None:
-            # Codegen-only provider: answer each pending tool call with an explanatory
-            # ToolMessage instead of raising — raising would leave the assistant's tool_calls
-            # unanswered and corrupt the thread for the next turn.
+            # Nothing to execute — answer each pending tool call with an explanatory
+            # ToolMessage instead of raising, since raising would leave the assistant's
+            # tool_calls unanswered and corrupt the thread for the next turn. Now that every
+            # provider has a runtime, the only way here is an MCP node whose server is
+            # unreachable or exposed no tools.
             note = (
-                f"{cfg.provider!r} execution is codegen-only here — generate the code and "
-                "run it with your API key, or switch this Tool node to 'demo_search' to "
-                "run on the canvas."
+                "This tool could not run: its MCP server is unreachable or exposed no tools. "
+                "Tell the user to check the server URL and connection in Settings."
+                if cfg.provider == "mcp"
+                else f"{cfg.provider!r} cannot run on the canvas — generate the code and run "
+                "it locally, or switch this Tool node to 'demo_search'."
             )
 
             async def _unsupported(state: dict[str, Any]) -> dict[str, Any]:
@@ -167,13 +192,13 @@ class ToolsNode(BaseNode):
             return _unsupported
 
         lc_node = LCToolNode([spec.runtime])
+        owned = {spec.runtime.name}
 
         async def _run(state: dict[str, Any], config) -> dict[str, Any]:
-            messages = state.get("messages") or []
-            last = messages[-1] if messages else None
-            if not getattr(last, "tool_calls", None):
-                return {}  # nothing to run (e.g. the actor asked no tool this turn)
-            return await lc_node.ainvoke(state, config)
+            scoped = cls._own_calls_only(state, owned)
+            if scoped is None:
+                return {}
+            return await lc_node.ainvoke(scoped, config)
 
         return _run
 

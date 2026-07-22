@@ -227,6 +227,31 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                 )
             )
 
+    # A Tool node's tools are bound by the LLM nodes wired *to* it, and only Agent/Responder/
+    # Revisor consume them. Wired from anything else — a Router is the tempting mistake, since
+    # "route to the Notion branch" reads like it should work — the schemas are handed to a node
+    # that discards them. The model is then left with no tools at all and says "I can't access
+    # Notion", with nothing in the transcript to say the Tool node was ignored. Silent, and
+    # indistinguishable from a broken integration, so it's an error rather than a warning.
+    tool_binders = {n.id for n in spec.nodes if n.type in ("agent", "responder", "revisor")}
+    for n in spec.nodes:
+        if n.type != "tool":
+            continue
+        if not any(e.target == n.id and e.source in tool_binders for e in spec.edges):
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="tool_node_unbound",
+                    message=(
+                        f"Tool node {n.id!r} has no edge from an Agent, Responder or Revisor, "
+                        "so nothing binds its tools and the model can never call them. Wire "
+                        "the LLM node that should use it to this node (condition 'tools'), "
+                        "plus a 'respond' branch and an edge back."
+                    ),
+                    node_id=n.id,
+                )
+            )
+
     # Reachability from entry.
     if spec.entry in id_set:
         reachable: set[str] = set()

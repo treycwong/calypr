@@ -85,3 +85,21 @@ async def test_recursion_limit_becomes_a_friendly_run_error():
         async for _ in run_stream(spec, ctx, "go"):
             pass
     assert "loop" in str(exc_info.value).lower()
+
+
+async def test_llm_router_decision_never_reaches_the_transcript():
+    """The classifier picks a branch name; that's control flow, not content. Streaming it put
+    the branch ("respond", "notion") in the playground right after the answer, glued to the
+    last word — it read like the model had babbled."""
+    from calypr_compiler.templates import routing
+
+    spec = routing()
+    ctx = NodeContext(model=FakeModelClient(reply="summarize"))
+
+    events = [ev async for ev in run_stream(spec, ctx, "shorten this for me")]
+
+    streamed = "".join(e.text for e in events if e.type == "token")
+    # The agent's own reply is the same canned text, so the router streaming its decision
+    # would double it — one copy from the classifier, one from the agent it routed to.
+    assert streamed == "summarize"
+    assert events[-1].type == "final"

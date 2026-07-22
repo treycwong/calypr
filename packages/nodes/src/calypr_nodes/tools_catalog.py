@@ -4,7 +4,7 @@ Each provider yields everything the rest of the engine needs: a LangChain `BaseT
 execute (or None for codegen-only providers), a unified bind-schema so an LLM node can
 `model.bind_tools(...)`/`stream(tools=...)`, and the Python (defs + a reference + imports)
 to emit in the owned, standalone module. `demo_search` runs with no key or network so the
-canvas, tests, and keyless playground stay deterministic; `tavily` is codegen-only for now."""
+canvas, tests, and keyless playground stay deterministic; `tavily` runs live on a BYO key."""
 
 from __future__ import annotations
 
@@ -131,6 +131,67 @@ def search_images(query: str) -> str:
         lines.append(f"{desc} — {url} (by {who})")
     return "\\n".join(lines)[:4000] or "No photos matched that search."''',
 ]
+
+
+TAVILY_SEARCH_URL = "https://api.tavily.com/search"
+
+# Unlike the Unsplash stub, a keyless Tavily does NOT serve placeholder results. Fake photos are
+# harmless set dressing; fake *search results* would be fabricated facts the agent would relay as
+# real. Better to say plainly that there's no key and let the agent tell the user.
+_TAVILY_NO_KEY = (
+    "Web search is unavailable: this workspace has no Tavily API key on file. Tell the user to "
+    "add one in Settings → API Keys to enable live web search. Do not invent results."
+)
+
+
+def _format_tavily(payload: dict) -> str:
+    """Agent-shaped result lines — title, URL, then the snippet Tavily already extracted."""
+    results = payload.get("results") or []
+    if not results:
+        return "No web results matched that search."
+    lines = []
+    for r in results:
+        title = r.get("title") or "untitled"
+        url = r.get("url") or ""
+        content = (r.get("content") or "").strip()
+        lines.append(f"{title} — {url}\n{content}")
+    return _truncate("\n\n".join(lines))
+
+
+def _tavily_tool(api_key: str, max_results: int) -> BaseTool:
+    """The Tavily web-search tool. Same never-raise contract as the other HTTP providers.
+
+    Called `web_search` so the bound tool name matches `demo_search` and the generated code —
+    switching a Tool node's provider must not rename the tool out from under a saved graph."""
+
+    @tool
+    def web_search(query: str) -> str:
+        """Search the web for `query` and return relevant results: title, URL, and a snippet."""
+        if not api_key:
+            return _TAVILY_NO_KEY
+        try:
+            r = httpx.post(
+                TAVILY_SEARCH_URL,
+                json={"query": query, "max_results": max_results},
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=20,  # a search round-trip is slower than a plain GET
+            )
+        except httpx.HTTPError:
+            return "Could not reach Tavily (network error) — try again in a moment."
+        if r.status_code == 401:
+            return "Tavily rejected the API key — check it in Settings → API Keys."
+        if r.status_code == 429:
+            return "Rate-limited by Tavily — try again in a moment."
+        if r.status_code in (432, 433):
+            return "The Tavily plan limit has been reached — check the Tavily dashboard."
+        if r.status_code >= 400:
+            return f"Tavily returned an error (HTTP {r.status_code})."
+        try:
+            return _format_tavily(r.json())
+        except ValueError:
+            return "Tavily returned a response that could not be read."
+
+    return web_search
 
 
 def _dig(payload, path: str):
@@ -391,18 +452,16 @@ def tool_spec(
             ],
         )
     if provider == "tavily":
+        # Runtime and codegen deliberately differ: on the canvas we call the REST endpoint
+        # directly (no extra dependency, and the never-raise contract above), while the
+        # generated module uses the official `langchain_tavily` integration — the nicer thing
+        # to hand someone for a standalone project. Same search, same `web_search` tool name,
+        # same `max_results`, so the round-trip parser keys on code that hasn't changed.
+        runtime = _tavily_tool(api_key, max_results)
         return ToolSpec(
             provider="tavily",
-            runtime=None,  # codegen-only this round
-            bind_schema={
-                "name": "web_search",
-                "description": "Search the web with Tavily and return relevant results.",
-                "input_schema": {
-                    "type": "object",
-                    "properties": {"query": {"type": "string"}},
-                    "required": ["query"],
-                },
-            },
+            runtime=runtime,
+            bind_schema=_schema_of(runtime),
             code_defs=[f"web_search = TavilySearch(max_results={max_results})"],
             code_ref="web_search",
             imports=["from langchain_tavily import TavilySearch"],

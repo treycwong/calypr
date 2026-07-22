@@ -49,6 +49,11 @@ class NodeContext:
 
     model: ModelClient | None = None
     tools: list[dict] | None = None
+    # Tool name → the id of the Tool node that owns it. Set only when an LLM node is wired to
+    # *more than one* Tool node, where "which node runs this call?" stops being obvious: the
+    # router uses it to branch to the owning node instead of the single `tools` branch. None
+    # (the common case) keeps the canonical one-Tool-node ReAct loop byte-for-byte unchanged.
+    tool_owners: dict[str, str] | None = None
     image_model: Any | None = None
     tts_model: Any | None = None
     # A workspace's BYO provider keys ({provider: api_key}), resolved from the vault at run
