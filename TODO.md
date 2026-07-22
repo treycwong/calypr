@@ -79,9 +79,16 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
   `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,
   Notion or Unsplash. Tool *invocation* still needs a signed-in run with credentials attached —
   worth a second pass now that Notion is live.
-- [ ] **Re-run 2b after the next deploy** to confirm the four `fake`-model starters answer for
-  real (they were verified locally with injected clients, which is exactly the blind spot that
-  hid the bug).
+- [x] **2b re-run after deploy — DONE (2026-07-22, PR #43 `050afc9`)**: **22/22 PASS in
+  production**, this time with an assertion on the *content* (a reply starting `Echo:` is now a
+  FAIL, not a pass). Reflexion, Routing, Utility-based and Learning all answer for real.
+  The first smoke reported 22/22 while Reflexion was echoing — it only checked that *something*
+  came back. A smoke test needs to assert what the answer is, not that one exists.
+- [x] **Paywall verified in production**: an unentitled caller gets 14 of 63 lines, no
+  `build_graph`, and the preview is real readable code.
+- [ ] **Promote the founder's workspace to `plus`** — the paywall applies to you too: your
+  workspace is `free`, so your own Code tab is a preview. Needs `CALYPR_ADMIN_TOKEN` on Railway,
+  then `POST /admin/workspaces/<id>/plan {"plan":"plus"}`.
 - [ ] **`PRICING-SPEC.md` reconciliation before Week 9**: no credit rate exists for the Image or
   TTS nodes; the launch matrix predates BYO frontier models. Migration renumbered to **`0010`**
   (`0009_assistant_model` is taken); `provider_key`/`workspace.plan` already shipped in 0007/0008.
