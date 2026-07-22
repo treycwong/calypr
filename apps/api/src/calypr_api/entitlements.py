@@ -5,11 +5,15 @@ routers and components. `workspace.plan` is `free | beta | plus` (see 0008_plan_
 billing — Stripe, the credit ledger, the 402 paywall — lands in Weeks 9–10 per `PRICING-SPEC.md`.
 
 The distinction these functions encode: **`beta` gates on our confidence, `plus` gates on value
-capture.** They are different axes and shouldn't be conflated. A feature can be beta-gated while
-it settles and still end up free for everyone — that is exactly the plan for the reverse
-round-trip, which is the product's core "no ceiling" promise (and whose parser ships as OSS), not
-a premium add-on. Paid differentiation lives on capacity — projects, credits, platform-key model
-access — per `PRICING-SPEC.md` §1.
+capture.** They are different axes and shouldn't be conflated — but a feature can sit on both, and
+code export now does.
+
+**Reversed 2026-07-22:** this module previously argued the reverse round-trip would graduate to
+free for everyone, because it was the product's core "no ceiling" promise and its parser was
+headed for OSS. The product is now closed — no OSS launch — and **code export is a paid feature**.
+`has_roundtrip` therefore never graduates. Paid differentiation still *also* lives on capacity
+(projects, credits, platform-key model access) per `PRICING-SPEC.md` §1; export is the
+qualitative differentiator on top of it.
 """
 
 from __future__ import annotations
@@ -31,10 +35,11 @@ def is_valid_plan(plan: str) -> bool:
 
 
 def has_roundtrip(plan: str | None) -> bool:
-    """Whether the reverse round-trip UI ("Apply to canvas") is available.
+    """Whether code export — the Code tab's editable mode and "Apply to canvas" — is available.
 
-    Temporarily beta-gated while it proves out in the wild. When it graduates, this becomes
-    `return True` — one line, one place."""
+    A **paid entitlement**, not a temporary gate: `plus` buys it, and `beta` keeps it for the
+    cohort already using it (we don't take a shipped feature back off them). It does not graduate
+    to `return True`; see the module docstring for the decision that reversed."""
     return plan in (BETA, PLUS)
 
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Literal
 
 from calypr_dsl import GraphSpec
-from calypr_nodes import get_node, has_node
+from calypr_nodes import NodeContext, get_node, has_node
 from pydantic import BaseModel, ValidationError
 
 
@@ -249,6 +249,43 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                         "plus a 'respond' branch and an edge back."
                     ),
                     node_id=n.id,
+                )
+            )
+
+    # Any other branch-deciding node: its out-edges must be labelled.
+    #
+    # `compile.py` wires a node that has `routing()` with `add_conditional_edges`, whose path
+    # map is built from *labelled* edges only — and it then skips that node in the plain-edge
+    # pass. So an unconditional out-edge from a routing node isn't merely unlabelled, it is
+    # **discarded**: the graph compiles, the run stops dead at that node, and the user gets an
+    # empty output with nothing in the transcript to explain it. A Revisor wired straight to
+    # Output — the obvious thing to draw — returns `output: None`.
+    #
+    # Router and Agent have their own, more specific messages above; this is the general net
+    # that catches everyone else (Revisor today, any future routing node for free).
+    for n in spec.nodes:
+        if n.type in ("router", "agent") or not has_node(n.type):
+            continue
+        node_cls = get_node(n.type)
+        try:
+            cfg = node_cls.config_model.model_validate(n.config)
+        except ValidationError:
+            continue  # already reported as invalid_config
+        if node_cls.routing(cfg, NodeContext()) is None:
+            continue
+        for edge in [e for e in spec.edges if e.source == n.id and not e.condition]:
+            issues.append(
+                Issue(
+                    severity="error",
+                    code="routing_edge_unconditional",
+                    message=(
+                        f"{n.type.title()} {n.id!r} chooses a branch, so each of its out-edges "
+                        f"needs a condition naming that branch — the edge to {edge.target!r} "
+                        "has none and would be dropped at compile time, ending the run here. "
+                        "Label it (a Revisor uses 'revise' and 'done')."
+                    ),
+                    node_id=n.id,
+                    edge_id=edge.id,
                 )
             )
 

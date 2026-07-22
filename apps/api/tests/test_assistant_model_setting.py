@@ -117,6 +117,11 @@ def test_llm_providers_endpoint_serves_the_settings_list() -> None:
     assert rows["google"]["status"] == "coming_soon"
 
 
+@pytest_db
 def test_a_key_for_an_unwired_provider_is_refused() -> None:
-    """The disabled input is UI; this is the enforcement."""
+    """The disabled input is UI; this is the enforcement.
+
+    Marked DB-dependent like its neighbours: the route resolves a tenant before it ever reaches
+    the provider check, so with no Postgres it 500s and the failure says nothing about the rule
+    under test."""
     assert client.put("/provider-keys/google", json={"key": "sk-x"}).status_code == 404

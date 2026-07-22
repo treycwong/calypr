@@ -34,6 +34,12 @@ class CompileResponse(BaseModel):
 
 class CodegenResponse(BaseModel):
     code: str
+    #: True when `code` is only the opening lines because the workspace isn't entitled to the
+    #: full file. The client blurs the tail and offers the upgrade — but the truncation itself
+    #: happens here, so the paid artifact never reaches an unentitled browser.
+    truncated: bool = False
+    #: Lines in the *full* file, so the preview can say how much is behind the upgrade.
+    total_lines: int | None = None
 
 
 class ParseRequest(BaseModel):
@@ -146,6 +152,8 @@ class WorkspaceInfo(BaseModel):
     signed_in_as: str | None = None
     # The workspace's chosen AI-assistant model; "" = inherit the server default.
     assistant_model: str = ""
+    # The model canvas LLM nodes inherit; "" = the platform default (gpt-4o-mini).
+    default_model: str = ""
 
 
 class WorkspaceUpdate(BaseModel):
@@ -154,6 +162,7 @@ class WorkspaceUpdate(BaseModel):
 
     name: str | None = None
     assistant_model: str | None = None
+    default_model: str | None = None
 
 
 class WaitlistJoin(BaseModel):

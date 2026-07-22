@@ -106,11 +106,14 @@ def _spoken_assistant() -> GraphSpec:
     )
 
 
-def _few_shots() -> str:
-    """2–3 (request, spec) pairs from real templates — they teach the wiring conventions
-    (entry input node, `messages` channel with the append reducer, router `condition`
-    edges, retriever→agent grounding)."""
-    pairs = [
+def few_shot_pairs() -> list[tuple[str, GraphSpec]]:
+    """The (request, spec) pairs the prompt teaches from.
+
+    Public so tests can hold them to the same bar as a shipped starter: a few-shot is the
+    model's only picture of a correct graph, so an invalid one doesn't just fail — it teaches
+    the mistake. Two of these (`_anime_image`, `_spoken_assistant`) are built here rather than
+    taken from `templates.py`, so nothing else covers them."""
+    return [
         ("I want a chatbot that answers questions from my documentation.", rag()),
         (
             "Route each message: summarize the long ones, translate the foreign ones.",
@@ -136,8 +139,12 @@ def _few_shots() -> str:
         # branches and an edge back.
         ("Make an assistant that can read my Notion workspace.", notion_assistant()),
     ]
+
+
+def _few_shots() -> str:
+    """The pairs above, rendered into the prompt (layout stripped — it's applied client-side)."""
     blocks = []
-    for request, spec in pairs:
+    for request, spec in few_shot_pairs():
         data = spec.model_dump(mode="json")
         for node in data.get("nodes", []):
             node.pop("position", None)  # layout is applied client-side

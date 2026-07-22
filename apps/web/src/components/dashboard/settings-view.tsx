@@ -16,6 +16,7 @@ import {
   listLLMProviders,
   renameWorkspace,
   setAssistantModel,
+  setDefaultModel as setDefaultModelApi,
   setProviderKey,
 } from "@/lib/api";
 import { useProviderKeys } from "@/lib/use-provider-keys";
@@ -35,6 +36,10 @@ export function SettingsView({
   const [model, setModel] = useState("");
   const [modelOptions, setModelOptions] = useState<AssistantModelOption[]>([]);
   const [modelMsg, setModelMsg] = useState("");
+  // The canvas default is a separate setting from the assistant's — different surfaces, and a
+  // user may well want a cheap model drafting graphs and a stronger one running them.
+  const [defaultModel, setDefaultModel] = useState("");
+  const [defaultModelMsg, setDefaultModelMsg] = useState("");
   const { keyed, refresh: refreshKeys } = useProviderKeys();
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   // Per-provider status line, so saving an OpenAI key doesn't flash a message on the Kimi row.
@@ -48,6 +53,7 @@ export function SettingsView({
       .then((w) => {
         setWsName(w.name);
         setModel(w.assistant_model ?? "");
+        setDefaultModel(w.default_model ?? "");
       })
       .catch(() => {});
     listAssistantModels()
@@ -69,6 +75,20 @@ export function SettingsView({
     } catch {
       setModel(previous); // put the picker back on what's actually stored
       setModelMsg("Save failed");
+    }
+  }
+
+  async function saveDefaultModel(value: string) {
+    const previous = defaultModel;
+    setDefaultModel(value); // optimistic, like the assistant picker above
+    setDefaultModelMsg("Saving…");
+    try {
+      const w = await setDefaultModelApi(value);
+      setDefaultModel(w.default_model ?? "");
+      setDefaultModelMsg("Saved ✓");
+    } catch {
+      setDefaultModel(previous);
+      setDefaultModelMsg("Save failed");
     }
   }
 
@@ -164,6 +184,42 @@ export function SettingsView({
               </Button>
               {savedMsg ? (
                 <span className="text-xs text-muted-foreground">{savedMsg}</span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-lg border border-border p-5">
+            <label htmlFor="ws-default-model" className="text-sm font-medium">
+              Default model
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              What every block on the canvas runs on unless you pick a different model on the
+              block itself. Templates and new blocks inherit this.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <select
+                id="ws-default-model"
+                data-testid="ws-default-model"
+                className="h-9 max-w-xs flex-1 rounded-md border border-input bg-background px-2 text-sm"
+                value={defaultModel}
+                onChange={(e) => saveDefaultModel(e.target.value)}
+              >
+                {/* "" is the platform default rather than a model id, so it's named here
+                    instead of coming from the server list (which calls it "Server default"). */}
+                <option value="">OpenAI · gpt-4o-mini (default)</option>
+                {modelOptions
+                  .filter((o) => o.value !== "")
+                  .map((o) => {
+                    const locked = o.byo_provider !== null && !keyed.has(o.byo_provider);
+                    return (
+                      <option key={o.value} value={o.value} disabled={locked}>
+                        {locked ? `${o.label} — add your own key below` : o.label}
+                      </option>
+                    );
+                  })}
+              </select>
+              {defaultModelMsg ? (
+                <span className="text-xs text-muted-foreground">{defaultModelMsg}</span>
               ) : null}
             </div>
           </div>

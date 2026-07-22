@@ -18,12 +18,14 @@ from calypr_nodes._convert import lc_to_msgs
 from calypr_nodes._llm import actor_message
 from calypr_nodes._parse import docstring, llm_actor_fields
 from calypr_nodes.registry import (
+    PLATFORM_DEFAULT_MODEL,
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
     NodeParseContext,
+    effective_model,
     model_for_node,
     register,
 )
@@ -45,7 +47,8 @@ def _system(cfg: RevisorConfig) -> str:
 
 
 class RevisorConfig(BaseModel):
-    model: str = "claude-sonnet-4-5"
+    #: Empty = inherit (workspace default → PLATFORM_DEFAULT_MODEL). See `effective_model`.
+    model: str = ""
     system_prompt: str = ""
     input_channel: str = "messages"
     output_channel: str = "messages"
@@ -80,13 +83,14 @@ class RevisorNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: RevisorConfig, ctx: NodeContext) -> NodeFn:
+        model_id = effective_model(ctx, cfg.model)
         model = model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             history = lc_to_msgs(state.get(cfg.input_channel) or [])
             msg = await actor_message(
                 model,
-                model_id=cfg.model,
+                model_id=model_id,
                 system=_system(cfg),
                 messages=history,
                 tools=ctx.tools or [],
@@ -114,7 +118,10 @@ class RevisorNode(BaseNode):
             "from langchain.chat_models import init_chat_model",
             "from langchain_core.messages import SystemMessage",
         ]
-        model_expr = f"init_chat_model({cfg.model!r}, temperature={cfg.temperature})"
+        model_expr = (
+            f"init_chat_model({(cfg.model or PLATFORM_DEFAULT_MODEL)!r}, "
+            f"temperature={cfg.temperature})"
+        )
         if refs:
             model_expr += f".bind_tools([{', '.join(refs)}])"
         lines = [

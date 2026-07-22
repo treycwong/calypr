@@ -48,6 +48,9 @@ class NodeContext:
     """
 
     model: ModelClient | None = None
+    #: The workspace's preferred model (Settings → Workspace), applied to any LLM node that
+    #: doesn't name one itself. Empty → `PLATFORM_DEFAULT_MODEL`. See `effective_model`.
+    default_model: str = ""
     tools: list[dict] | None = None
     # Tool name → the id of the Tool node that owns it. Set only when an LLM node is wired to
     # *more than one* Tool node, where "which node runs this call?" stops being obvious: the
@@ -219,13 +222,31 @@ def graph_channels(nodes, declared: list[StateChannel]) -> list[StateChannel]:
     return list(by_key.values())
 
 
+#: What an LLM node runs on when neither it nor the workspace names a model. Cheap, served on
+#: the platform key, and priced — so a graph built by dragging blocks around works immediately,
+#: with no key and no picking. Never `fake`: that seam answers "Echo: …", which is correct in a
+#: test and nonsense in front of a user.
+PLATFORM_DEFAULT_MODEL = "gpt-4o-mini"
+
+
+def effective_model(ctx: NodeContext, model_id: str) -> str:
+    """The model id a node actually runs on, after the two fallbacks.
+
+    Empty means "inherit", and it inherits in this order: the node's own choice, then the
+    workspace default (Settings → Workspace, injected by the API), then
+    `PLATFORM_DEFAULT_MODEL`. Keeping it a *string* resolution — rather than resolving straight
+    to a client — matters for metering: the usage row has to name the model that actually ran,
+    or an empty id lands on `pricing`'s fail-closed most-expensive rate."""
+    return model_id or ctx.default_model or PLATFORM_DEFAULT_MODEL
+
+
 def model_for_node(ctx: NodeContext, model_id: str) -> ModelClient:
     """Resolve the model for an LLM node: the injected client (tests) if present, otherwise
     the node's *own* provider from its `model` id. This lets each LLM node use its own model
     (e.g. a cheap Responder + a strong Revisor), instead of one model for the whole graph."""
     if ctx.model is not None:
         return ctx.model
-    return model_for(model_id, ctx.model_keys)
+    return model_for(effective_model(ctx, model_id), ctx.model_keys)
 
 
 def image_model_for_node(ctx: NodeContext, model_id: str):

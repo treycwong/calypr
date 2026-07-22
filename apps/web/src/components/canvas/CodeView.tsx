@@ -1,13 +1,15 @@
 "use client";
 
-import { Check, Copy, Download, RefreshCw, Undo2, Wand2 } from "lucide-react";
+import { Check, Copy, Download, Lock, RefreshCw, Undo2, Wand2 } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { GraphSpec } from "@calypr/dsl";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { track } from "@/lib/analytics";
-import { generateCode, parseCode } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { generateCode, parseCode, type GeneratedCode } from "@/lib/api";
 import { roundtripEnabled } from "@/lib/flags";
 
 // Slugify the project name into a python filename (e.g. "Travel App" → "travel_app.py").
@@ -33,6 +35,10 @@ export function CodeView({
   email?: string | null;
 }) {
   const [code, setCode] = useState("");
+  // Set when the server sent a preview instead of the file: this workspace isn't entitled.
+  // The server decides — the client only renders what it was given, so there is no second
+  // copy of the entitlement rule here to drift from `entitlements.has_roundtrip`.
+  const [locked, setLocked] = useState<{ totalLines: number | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
@@ -57,8 +63,9 @@ export function CodeView({
   // The round-trip needs both the gate and a canvas to apply to.
   const canRoundTrip = gateOpen && typeof applyGraph === "function";
 
-  function adopt(next: string) {
-    setCode(next);
+  function adopt(next: GeneratedCode) {
+    setCode(next.code);
+    setLocked(next.truncated ? { totalLines: next.totalLines } : null);
     setDirty(false);
     setNotice(null);
     editedTracked.current = false;
@@ -204,9 +211,9 @@ export function CodeView({
             size="icon"
             variant="ghost"
             onClick={copy}
-            disabled={!code}
+            disabled={!code || !!locked}
             aria-label="Copy code"
-            title={copied ? "Copied" : "Copy"}
+            title={locked ? "Upgrade to Plus to copy the full file" : copied ? "Copied" : "Copy"}
           >
             {copied ? (
               <Check className="h-4 w-4 text-emerald-500" />
@@ -218,9 +225,9 @@ export function CodeView({
             size="icon"
             variant="ghost"
             onClick={download}
-            disabled={!code}
+            disabled={!code || !!locked}
             aria-label="Download code"
-            title="Download"
+            title={locked ? "Upgrade to Plus to download the file" : "Download"}
           >
             <Download className="h-4 w-4" />
           </Button>
@@ -236,6 +243,47 @@ export function CodeView({
           spellCheck={false}
           aria-label="Generated Python — edit and apply back to the canvas"
         />
+      ) : locked ? (
+        // Paywalled preview. The opening lines are real and readable — imports, the State class
+        // — because a fully obscured blob proves nothing about the quality we're selling. Below
+        // them the text fades out under a gradient, and the CTA sits on top. The tail isn't in
+        // the DOM to un-blur: the server never sent it.
+        <div className="flex flex-1 flex-col overflow-hidden bg-card">
+          <div className="relative shrink-0">
+            <pre
+              className="overflow-x-auto p-3 pb-8 font-mono text-xs leading-relaxed"
+              data-testid="code-output"
+            >
+              {error ? error : code}
+            </pre>
+            {/* Fade the last lines out so the cut reads as "the file continues", not "the file
+                ends here" — the point is that there's more, and it's worth paying for. */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-card via-card/90 to-transparent" />
+          </div>
+          <div
+            className="flex flex-col items-center gap-2 px-4 pb-5 text-center"
+            data-testid="code-locked"
+          >
+            <p className="text-sm font-medium">
+              {locked.totalLines
+                ? `${locked.totalLines} lines of runnable Python`
+                : "The full Python file"}
+            </p>
+            <p className="max-w-[34ch] text-[11px] leading-relaxed text-muted-foreground">
+              Your agent as a standalone LangGraph script — yours to run anywhere. Upgrade to
+              Plus to view, copy and download it.
+            </p>
+            <Link
+              href="/pricing"
+              className={cn(buttonVariants({ size: "sm" }))}
+              data-testid="code-upgrade"
+              onClick={() => track("code_upgrade_clicked")}
+            >
+              <Lock className="mr-1.5 h-3.5 w-3.5" />
+              Upgrade to Plus
+            </Link>
+          </div>
+        </div>
       ) : (
         <pre
           className="flex-1 overflow-auto bg-card p-3 font-mono text-xs leading-relaxed"
@@ -245,7 +293,7 @@ export function CodeView({
         </pre>
       )}
 
-      {!canRoundTrip && plan ? (
+      {!canRoundTrip && !locked && plan ? (
         // Names the account we actually see, so an invited partner whose GitHub email differs
         // from the one they gave us can tell us which address to add — instead of silently
         // wondering why the beta didn't switch on.

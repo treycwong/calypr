@@ -26,12 +26,14 @@ from calypr_nodes._parse import (
     string_assign,
 )
 from calypr_nodes.registry import (
+    PLATFORM_DEFAULT_MODEL,
     BaseNode,
     CodeFragment,
     NodeContext,
     NodeFn,
     NodeMeta,
     NodeParseContext,
+    effective_model,
     model_for_node,
     register,
 )
@@ -47,7 +49,8 @@ _SCORE_RE = re.compile(r"SCORE:\s*([0-9]+(?:\.[0-9]+)?)", re.IGNORECASE)
 
 
 class EvaluatorConfig(BaseModel):
-    model: str = "claude-sonnet-4-5"
+    #: Empty = inherit (workspace default → PLATFORM_DEFAULT_MODEL). See `effective_model`.
+    model: str = ""
     input_channel: str = "messages"  # the latest message here is what gets judged
     criteria: str = "accuracy, clarity, and completeness"
     scale_max: int = 10
@@ -108,13 +111,14 @@ class EvaluatorNode(BaseNode):
 
     @classmethod
     def compile(cls, cfg: EvaluatorConfig, ctx: NodeContext) -> NodeFn:
+        model_id = effective_model(ctx, cfg.model)
         model = model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             answer = _last_text(state.get(cfg.input_channel))
             text = await collect_text(
                 model,
-                model_id=cfg.model,
+                model_id=model_id,
                 system=_judge_prompt(cfg),
                 messages=[Msg(role=Role.user, content=answer)],
                 temperature=cfg.temperature,
@@ -136,7 +140,8 @@ class EvaluatorNode(BaseNode):
         lines = [
             f"def {fn_name}(state: State) -> dict:",
             '    """LLM-as-judge: score the latest answer and explain why."""',
-            f"    model = init_chat_model({cfg.model!r}, temperature={cfg.temperature})",
+            f"    model = init_chat_model({(cfg.model or PLATFORM_DEFAULT_MODEL)!r}, "
+            f"temperature={cfg.temperature})",
             f'    messages = state.get("{cfg.input_channel}") or []',
             '    answer = messages[-1].content if messages else ""',
             *assign_str("system", _judge_prompt(cfg)),

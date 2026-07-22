@@ -9,6 +9,7 @@ back to the shared dev workspace — so existing tests keep working unchanged.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from dataclasses import dataclass
 
@@ -16,9 +17,12 @@ from fastapi import Depends, HTTPException, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from calypr_api import entitlements
 from calypr_api.config import settings
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.session import SessionLocal, get_session, set_tenant
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -103,3 +107,61 @@ def run_workspace(request: Request) -> uuid.UUID:
         return uuid.UUID(str(resolved))
     except Exception:
         return dev
+
+
+def require_code_export(request: Request) -> None:
+    """402 unless the caller's workspace may export code (`/parse` — "Apply to canvas").
+
+    Code export is a paid entitlement (`entitlements.has_roundtrip`). The web gate in
+    `flags.ts` hides the UI, but hiding a button is not a paywall — this is the enforcement,
+    because `/parse` is reachable directly.
+
+    **Enforced only on real deployments** (`CALYPR_INTERNAL_KEY` set). Without one, every
+    request falls back to the shared dev workspace (see `_resolve_workspace_id`), which is
+    `free` — gating there would make it impossible for local dev, CI, or the e2e suite to
+    exercise the very path they cover. Same dev/CI carve-out the connector SSRF guard uses.
+
+    Fails **closed** on a deployment: an unresolvable workspace or a missing row is not
+    entitled, rather than falling back to the dev workspace the way metering does. Metering
+    guesses so a run always streams; this decides who is paying."""
+    if not settings.internal_key:
+        return
+    with SessionLocal() as session:
+        workspace_id = _resolve_workspace_id(request, session)  # 401s on a bad key / no user
+        plan = session.execute(
+            text("SELECT plan FROM workspace WHERE id = :id"), {"id": str(workspace_id)}
+        ).scalar_one_or_none()
+    if not entitlements.has_roundtrip(plan):
+        raise HTTPException(
+            status_code=402,
+            detail={"reason": "plan", "feature": "code_export", "plan": plan},
+        )
+
+
+def may_export_code(request: Request) -> bool:
+    """Whether this caller gets the *whole* generated file (`/codegen`), or only a preview.
+
+    The non-raising sibling of `require_code_export`, and the difference is deliberate:
+    `/parse` is an action a user takes, so refusing it with a 402 is the honest answer, while
+    `/codegen` always answers — an unentitled caller simply gets the first few lines. Nobody
+    should meet an error page for opening a tab.
+
+    So a missing user, a bad internal key, or a DB hiccup all resolve to "preview" rather than
+    an exception. Same dev/CI carve-out as `require_code_export`: with no internal key set,
+    everyone is entitled, because every request there is the shared `free` dev workspace and
+    truncating it would break local dev and the e2e suite."""
+    if not settings.internal_key:
+        return True
+    try:
+        with SessionLocal() as session:
+            # Shares `_resolve_workspace_id` with the authenticated routes rather than
+            # re-implementing it — the difference is only what happens when it says no. It
+            # raises (401) on a bad key or a missing user; here that means "preview".
+            workspace_id = _resolve_workspace_id(request, session)
+            plan = session.execute(
+                text("SELECT plan FROM workspace WHERE id = :id"), {"id": str(workspace_id)}
+            ).scalar_one_or_none()
+    except Exception:
+        log.info("code-export entitlement unresolved; serving a preview", exc_info=True)
+        return False  # fail closed: a bad key or a DB blip must not hand out the paid file
+    return entitlements.has_roundtrip(plan)

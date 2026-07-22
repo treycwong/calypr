@@ -14,7 +14,7 @@ from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
 from calypr_dsl import GraphSpec
 from calypr_roundtrip import parse_python
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,7 +25,13 @@ from calypr_api.assistant_models import (
     is_allowed,
 )
 from calypr_api.db.models import Agent, ShareLink, Workspace
-from calypr_api.deps import Tenant, tenant
+from calypr_api.deps import (
+    Tenant,
+    may_export_code,
+    require_code_export,
+    run_workspace,
+    tenant,
+)
 from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -43,6 +49,7 @@ from calypr_api.schemas import (
     WorkspaceInfo,
     WorkspaceUpdate,
 )
+from calypr_api.workspace_model import apply_default_model, workspace_default_model
 
 router = APIRouter()
 
@@ -67,27 +74,53 @@ def compile_spec(graph: GraphSpec) -> CompileResponse:
     return CompileResponse(ok=ok, issues=issues)
 
 
+#: Lines of the generated file an unentitled workspace sees. Enough to reach the `State` class —
+#: real imports, real channel names — because a preview that shows nothing proves nothing: the
+#: pitch is that this code is good, so the reader has to see some of it to want the rest.
+PREVIEW_LINES = 14
+
+
 @router.post("/codegen", response_model=CodegenResponse, tags=["engine"])
-def codegen_spec(graph: GraphSpec) -> CodegenResponse:
-    """The 'code' altitude: render the graph as ownable Python (LangGraph)."""
+def codegen_spec(graph: GraphSpec, request: Request) -> CodegenResponse:
+    """The 'code' altitude: render the graph as ownable Python (LangGraph).
+
+    Entitled workspaces get the whole file; everyone else gets `PREVIEW_LINES` of it and a
+    `truncated` flag the client turns into a blurred tail plus an upgrade prompt. The cut is
+    made **here** rather than in the browser — a CSS blur over the full text is a decoration,
+    not a paywall, since the response sits in the network tab either way."""
+    # Resolve inherited models first: nodes ship `model: ""`, and generated code has to name a
+    # concrete one. Without this the file would show the platform default while the same graph
+    # ran on the workspace's preference — the artifact would quietly disagree with the product.
+    graph = apply_default_model(graph, workspace_default_model(run_workspace(request)))
     code = generate_python(graph)
+    total_lines = code.count("\n") + 1
+    truncated = not may_export_code(request)
+    if truncated:
+        code = "\n".join(code.split("\n")[:PREVIEW_LINES]) + "\n"
     posthog_client.capture(
         "graph_codegen_requested",
         properties={
             "node_count": len(graph.nodes) if graph.nodes else 0,
+            "truncated": truncated,
         },
     )
-    return CodegenResponse(code=code)
+    return CodegenResponse(code=code, truncated=truncated, total_lines=total_lines)
 
 
-@router.post("/parse", response_model=ParseResponse, tags=["engine"])
+@router.post(
+    "/parse",
+    response_model=ParseResponse,
+    tags=["engine"],
+    dependencies=[Depends(require_code_export)],
+)
 def parse_code(body: ParseRequest) -> ParseResponse:
     """The reverse of `/codegen`: edited Python back to a GraphSpec the canvas can render.
 
-    Pure and unauthenticated like its sibling — it reads no workspace data, only the code in the
-    request. Never raises on bad input: `parse_python` degrades unrecognised functions to Code
-    nodes and reports them, so the caller always gets a renderable graph plus an honest account
-    of what wasn't understood."""
+    Pure — it reads no workspace data, only the code in the request — but **entitlement-gated**,
+    because code export is what a paid plan buys (`require_code_export`; unenforced in dev/CI).
+    Never raises on bad input: `parse_python` degrades unrecognised functions to Code nodes and
+    reports them, so an entitled caller always gets a renderable graph plus an honest account of
+    what wasn't understood."""
     result = parse_python(body.code)
     posthog_client.capture(
         "graph_parse_requested",
@@ -298,6 +331,7 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
         plan=ws.plan,
         signed_in_as=t.email,
         assistant_model=ws.assistant_model,
+        default_model=ws.default_model,
     )
 
 
@@ -328,6 +362,13 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
         if not is_allowed(body.assistant_model):
             raise HTTPException(status_code=422, detail="unsupported assistant model")
         ws.assistant_model = body.assistant_model
+    if body.default_model is not None:
+        # Same allow-list as the assistant: this value is persisted and later handed to the
+        # model factory for every node that inherits, so an arbitrary string here would point
+        # the whole canvas at an unpriced model.
+        if not is_allowed(body.default_model):
+            raise HTTPException(status_code=422, detail="unsupported default model")
+        ws.default_model = body.default_model
     t.session.commit()
     posthog_client.capture(
         "workspace_updated",
@@ -336,6 +377,7 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
             "workspace_id": str(t.workspace_id),
             "renamed": body.name is not None,
             "assistant_model": body.assistant_model,
+            "default_model": body.default_model,
         },
     )
     return WorkspaceInfo(
@@ -343,4 +385,5 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
         name=ws.name,
         plan=ws.plan,
         assistant_model=ws.assistant_model,
+        default_model=ws.default_model,
     )

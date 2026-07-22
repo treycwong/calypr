@@ -1,9 +1,143 @@
 # Calypr — TODO
 
+## 🔀 PIVOT (2026-07-22): closed product, code export is paid
+
+The lead differentiator is no longer "your graph is yours, here's the Python." The product goes
+**closed**; code export becomes a **paid** feature; the near-term bar is that the **nodes are
+well connected and workable**, then pricing. Consequences, so nothing downstream reads stale:
+
+- **Week-11 OSS launch is cancelled** — `packages/dsl`, `services/codegen`, `services/roundtrip`
+  stay proprietary. `MVP-EXECUTION-PLAN.md` Week 11 and `ROADMAP-6M.md` §Month-3 still describe
+  the Show HN; that was also the planned top-of-funnel, so **acquisition needs a new story**.
+- **The Month-2 gate is retired** (≥50% ceiling-resolution, ≥40% 30-day retention). It measured
+  the open product's thesis — do users who hit the wall drop into code and stay. Not a go/no-go
+  any more; at most a feature metric.
+- **Code export = `plus`** (`has_roundtrip` never graduates), enforced by
+  `deps.require_code_export` on `POST /parse`, not just hidden in the UI. `beta` keeps it.
+- **Deferred, not dropped:** the codegen multi-Tool dispatch collapse (below). It only affects
+  *exported* code, so it moves behind the MVP — but it must be fixed **before any Plus customer
+  exports**, or they get code that behaves differently from their canvas.
+
+### Shipped in the pivot
+
+- [x] **Code export retiered + paywalled** — `require_code_export` (402 `{reason: "plan",
+  feature: "code_export"}`), `/api/parse` proxy forwards `internalHeaders()`, 4 tests incl. the
+  402 and both entitled plans. Enforced only where `CALYPR_INTERNAL_KEY` is set (dev/CI/e2e all
+  resolve to the shared dev workspace, which is `free`).
+- [x] **Wiring matrix** (`services/compiler/tests/test_wiring_matrix.py`) — Input → A → B →
+  Output for all **144 ordered pairs** of node types, configs harvested from the starters so it
+  can't drift. Two invariants: **accepted ⇒ runnable** and **rejected ⇒ actionable** (a code,
+  and a node/edge to highlight). Plus a meta-test that reads the validator's vocabulary out of
+  its own source, so a new rule without a test fails the suite.
+- [x] **Bug found by the matrix + fixed** — `routing_edge_unconditional`. `compile.py` wires a
+  branch-deciding node with `add_conditional_edges` (labelled edges only) and skips it in the
+  plain-edge pass, so an **unlabelled out-edge is discarded, not merely unlabelled**. A Revisor
+  wired straight to Output — the obvious thing to draw — validated clean, ran, and returned
+  `output: None`, with nothing anywhere to explain it.
+- [x] **Few-shot regression suite** (`services/assistant/tests/test_few_shot_graphs.py`) — every
+  prompt example validates, runs, and obeys the rules the prompt states. A bad few-shot doesn't
+  fail, it *teaches* the mistake; that is precisely how PR #41 happened. `_anime_image` and
+  `_spoken_assistant` had no coverage at all before this.
+
+- [x] **2b — live prod smoke** (2026-07-22): all **22 starters** production serves, run against
+  real models via `www.calypr.co/api/runs`. **22/22 answered.** Found the `fake`-model defect
+  below, which no test could have caught.
+- [x] **Bug found by 2b + fixed** — four starters shipped `model: "fake"` (the test seam that
+  answers `Echo: …`): **Reflexion** (both LLM nodes — the whole reply was an echo), **Routing**
+  (the classifier, so branch decisions were canned while the visible answer looked fine),
+  **Utility-based** (the evaluator), **Learning** (memory summarisation). Now `gpt-4o-mini`,
+  with a per-starter assertion. Invisible to CI by construction: the starter tests inject Fake
+  clients regardless of configured model. **Not live until the next deploy.**
+- [x] **Code preview paywall** — `/codegen` truncates to 14 lines for an unentitled workspace
+  (`may_export_code`); the Code tab shows real readable code fading out, plus an Upgrade CTA;
+  copy/download disabled. `code_upgrade_clicked` + `graph_codegen_requested {truncated}` give
+  the tab a conversion rate.
+
+- [x] **Model is now a workspace setting** (migration `0010`, `workspace.default_model`).
+  One resolution rule — `effective_model`: node's own model → workspace default →
+  `PLATFORM_DEFAULT_MODEL` (`gpt-4o-mini`). Blocks and starters ship `model: ""`, so Settings →
+  Workspace decides the whole canvas and an explicit per-node choice still wins. `fake` stays
+  selectable (CI/e2e/offline) but is nobody's default. Also fixed: the canvas defaulted
+  **Router, Evaluator, Memory, Responder and Revisor** to `fake` — the same defect as the
+  templates, for hand-built graphs.
+
+### Still open in the pivot
+
+- [ ] **Saved agents may still carry `fake`.** The fix changes defaults and templates, not user
+  data: an agent someone saved from the old Reflexion template still has `model: "fake"` in its
+  stored `graph_spec` and will keep echoing. Needs a decision — a data migration rewriting
+  `"fake"` → `""` in `agent.graph_spec` would repair them, but it rewrites user data and some
+  people may have chosen `fake` deliberately for testing. **Not done; ask before running it.**
+
+- [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
+  tab renders to everyone; only edit + Apply is gated. Decide before Plus goes on sale (it
+  doubles as the "no lock-in" reassurance that *sells* the plan). Flagged in `PRICING-SPEC.md` §1.
+- [ ] **2c — config-panel completeness**: every engine-read field editable, invalid values
+  refused before a run is spent, validator codes rendered as actionable copy. NOT STARTED.
+- [ ] **2b caveat — the smoke proves "answers", not "used its tools".** An anonymous prod run
+  has no connector or workspace key, so `tpl-mcp-react` / `tpl-notion-assistant` /
+  `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,
+  Notion or Unsplash. Tool *invocation* still needs a signed-in run with credentials attached —
+  worth a second pass now that Notion is live.
+- [ ] **Re-run 2b after the next deploy** to confirm the four `fake`-model starters answer for
+  real (they were verified locally with injected clients, which is exactly the blind spot that
+  hid the bug).
+- [ ] **`PRICING-SPEC.md` reconciliation before Week 9**: no credit rate exists for the Image or
+  TTS nodes; the launch matrix predates BYO frontier models. Migration renumbered to **`0010`**
+  (`0009_assistant_model` is taken); `provider_key`/`workspace.plan` already shipped in 0007/0008.
+- [ ] **`e2e/tests/phase-assistant-model.spec.ts:166` is environment-sensitive** — passes in CI
+  and on a machine with no `.env`, fails identically on unmodified `main` when real provider keys
+  are present (it asserts `.last()`, which becomes a real model answer). Pre-existing, not a
+  regression; needs a stable assertion on the notice itself.
+
 Outstanding work, roughly in priority order. Shipped phases are summarised at the bottom for
 context. The visual canvas → LangGraph compile → ownable-Python round-trip is built through
 Phase 5 (control flow, tools, Reflexion, RAG); what remains is mostly **getting the backend to
 production** and the **RAG ingestion** next pass.
+
+## 🟢 Tavily live + multi-Tool-node dispatch — DONE (2026-07-22), merged to main (PR #41, `4a7ae75`)
+
+Surfaced by the user wiring Notion (MCP) + Tavily to one agent and getting "I can't access the
+web/Notion" from a model that had (unknowingly) been given zero tools. Four bugs, all found while
+chasing that one report; each is independently gated by a test that fails when its fix is
+reverted. **User-confirmed working end-to-end in production** (Tavily + Notion together, one
+agent) — the strongest kind of proof this file has for a Tools-node change.
+
+- [x] **Tavily now executes on the canvas** (`packages/nodes/src/calypr_nodes/tools_catalog.py`)
+  — was `runtime=None` (codegen-only); every call came back as a canned "codegen-only" message
+  regardless of a saved key, which the model then relayed as if the integration were broken. Now
+  a real `httpx.post` against Tavily's REST API, same never-raise/never-inline-a-key contract as
+  the Unsplash/generic-HTTP providers. Keyless deliberately does **not** serve stub results the
+  way Unsplash does — placeholder search results would be facts the agent relays as real, so it
+  says plainly that search is unavailable instead. Codegen unchanged (still emits
+  `TavilySearch(...)`), so the round-trip parser's recognizer needed no changes.
+- [x] **An agent wired to >1 Tool node could only reach one of them** (`agent.py`, `tool.py`,
+  `compile.py`) — binding already unioned across every wired Tool node (the model could always
+  *choose* between Notion and Tavily); dispatch couldn't keep up, because every ReAct edge shares
+  the `tools` condition, so the branch map collapsed to whichever node was declared last. A call
+  routed to the wrong node came back `"web_search is not a valid tool, try one of
+  [search_images]"`. Fixed with `ctx.tool_owners` (call name → owning node id) on the router, plus
+  fan-out + own-calls-only scoping on the Tool node so two nodes called in one turn don't
+  double-answer the same `tool_call_id`. Single-Tool-node graphs are untouched. **Known gap,
+  tracked separately:** generated Python still has this collapse — needs the round-trip parser
+  updated in step (it discriminates Router vs. ReAct by the routing function's name).
+- [x] **A Tool node wired from a Router bound nothing** (`validate.py`) — only
+  Agent/Responder/Revisor consume bound tool schemas; a Tool node hanging off a Router (which is
+  what the AI assistant had generated for "read my Notion workspace") handed its schemas to a
+  node that discards them, so the agent silently got zero tools. `validate_graph` now rejects an
+  unbound Tool node (`tool_node_unbound`) — the assistant repairs against this same validator, so
+  it self-corrects rather than shipping the broken shape.
+- [x] **The assistant had never seen a Tool node wired correctly** (`services/assistant/.../
+  prompt.py`) — not one of its six few-shots contained a Tool node, so on "read my Notion
+  workspace" it reached for the one control-flow shape it *had* seen (a Router branch) and
+  produced exactly the broken topology above. Added `notion_assistant()` as a worked ReAct
+  few-shot, plus a hard rule for the multi-tool case (one Tool node per provider, each wired
+  straight to the agent, no router needed to choose between them).
+- [x] **LLM Router leaked its branch decision into the transcript** (`router.py`) — found while
+  testing the above, unrelated to tools. `collect_text`'s streaming defaulted on, so the
+  classifier's reply (a branch name like `"respond"`) streamed to the playground and landed glued
+  to the end of the actual answer (`"...ask!respond"`). `stream=False` on that one call; reverting
+  it reproduces as a doubled/glued reply in the test.
 
 ## 🟢 MCP tool node + credential vault + connectors + BYO keys — DONE (2026-07-20), merged to main (PR #27, `8a79e0e`)
 
@@ -42,28 +176,25 @@ still fails independently (pre-existing infra issue above, not code).
   encrypted bot token → self-hosted `@notionhq/notion-mcp-server --enable-token-passthrough`
   (Docker, `infra/docker/compose.yaml`, port 3333). Live-tested: `/connectors/{id}/test` returns
   all 24 Notion tools through vault → decrypt → `Notion-Token` header → MCP server → Notion.
-- [ ] **Notion Tier A — DEFERRED in production** (not enabled at merge; tracked here so it isn't
-  lost). `CALYPR_NOTION_*` env vars are intentionally left unset in prod, so `Connect Notion`
-  returns 501 and no Notion code path is reachable — everything else in this section is live.
-  Needed before turning it on:
-  - [ ] **Host `notion-mcp` as its own long-running service** (Railway) — Vercel can't run it.
-    Start with **`--auth-token <secret>`** (not the local `--unsafe-disable-auth`); internal port
-    must equal the published port (the server's DNS-rebinding check validates the `Host` header
-    against its own host:port).
-  - [ ] **Add an OAuth `state` parameter** to `notion_connect`/`notion_callback`
-    (`apps/api/src/calypr_api/routers/connectors.py`) — CSRF hardening flagged in the security
-    review. Currently inert only because Notion is unconfigured; required before enabling it.
-  - [ ] Set `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`,
-    `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`; register the redirect URI
-    `https://calypr.co/api/connectors/notion/callback` in the Notion integration.
-  - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (full runbook + security posture).
+- [x] **Notion Tier A — LIVE in production** (2026-07-22). No longer deferred:
+  - [x] **`notion-mcp` hosted as its own Railway service** — packaged in `infra/notion-mcp/`
+    (PRs #39/#40). Bearer auth via `AUTH_TOKEN`; the "internal port == published port" rule
+    turned out to be local-only (with bearer auth the server skips `Host` validation).
+  - [x] **OAuth `state` parameter** shipped (PR #38) — `connect` mints a signed, workspace-bound,
+    10-minute state (`calypr_api/oauth_state.py`); `callback` refuses anything else *before* the
+    code is exchanged. Closes the CSRF gap from the security review.
+  - [x] `CALYPR_NOTION_*` set in prod; redirect URI registered.
+  - [x] **User-verified in production**: Notion + Tavily wired to one agent, working end to end.
+  - See `infra/CONNECTORS.md` (setup) and `infra/PRODUCTION.md` (runbook + security posture).
+- [x] **Tavily wired to the vault key** — DONE (2026-07-22, see below): `resolve_tool_keys` now
+  injects a workspace's saved Tavily key into `ToolConfig.api_key` the same way it already did
+  for Unsplash.
 - [ ] **Fast-follows, not started:** stdio transport for MCP (codegen-only, local dev escape
   hatch); egress allowlist toggle per workspace (the SSRF guard is a blanket private-range block,
   not configurable); token refresh/reconnect job for Notion (OAuth refresh tokens expire — no
-  "Reconnect" badge yet); migrate `ToolConfig.api_key` (Tavily's old per-node field) into the
-  Settings API Keys section for consistency; `FORCE ROW LEVEL SECURITY` on `connector_credential`/
-  `provider_key` if the prod DB role turns out to be the table owner (app-level `workspace_id`
-  filters already cover this, so it's belt-and-suspenders, not urgent).
+  "Reconnect" badge yet); `FORCE ROW LEVEL SECURITY` on `connector_credential`/`provider_key` if
+  the prod DB role turns out to be the table owner (app-level `workspace_id` filters already
+  cover this, so it's belt-and-suspenders, not urgent).
 
 ## 🟢 Image + Voice (TTS) + Upload blocks — DONE (2026-07-18), merged + confirmed live in prod
 
@@ -142,10 +273,16 @@ gpt-4o-mini review) after the blob-token incident below was fixed.
 - [ ] **Rotate the Neon prod DB credential** — the pooler `DATABASE_URL` (with password) lives in
   the repo-root `.env` and surfaced in a debug session. Rotate in Neon; confirm `.env` is
   gitignored; update the Railway/Vercel copies on rotation.
-- [ ] **Vercel PREVIEW builds fail** (`Resource provisioning failed`) while **production** builds
-  succeed — a preview-env/account issue, not code (usage is far under limits). PR preview URLs
-  don't build until resolved (ping Vercel support: "prod deploys succeed, previews fail at
-  provisioning"). Not blocking prod shipping — merge → production build works.
+- [x] **Vercel PREVIEW builds fail** — DONE (2026-07-22). Root cause found: Neon (the Postgres
+  Marketplace integration) provisions one database branch per preview deployment and never
+  deletes it when the PR closes; the workspace's plan branch limit was hit around 2026-07-12
+  (first broken preview was PR #10 — a Python-only change, confirming it was never the code).
+  Every failing deployment showed `Builds ╶ . [0ms]` with the real error one layer down, under
+  "Provisioning Integrations": `Branch limit reached. Upgrade your plan or delete unused
+  branches.` Fixed by deleting old preview branches in the Neon console; confirmed with a clean
+  preview deploy (draft PR #42, closed after). **Not yet fixed**: nothing auto-deletes a preview's
+  Neon branch when its PR closes, so the count will climb back up over the next few weeks unless
+  Neon's Vercel integration has an auto-cleanup setting — worth checking before this recurs.
 - [x] **Friendlier run-error surfacing** — DONE (Week 4 PR #12, `a6d76d7`). `run_stream` catches
   `GraphRecursionError` → `RunError` (clean copy); `run_error_message` maps exceptions (RunError →
   verbatim, CompileError → first issue, else → generic) so raw `str(exc)` never reaches clients.
@@ -318,6 +455,15 @@ instead of a dev flag, so it can run as a closed beta **in production**.
 continue, or churn? This ratio is the whole thesis."* That ratio is unmeasurable while the feature
 is off (`parse_applied`/`parse_degraded` never fire), so the Month-2 gate can never close and we'd
 reach Month 3 (Stripe) having never validated the thesis we're charging for.
+
+> **REVERSED 2026-07-22 — closed-product pivot.** The paragraph below decided *beta ≠ paywall*:
+> the round-trip would stay free core because it was the "no ceiling" promise and Week 11 would
+> OSS the parser. Both halves are now off. The product is **closed** (no OSS launch), and **code
+> export is the paid feature** — `has_roundtrip` never graduates to `return True`, and
+> `deps.require_code_export` enforces it on `POST /parse` rather than leaving the paywall to the
+> UI. The Month-2 ceiling-resolution gate above is also retired: it measured the *open* product's
+> thesis. Kept verbatim because it's the reasoning a future reader will want when asking why the
+> plan column exists at all. See `PRICING-SPEC.md` §1.
 
 **Decided: beta ≠ paywall.** `beta` gates on our confidence, `plus` on value capture. The
 round-trip stays **free core** — it *is* the "no ceiling" promise, and Week 11 OSSes the same

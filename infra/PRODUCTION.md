@@ -24,20 +24,24 @@ unconfigured.
 | `CALYPR_INTERNAL_KEY` | Yes (existing) | Shared secret the Vercel proxy presents; also a production signal for the vault fail-closed. Must match the web value. |
 | `CALYPR_DATABASE_URL` / `CALYPR_CHECKPOINT_DATABASE_URL` | Yes (existing) | Neon. Checkpoint URL must be a direct (non-pooler) endpoint. |
 | `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` / `TAVILY_API_KEY` | As used | Server defaults. A workspace's BYO key (Settings → API Keys) overrides these per run; unset just means BYO-only for that provider. |
-| `CALYPR_NOTION_*` | **Leave unset** | Notion Tier A is deferred (see below). |
+| `CALYPR_NOTION_*` | **Yes — Notion is live** | `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`, `CALYPR_OAUTH_REDIRECT_BASE`. Leaving them unset makes `Connect Notion` return 501 — a safe fallback, not the intended state. |
 
 ### Vercel (web) — existing
 
 `CALYPR_API_URL` (Railway API URL), `CALYPR_INTERNAL_KEY` (same as API), `BETTER_AUTH_SECRET`,
 `DATABASE_URL`, GitHub OAuth creds — unchanged by this branch.
 
-## What ships now vs. deferred
+## What's live
 
-- **Ships:** Connectors (Tier B — any HTTPS MCP server + optional bearer, encrypted), BYO
-  provider API keys (OpenAI/Anthropic/Tavily). All env-driven, no extra infra.
-- **Deferred: Notion Tier A.** Requires a long-running `notion-mcp` server Vercel can't host.
-  With `CALYPR_NOTION_CLIENT_ID` unset, **Connect Notion returns 501** and no Notion code path is
-  reachable. Connectors already degrade gracefully when `CALYPR_NOTION_MCP_URL` is unset.
+All of it, as of **2026-07-22**:
+
+- **Connectors (Tier B)** — any HTTPS MCP server + optional bearer, encrypted.
+- **BYO provider API keys** — OpenAI/Anthropic/Tavily.
+- **Notion Tier A** — `notion-mcp` runs as its own Railway service (`infra/notion-mcp/`), the
+  OAuth flow is state-hardened, and the `CALYPR_NOTION_*` vars are set. **Verified working in
+  production by the founder** (Notion + Tavily on one agent), which is the bar this file cares
+  about — the section below is kept as the setup runbook for rebuilding it.
+- **Tavily search** — executes for real on the canvas, keyed per workspace or from the server env.
 
 ## Security posture (verified this branch)
 
@@ -53,7 +57,7 @@ unconfigured.
 - **Vault fail-closed:** refuses the insecure dev fallback key whenever a production signal is
   present.
 
-## Before enabling Notion Tier A (later)
+## Notion Tier A — setup runbook (done; keep for rebuilds)
 
 1. Deploy `@notionhq/notion-mcp-server` as a separate Railway service in the same project,
    using **`infra/notion-mcp/`** (Dockerfile + `railway.json`). Set `AUTH_TOKEN` on that service

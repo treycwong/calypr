@@ -303,6 +303,8 @@ export type WorkspaceInfo = {
   signed_in_as?: string | null;
   /** The workspace's AI-assistant model; "" means inherit the server default. */
   assistant_model?: string;
+  /** The model canvas LLM nodes inherit; "" means the platform default (gpt-4o-mini). */
+  default_model?: string;
 };
 
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
@@ -350,6 +352,17 @@ export async function setAssistantModel(model: string): Promise<WorkspaceInfo> {
   return res.json();
 }
 
+/** The model every LLM block inherits unless it names one itself. "" = platform default. */
+export async function setDefaultModel(model: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspace", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ default_model: model }),
+  });
+  if (!res.ok) throw new Error(`save default model failed (${res.status})`);
+  return res.json();
+}
+
 /** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
 export async function joinWaitlist(email: string, source = "landing"): Promise<void> {
   const res = await fetch("/api/waitlist", {
@@ -394,14 +407,27 @@ export async function listTemplates(): Promise<Template[]> {
 }
 
 /** The 'code' altitude: get the agent as ownable Python (LangGraph). */
-export async function generateCode(graph: GraphSpec): Promise<string> {
+export type GeneratedCode = {
+  code: string;
+  /** The server sent only the opening lines — this workspace isn't entitled to the full file. */
+  truncated: boolean;
+  /** Lines in the full file, so a preview can say how much is behind the upgrade. */
+  totalLines: number | null;
+};
+
+export async function generateCode(graph: GraphSpec): Promise<GeneratedCode> {
   const res = await fetch("/api/codegen", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(graph),
   });
   if (!res.ok) throw new Error(`codegen failed (${res.status})`);
-  return (await res.json()).code as string;
+  const body = await res.json();
+  return {
+    code: body.code as string,
+    truncated: Boolean(body.truncated),
+    totalLines: (body.total_lines as number | null) ?? null,
+  };
 }
 
 export type ParseResult = {
@@ -417,6 +443,11 @@ export type ParseResult = {
  *
  * The server never fails on unparseable input — it degrades what it can't recognise and says so
  * — so a non-OK response here means the request itself failed, not that the code was bad.
+ *
+ * 402 is the one a user can actually hit: code export is a paid entitlement, so a plan that
+ * doesn't include it gets told that instead of a bare status code. The UI normally hides the
+ * button in that case (`roundtripEnabled`), so this fires when the two disagree — a plan that
+ * changed mid-session, or a hand-rolled request.
  */
 export async function parseCode(code: string): Promise<ParseResult> {
   const res = await fetch("/api/parse", {
@@ -424,6 +455,9 @@ export async function parseCode(code: string): Promise<ParseResult> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ code }),
   });
+  if (res.status === 402) {
+    throw new Error("Code export is a Plus feature — upgrade to apply edits to the canvas.");
+  }
   if (!res.ok) throw new Error(`parse failed (${res.status})`);
   return (await res.json()) as ParseResult;
 }
