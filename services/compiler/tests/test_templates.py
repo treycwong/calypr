@@ -97,3 +97,23 @@ def test_image_finder_prompts_for_an_inline_preview():
     prompt = next(n for n in graph.nodes if n.type == "agent").config["system_prompt"]
     assert "![" in prompt
     assert "leading ! is required" in prompt
+
+
+@pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
+def test_no_starter_ships_the_fake_model(graph):
+    """A starter must not be configured with the keyless `fake` model.
+
+    `fake` is a *test* seam: it answers "Echo: <your message>". Shipping it in a template means
+    a production user picks that starter and gets canned nonsense — Reflexion did exactly that,
+    with both of its LLM nodes fake, so the whole reply was an echo. Routing was subtler and
+    worse: the classifier was fake, so the branch decision was canned while the surrounding
+    agents answered normally, and it *looked* fine.
+
+    Nothing else catches this. Every test above injects Fake clients through `NodeContext`
+    regardless of what a node configures, so a template reads identically in CI whether it says
+    `fake` or `gpt-4o-mini` — which is precisely why this went to production unnoticed and had
+    to be found by running the live site."""
+    fakes = [
+        n.id for n in graph.nodes if isinstance(n.config, dict) and n.config.get("model") == "fake"
+    ]
+    assert fakes == [], f"{graph.id} ships the fake model on {fakes}"

@@ -149,7 +149,7 @@ def utility_based() -> GraphSpec:
             NodeSpec(
                 id="eval",
                 type="evaluator",
-                config={"model": "fake", "input_channel": "messages"},
+                config={"model": "gpt-4o-mini", "input_channel": "messages"},
             ),
             _output(),
         ],
@@ -183,7 +183,7 @@ def learning() -> GraphSpec:
                 type="memory",
                 config={
                     "operation": "summary",
-                    "model": "fake",
+                    "model": "gpt-4o-mini",
                     "input_channel": "messages",
                     "memory_channel": "memory",
                 },
@@ -348,12 +348,12 @@ def reflexion() -> GraphSpec:
         ],
         nodes=[
             _input(),
-            NodeSpec(id="responder", type="responder", config={"model": "fake"}),
+            NodeSpec(id="responder", type="responder", config={"model": "gpt-4o-mini"}),
             NodeSpec(id="tools", type="tool", config={"provider": "demo_search"}),
             NodeSpec(
                 id="revisor",
                 type="revisor",
-                config={"model": "fake", "max_revisions": 2},
+                config={"model": "gpt-4o-mini", "max_revisions": 2},
             ),
             _output(),
         ],
@@ -402,7 +402,7 @@ def routing() -> GraphSpec:
                 type="router",
                 config={
                     "kind": "llm",
-                    "model": "fake",
+                    "model": "gpt-4o-mini",
                     "input_channel": "messages",
                     "route_channel": "task_type",
                     "branches": [
