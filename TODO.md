@@ -72,8 +72,35 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
 - [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
   tab renders to everyone; only edit + Apply is gated. Decide before Plus goes on sale (it
   doubles as the "no lock-in" reassurance that *sells* the plan). Flagged in `PRICING-SPEC.md` §1.
-- [ ] **2c — config-panel completeness**: every engine-read field editable, invalid values
-  refused before a run is spent, validator codes rendered as actionable copy. NOT STARTED.
+- [x] **2c — config-panel completeness — DONE (2026-07-22)**. Audited all 14 node types, ~90
+  config fields, against what the canvas actually lets you set. Gaps closed:
+  - **`agent_type` had no control at all** — `AGENT_TYPE_OPTIONS` sat in `graph.ts` with six
+    written labels and nothing rendered it, so a hand-built Agent was stuck on `model_based`
+    *and* the goal/reflection/utility fields in the same panel were unreachable dead UI. This
+    **reverses the Phase 5a decision** ("the templates carry the type now", `5a741e1`); the test
+    that pinned its absence is inverted, not deleted, so the history stays legible.
+  - **`temperature` / `max_tokens`** on every LLM block, behind an "Advanced" disclosure.
+  - **`reflection_criteria`** (what a reflection agent critiques against).
+  - **`imports`** on Custom Code — the escape hatch could not reach the standard library.
+  - **`response_format`** on Voice (also decides the clip's file extension).
+  - Gate: `services/compiler/tests/test_config_panel_coverage.py` reads the panel's source and
+    fails if a config field is neither editable nor explicitly justified, so adding a field now
+    forces a decision. Excuses are grouped by *reason* — wiring / inert / server-resolved — and a
+    separate test asserts the "wiring" escape hatch only ever holds `*_channel` names.
+
+### Found by the 2c audit — config fields the engine never reads
+
+These are declared on config models, round-trip through the DSL, and are read by **nothing**.
+They're a lie in the schema: a user setting them would see no effect. Decide per field whether to
+implement or delete (deleting needs a look at saved graphs first).
+
+- [ ] `agent.max_steps` — a ReAct step cap that isn't enforced anywhere (only mentioned in a
+  comment saying it isn't expressed in code); the recursion limit is the real bound today.
+- [ ] `agent.utility_criteria` — zero references; `utility_based` scores against a hard-coded
+  prompt instead.
+- [ ] `input.mode` (`chat|api|form`) — only `chat` behaviour exists.
+- [ ] `output.stream` — streaming is decided by the runtime, not this flag.
+- [ ] `tool.http_method` — `Literal["GET"]`, unread; generic-HTTP tools cannot POST.
 - [ ] **2b caveat — the smoke proves "answers", not "used its tools".** An anonymous prod run
   has no connector or workspace key, so `tpl-mcp-react` / `tpl-notion-assistant` /
   `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,

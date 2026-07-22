@@ -56,7 +56,12 @@ test("the Tool node exposes a provider dropdown and an API-key input", async ({
   await expect(page.getByTestId("cfg-api-key")).toBeVisible();
 });
 
-test("the Agent panel no longer has an agent-type dropdown", async ({ page }) => {
+// Reversed 2026-07-22 (Phase 2c). Phase 5a dropped this dropdown — "the templates carry the
+// type now" — and this test pinned its absence. The config-panel audit made the cost visible:
+// a hand-built Agent could never leave `model_based`, and the goal/reflection/utility fields in
+// the same panel were unreachable dead UI. The selector is back, and the assertion is inverted
+// rather than deleted, so the history of the decision stays legible.
+test("the Agent panel offers the agent-type ladder", async ({ page }) => {
   await openCanvas(page);
 
   await page.getByTestId("add-input").click();
@@ -66,7 +71,10 @@ test("the Agent panel no longer has an agent-type dropdown", async ({ page }) =>
 
   await page.getByTestId("node-agent").click();
   await expect(page.getByTestId("cfg-model")).toBeVisible(); // the panel is showing
-  await expect(page.getByTestId("cfg-agent-type")).toHaveCount(0); // but no type selector
+  const type = page.getByTestId("cfg-agent-type");
+  await expect(type).toBeVisible();
+  // Templates still carry a type — this is the default for a block you drew yourself.
+  await expect(type).toHaveValue("model_based");
 });
 
 test("the Reflexion template projects its Responder/Revisor bounded loop into code", async ({

@@ -150,6 +150,16 @@ export const TTS_VOICE_OPTIONS = [
   { value: "verse", label: "Verse" },
 ];
 
+// Audio container for the Voice block. Mirrors `_FORMAT_EXT` in the TTS node — the format also
+// decides the file extension of the generated clip.
+export const TTS_FORMAT_OPTIONS = [
+  { value: "mp3", label: "MP3 — smallest, plays everywhere" },
+  { value: "wav", label: "WAV — uncompressed" },
+  { value: "opus", label: "Opus — efficient, for streaming" },
+  { value: "aac", label: "AAC" },
+  { value: "flac", label: "FLAC — lossless" },
+];
+
 // The Russell & Norvig agent ladder — a preset that scaffolds the prompt and (for
 // reflection/utility) an internal loop. Mirrors AgentConfig.agent_type in the engine.
 export const AGENT_TYPE_OPTIONS = [

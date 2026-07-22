@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AGENT_TYPE_OPTIONS,
   type Branch,
   type CalyprNodeType,
   IMAGE_MODEL_OPTIONS,
@@ -22,6 +23,7 @@ import {
   type NodeData,
   ROUTER_KIND_OPTIONS,
   TOOL_PROVIDER_OPTIONS,
+  TTS_FORMAT_OPTIONS,
   TTS_MODEL_OPTIONS,
   TTS_VOICE_OPTIONS,
 } from "@/lib/graph";
@@ -100,12 +102,73 @@ function ModelField({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+/** Temperature + token cap — the two knobs every LLM block has, kept out of the way.
+ *
+ * Behind a disclosure because they're the fields you tune second: the panel should open on
+ * "what does this block do", not on sampling parameters. `maxTokens` is opt-out because the
+ * Evaluator and Memory blocks have no such field. */
+function AdvancedLLMFields({
+  config,
+  set,
+  maxTokens = true,
+}: {
+  config: Config;
+  set: Setter;
+  maxTokens?: boolean;
+}) {
+  return (
+    <details className="rounded-md border border-border px-3 py-2" data-testid="cfg-advanced">
+      <summary className="cursor-pointer text-xs text-muted-foreground">Advanced</summary>
+      <div className="mt-3 space-y-3">
+        <Field id="cfg-temperature" label="Temperature">
+          <Input
+            id="cfg-temperature"
+            data-testid="cfg-temperature"
+            type="number"
+            min={0}
+            max={2}
+            step={0.1}
+            value={Number(config.temperature ?? 0.7)}
+            onChange={(e) => set({ temperature: Number(e.target.value) })}
+          />
+          <p className="text-xs text-muted-foreground">
+            0 is repeatable and literal; higher is more varied. Above ~1.2 tends to wander.
+          </p>
+        </Field>
+        {maxTokens ? (
+          <Field id="cfg-max-tokens" label="Max tokens">
+            <Input
+              id="cfg-max-tokens"
+              data-testid="cfg-max-tokens"
+              type="number"
+              min={1}
+              value={Number(config.max_tokens ?? 1024)}
+              onChange={(e) => set({ max_tokens: Number(e.target.value) })}
+            />
+            <p className="text-xs text-muted-foreground">
+              The cap on this block&rsquo;s reply — the ceiling on what one run can cost here.
+            </p>
+          </Field>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 function AgentFields({ config, set }: { config: Config; set: Setter }) {
-  // The agent's character comes from the template (its agent_type); the panel shows the
-  // model, prompt, and only the fields that type uses — no type selector.
+  // The type drives the prompt scaffold and, for reflection/utility, an internal loop — and it
+  // decides which fields below are relevant. It used to be template-only, which left a
+  // hand-built agent stuck on `model_based` and made the conditional fields unreachable.
   const agentType = String(config.agent_type ?? "model_based");
   return (
     <>
+      <SelectField
+        id="cfg-agent-type"
+        label="Agent type"
+        value={agentType}
+        options={AGENT_TYPE_OPTIONS}
+        onChange={(v) => set({ agent_type: v })}
+      />
       <Field id="cfg-label" label="Name (optional)">
         <Input
           id="cfg-label"
@@ -127,16 +190,27 @@ function AgentFields({ config, set }: { config: Config; set: Setter }) {
       </Field>
 
       {agentType === "reflection" ? (
-        <Field id="cfg-max-reflections" label="Max reflections">
-          <Input
-            id="cfg-max-reflections"
-            data-testid="cfg-max-reflections"
-            type="number"
-            min={0}
-            value={Number(config.max_reflections ?? 2)}
-            onChange={(e) => set({ max_reflections: Number(e.target.value) })}
-          />
-        </Field>
+        <>
+          <Field id="cfg-max-reflections" label="Max reflections">
+            <Input
+              id="cfg-max-reflections"
+              data-testid="cfg-max-reflections"
+              type="number"
+              min={0}
+              value={Number(config.max_reflections ?? 2)}
+              onChange={(e) => set({ max_reflections: Number(e.target.value) })}
+            />
+          </Field>
+          <Field id="cfg-reflection-criteria" label="Critique against">
+            <Input
+              id="cfg-reflection-criteria"
+              data-testid="cfg-reflection-criteria"
+              value={String(config.reflection_criteria ?? "")}
+              placeholder="accuracy, clarity, and completeness"
+              onChange={(e) => set({ reflection_criteria: e.target.value })}
+            />
+          </Field>
+        </>
       ) : null}
 
       {agentType === "utility_based" ? (
@@ -162,6 +236,7 @@ function AgentFields({ config, set }: { config: Config; set: Setter }) {
           />
         </Field>
       ) : null}
+      <AdvancedLLMFields config={config} set={set} />
     </>
   );
 }
@@ -270,6 +345,7 @@ function EvaluatorFields({ config, set }: { config: Config; set: Setter }) {
           onChange={(e) => set({ scale_max: Number(e.target.value) })}
         />
       </Field>
+      <AdvancedLLMFields config={config} set={set} maxTokens={false} />
     </>
   );
 }
@@ -295,7 +371,12 @@ function MemoryFields({ config, set }: { config: Config; set: Setter }) {
           onChange={(e) => set({ memory_channel: e.target.value })}
         />
       </Field>
-      {op === "summary" ? <ModelField config={config} set={set} /> : null}
+      {op === "summary" ? (
+        <>
+          <ModelField config={config} set={set} />
+          <AdvancedLLMFields config={config} set={set} maxTokens={false} />
+        </>
+      ) : null}
     </>
   );
 }
@@ -563,6 +644,7 @@ function ResponderFields({ config, set }: { config: Config; set: Setter }) {
     <>
       <ModelField config={config} set={set} />
       <PromptField config={config} set={set} />
+      <AdvancedLLMFields config={config} set={set} />
     </>
   );
 }
@@ -582,6 +664,7 @@ function RevisorFields({ config, set }: { config: Config; set: Setter }) {
           onChange={(e) => set({ max_revisions: Number(e.target.value) })}
         />
       </Field>
+      <AdvancedLLMFields config={config} set={set} />
     </>
   );
 }
@@ -693,6 +776,16 @@ function TTSFields({ config, set }: { config: Config; set: Setter }) {
           />
         </Field>
       )}
+      <SelectField
+        id="cfg-format"
+        label="Audio format"
+        value={String(config.response_format ?? "mp3")}
+        options={TTS_FORMAT_OPTIONS}
+        onChange={(v) => set({ response_format: v })}
+      />
+      <p className="text-xs text-muted-foreground">
+        Also decides the file extension of the generated clip.
+      </p>
       <p className="text-xs text-muted-foreground">
         Speaks the incoming text and shows an audio player. The <code>fake</code> model is keyless
         (a silent preview); the OpenAI voices call the API and are billed per run.
@@ -772,6 +865,32 @@ export function ConfigPanel({
           <p className="text-xs text-muted-foreground">
             Return a dict of state updates. This block round-trips verbatim into the
             generated code — your no-ceiling escape hatch.
+          </p>
+        </Field>
+      ) : null}
+
+      {type === "code" ? (
+        // Without this the escape hatch can't reach the standard library: the engine and the
+        // generated file both honour `imports`, but there was no way to set it.
+        <Field id="cfg-imports" label="Imports (one per line)">
+          <Textarea
+            id="cfg-imports"
+            data-testid="cfg-imports"
+            rows={3}
+            className="font-mono text-xs"
+            placeholder={"import json\nfrom datetime import datetime"}
+            value={((config.imports as string[]) ?? []).join("\n")}
+            onChange={(e) =>
+              set({
+                imports: e.target.value
+                  .split("\n")
+                  .map((line) => line.trim())
+                  .filter(Boolean),
+              })
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Hoisted to the top of the generated file, so they&rsquo;re available to your code.
           </p>
         </Field>
       ) : null}
