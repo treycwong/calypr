@@ -53,7 +53,21 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
   copy/download disabled. `code_upgrade_clicked` + `graph_codegen_requested {truncated}` give
   the tab a conversion rate.
 
+- [x] **Model is now a workspace setting** (migration `0010`, `workspace.default_model`).
+  One resolution rule — `effective_model`: node's own model → workspace default →
+  `PLATFORM_DEFAULT_MODEL` (`gpt-4o-mini`). Blocks and starters ship `model: ""`, so Settings →
+  Workspace decides the whole canvas and an explicit per-node choice still wins. `fake` stays
+  selectable (CI/e2e/offline) but is nobody's default. Also fixed: the canvas defaulted
+  **Router, Evaluator, Memory, Responder and Revisor** to `fake` — the same defect as the
+  templates, for hand-built graphs.
+
 ### Still open in the pivot
+
+- [ ] **Saved agents may still carry `fake`.** The fix changes defaults and templates, not user
+  data: an agent someone saved from the old Reflexion template still has `model: "fake"` in its
+  stored `graph_spec` and will keep echoing. Needs a decision — a data migration rewriting
+  `"fake"` → `""` in `agent.graph_spec` would repair them, but it rewrites user data and some
+  people may have chosen `fake` deliberately for testing. **Not done; ask before running it.**
 
 - [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
   tab renders to everyone; only edit + Apply is gated. Decide before Plus goes on sale (it
