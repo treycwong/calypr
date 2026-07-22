@@ -15,7 +15,10 @@ RUN npm install -g @notionhq/notion-mcp-server@2.4.1
 # Railway assigns $PORT at run time and the server has no PORT env fallback (it only reads
 # --port), so the shell form is required to expand it. 3000 is just the local default.
 #
-# --host 0.0.0.0 serves Railway's public domain. For private networking (IPv6-only) use `::`.
+# --host :: rather than 0.0.0.0: Railway's network is IPv6, and a Node server bound to 0.0.0.0
+# listens on IPv4 only — the container comes up healthy, logs "listening", and every request
+# from the edge times out having never reached it. `::` binds dual-stack, so it serves both the
+# public domain and private networking (`<service>.railway.internal`).
 #
 # No --unsafe-disable-auth here: that flag is what turns the server's DNS-rebinding protection
 # on, which in turn pins the allowed Host header to its own host:port and rejects a public
@@ -23,4 +26,4 @@ RUN npm install -g @notionhq/notion-mcp-server@2.4.1
 # hostname works as-is — which is why the local compose file's "internal port must equal
 # published port" gotcha does not apply to this image.
 EXPOSE 3000
-CMD ["sh", "-c", "notion-mcp-server --transport http --host 0.0.0.0 --port ${PORT:-3000} --enable-token-passthrough"]
+CMD ["sh", "-c", "notion-mcp-server --transport http --host :: --port ${PORT:-3000} --enable-token-passthrough"]

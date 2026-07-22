@@ -128,6 +128,10 @@ On the **API service**:
 the service isn't running or the URL is wrong. Then use Settings → the connector's **Test**
 button, which should list ~24 Notion tools.
 
+> **Live setup, as deployed:** service `notion-mcp` in the `calypr-api` Railway project, at
+> `https://notion-mcp-production-0383.up.railway.app`. `PORT` is pinned to 8080 so the domain's
+> target port can't drift from what the app binds.
+
 **If something breaks**, in the order worth checking:
 
 | Symptom | Almost always means |
