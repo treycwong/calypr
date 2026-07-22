@@ -55,8 +55,12 @@ unconfigured.
 
 ## Before enabling Notion Tier A (later)
 
-1. Deploy `@notionhq/notion-mcp-server` as a separate service (Railway) with **`--auth-token
-   <secret>`** (not the local `--unsafe-disable-auth`), internal port == published port.
+1. Deploy `@notionhq/notion-mcp-server` as a separate Railway service in the same project,
+   using **`infra/notion-mcp/`** (Dockerfile + `railway.json`). Set `AUTH_TOKEN` on that service
+   to a long random secret; the image reads the bearer from the environment. The "internal port
+   == published port" rule is a *local-only* constraint — with bearer auth the server does no
+   `Host` validation, so Railway's domain and `$PORT` work as-is. Full walkthrough in
+   `infra/CONNECTORS.md` → "Production (Railway)".
 2. Set `CALYPR_NOTION_MCP_URL`, `CALYPR_NOTION_MCP_AUTH`, `CALYPR_NOTION_CLIENT_ID/SECRET`,
    `CALYPR_OAUTH_REDIRECT_BASE=https://calypr.co`, and register the redirect URI
    `https://calypr.co/api/connectors/notion/callback` in the Notion integration.

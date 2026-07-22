@@ -43,9 +43,41 @@ so Calypr uses a **public Notion integration** + a **self-hosted** Notion MCP se
      protection validates the `Host` header against its own host:port, so a remap (e.g.
      `3333→3000`) is rejected with `Invalid Host header`. Run it on `--port 3333` and publish
      `3333:3333`. 3333 is deliberately outside the web range (dev web 3000, e2e web 3100).
+     **This applies to the local setup only** — see the note under Production below.
    - **The server requires its own bearer** unless started with `--unsafe-disable-auth`.
-     For production, drop that flag, pass `--auth-token <secret>`, and set
-     `CALYPR_NOTION_MCP_AUTH` to the same value (Calypr then sends the bearer too).
+     For production, drop that flag, pass a bearer, and set `CALYPR_NOTION_MCP_AUTH` to the
+     same value (Calypr then sends the bearer too).
+
+   ### Production (Railway)
+
+   `infra/notion-mcp/` holds a Dockerfile + `railway.json` for this. Deploy it as a **second
+   Railway service in the same project** as the API:
+
+   1. New service → same GitHub repo → set its config path to `infra/notion-mcp/railway.json`
+      (or point the service's Dockerfile path at `infra/notion-mcp/Dockerfile`).
+   2. On that service set **`AUTH_TOKEN`** to a long random secret. The image reads it from the
+      environment rather than the command line, so the bearer never sits in a start command or
+      a build log. Generate one with `openssl rand -hex 32`.
+   3. Give it a public domain (or use private networking — see below) and note the URL.
+   4. On the **API** service set `CALYPR_NOTION_MCP_URL=https://<that-domain>/mcp` and
+      `CALYPR_NOTION_MCP_AUTH=<the same AUTH_TOKEN>`.
+
+   Three things worth knowing, all verified against `@notionhq/notion-mcp-server@2.4.1`:
+
+   - **The Host-header gotcha above does not apply in production.** The server only enables
+     DNS-rebinding protection when `--unsafe-disable-auth` is passed; with bearer auth it does
+     no `Host` validation, so Railway's own domain is accepted and `$PORT` can be anything.
+     (Confirmed: a request carrying `Host: notion-mcp.up.railway.app` reaches the app.)
+   - **`$PORT` must be expanded in the command.** The server reads `--port` only — there is no
+     `PORT` environment fallback — which is why the image's `CMD` uses the shell form.
+   - **`/health` is registered before the bearer middleware**, so Railway's healthcheck passes
+     without credentials. Only `/mcp` is gated.
+
+   Private networking is the tighter option (the MCP server is then unreachable from the
+   internet): use `http://<service-name>.railway.internal:<port>/mcp` for
+   `CALYPR_NOTION_MCP_URL`. Railway's private network is IPv6-only, so the container must bind
+   `--host ::` instead of `0.0.0.0` — change the `CMD` if you go this route. Keep `AUTH_TOKEN`
+   set either way; it is what stops any other service in the project from reading Notion data.
 3. **Connect** in Settings → **Connected accounts → Connect Notion**. The browser completes the
    Notion consent flow; the callback exchanges the code for a bot token, which is encrypted and
    stored. At run time Calypr connects to the Notion MCP server, passing that token via the
