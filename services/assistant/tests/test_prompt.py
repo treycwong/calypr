@@ -26,3 +26,15 @@ def test_system_prompt_embeds_schema_catalog_and_examples() -> None:
     assert "HARD RULES" in prompt
     # a few-shot spec is embedded verbatim
     assert '"type":"retriever"' in _few_shots()
+
+
+def test_prompt_teaches_the_react_tool_wiring():
+    """Every few-shot used to be tool-free, so the model had never seen a Tool node wired and
+    reached for a Router branch instead — which binds the tools to a node that discards them."""
+    from calypr_assistant.prompt import system_prompt
+
+    prompt = system_prompt()
+    assert '"type":"tool"' in prompt, "no few-shot contains a Tool node"
+    # The ReAct loop as the notion_assistant template wires it: agent -> tool on 'tools'.
+    assert '"source":"agent","target":"tools","condition":"tools"' in prompt
+    assert "never from a" in prompt and "router:" in prompt

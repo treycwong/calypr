@@ -165,6 +165,10 @@ class RouterNode(BaseNode):
                 system=_classify_prompt(cfg),
                 messages=[Msg(role=Role.user, content=query)],
                 temperature=0.0,
+                # The classifier's reply is a branch name — control flow, not content. Streamed
+                # (the default) it lands in the playground transcript, so the user sees their
+                # answer end with a stray "respond"/"notion" glued to the last word.
+                stream=False,
             )
             return {cfg.route_channel: _pick_branch(reply, cfg, default)}
 

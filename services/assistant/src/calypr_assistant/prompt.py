@@ -14,6 +14,7 @@ from calypr_compiler.templates import (
     image_generation,
     label_reader,
     market_research,
+    notion_assistant,
     rag,
     routing,
     text_to_speech,
@@ -127,6 +128,13 @@ def _few_shots() -> str:
         ("Build an assistant that answers me and reads the answer out loud.", _spoken_assistant()),
         # Image in: an Upload block before the agent lets a vision model review attachments.
         ("Build an agent I can send receipts to and it itemises them.", label_reader()),
+        # Tools: until this example existed, no few-shot contained a Tool node at all, and the
+        # model reached for the one control-flow shape it *had* seen — a Router with a "notion"
+        # branch. That compiles and runs, but binds the tools to the Router, which discards
+        # them: the agent ends up with no tools and says it can't access Notion. This teaches
+        # the ReAct loop instead — the Tool node hangs off the *agent*, with `tools`/`respond`
+        # branches and an edge back.
+        ("Make an assistant that can read my Notion workspace.", notion_assistant()),
     ]
     blocks = []
     for request, spec in pairs:
@@ -149,7 +157,13 @@ HARD RULES (a violation makes the output unusable):
 - NEVER use the "code" node type.
 - Omit every `position` field — the canvas lays nodes out itself.
 - Use the "messages" state channel with the "append" reducer for conversation history.
-- Router out-edges must set a `condition` matching one of the router's branch names."""
+- Router out-edges must set a `condition` matching one of the router's branch names.
+- A "tool" node must be wired FROM the agent/responder/revisor that will call it, never from a
+  router: edge agent -> tool with condition "tools", edge agent -> next with condition
+  "respond", and an edge tool -> agent to close the loop. Only the LLM node wired to a tool
+  node can bind its tools; a router cannot. To give one agent several tools (say Notion and
+  web search), add a separate tool node per provider and wire EACH of them to that same agent
+  this way — the agent picks between them itself, so it needs no router to choose."""
 
 
 @lru_cache(maxsize=1)
