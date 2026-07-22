@@ -9,6 +9,7 @@ pricing surface); consumed by the assistant in [`AI-ASSISTANT-SPEC.md`](./AI-ASS
 | | **Free** | **Plus — $20/mo** |
 |---|---|---|
 | Projects (agents) | **3** | **20** |
+| **Code export** — edit the generated Python + Apply to canvas (`POST /parse`) | ✗ | **✓** |
 | Node LLM calls (canvas runs) | **BYOK only** — user's own OpenAI/Moonshot/DeepSeek key; 0 credits consumed | Platform keys on all 3 models, metered in credits; **BYOK still allowed** (0 credits) |
 | AI chatbot (assistant) | **100 credits/mo**, chatbot-only, **DeepSeek-routed** (~15–20 graph generations) | Full credit pool, any of the 3 models |
 | Monthly credit grant | 100 (chatbot-only) | **2,000** (shared across node runs + chatbot) |
@@ -18,6 +19,18 @@ pricing surface); consumed by the assistant in [`AI-ASSISTANT-SPEC.md`](./AI-ASS
 One credit system, two spenders: **canvas node runs** and the **AI chatbot**. Both already
 flow through the same `usage` event pipeline (`services/model` → `services/runtime` →
 `apps/api/routers/runs.py`, and `/assist` per its spec), so one ledger meters both.
+
+**Code export (added 2026-07-22, closed-product pivot).** The one Plus line that isn't capacity:
+the product is closed, so taking your graph out as Python is what a paid plan buys. Enforced
+server-side by `deps.require_code_export` on `POST /parse` (402 `{reason: "plan", feature:
+"code_export"}`), not just hidden in the UI; `beta` workspaces keep it, since we don't take a
+shipped feature back off the cohort already using it.
+
+**Still open — read-only code viewing.** The Code tab renders generated Python to *everyone*
+today (a `<pre>`; `POST /codegen` is unauthenticated). Only editing + Apply-to-canvas is gated.
+Decide before Plus goes on sale whether viewing/copying is part of the free tier (it doubles as
+the "no lock-in" reassurance that sells the plan) or moves behind it too — this table describes
+the former.
 
 ## 2. The credit unit (the core design decision)
 
@@ -103,7 +116,13 @@ overrides; unknown model ids fall back to the most expensive rate (fail-closed, 
 fail-free). Calendar note: re-check the three provider price pages monthly until volume
 justifies automation.
 
-## 4. Data model (Alembic, extends the Week-9 `0006_billing.py`)
+## 4. Data model (Alembic — the Week-9 billing migration, `0010_billing.py`)
+
+> Numbering corrected 2026-07-22: this section was written against `0006_billing.py`, but the
+> tree is already at `0009_assistant_model.py`. Note also that `workspace.plan` (`0008`) and
+> `provider_key` (`0007`, Fernet + `CALYPR_VAULT_KEY` — *not* the AES-GCM/
+> `CALYPR_KEY_ENCRYPTION_KEY` this section describes) have **already shipped**, so the billing
+> migration adds only the Stripe + ledger columns below.
 
 - `workspace` += `plan` (`free|plus`, default free), `stripe_customer_id`,
   `credit_balance_micro` (cached; ledger is truth), `grant_cycle_anchor` (date).

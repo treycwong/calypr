@@ -13,22 +13,25 @@ export const ROUNDTRIP_OPT_IN_KEY = "calypr:roundtrip";
 const ROUNDTRIP_PLANS = new Set(["beta", "plus"]);
 
 /**
- * Reverse round-trip UI: editable code + "Apply to canvas".
+ * Code export: editable code + "Apply to canvas".
  *
- * The parser behind it (Weeks 5–7) is merged and proven; the loop is open to a **beta cohort**
- * rather than everyone while it settles in the wild. Three ways in, none on by default:
+ * A **paid feature** (`plus`), kept for the existing `beta` cohort. It is not a temporary gate on
+ * an unfinished thing — the parser behind it (Weeks 5–7) is merged and proven; the product is
+ * closed and export is what a paid plan buys. Three ways in, none on by default:
  *
  * 1. the workspace's `plan` (`beta`/`plus`) — the real, server-owned gate;
  * 2. the build flag above (a whole deployment);
  * 3. `localStorage["calypr:roundtrip"] = "1"` in a single browser.
  *
- * (2) and (3) are developer overrides, not entitlement. (3) in particular is what the e2e suite
- * uses: enabling the feature for one spec must not turn the Code tab from a `<pre>` into a
- * `<textarea>` for the five other specs that assert on `code-output`.
+ * (2) and (3) are developer/test overrides, not entitlement. (3) in particular is what the e2e
+ * suite uses: enabling the feature for one spec must not turn the Code tab from a `<pre>` into a
+ * `<textarea>` for the five other specs that assert on `code-output` — which is why both
+ * overrides stay even though neither is part of the product story.
  *
- * This is a **product-surface gate, not a security boundary** — `POST /parse` is public and
- * costs nothing to serve (a pure function, no model call), and the parser itself ships as OSS.
- * Someone who flips their own localStorage gets an unfinished UI, not privileged access.
+ * Note the **enforcement gap this leaves**: `POST /parse` is public and unauthenticated, so this
+ * is a product-surface gate, not a paywall. Flipping your own localStorage gets you the UI. That
+ * was acceptable when export was headed for OSS; now that it is the paid differentiator, the
+ * endpoint needs plan-checking server-side before Plus goes on sale.
  *
  * **Client-only** — reads `localStorage`, so read it through `useSyncExternalStore` (or an
  * effect), never during render, or the server and client markup disagree.

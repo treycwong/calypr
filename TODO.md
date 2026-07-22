@@ -371,6 +371,15 @@ continue, or churn? This ratio is the whole thesis."* That ratio is unmeasurable
 is off (`parse_applied`/`parse_degraded` never fire), so the Month-2 gate can never close and we'd
 reach Month 3 (Stripe) having never validated the thesis we're charging for.
 
+> **REVERSED 2026-07-22 — closed-product pivot.** The paragraph below decided *beta ≠ paywall*:
+> the round-trip would stay free core because it was the "no ceiling" promise and Week 11 would
+> OSS the parser. Both halves are now off. The product is **closed** (no OSS launch), and **code
+> export is the paid feature** — `has_roundtrip` never graduates to `return True`, and
+> `deps.require_code_export` enforces it on `POST /parse` rather than leaving the paywall to the
+> UI. The Month-2 ceiling-resolution gate above is also retired: it measured the *open* product's
+> thesis. Kept verbatim because it's the reasoning a future reader will want when asking why the
+> plan column exists at all. See `PRICING-SPEC.md` §1.
+
 **Decided: beta ≠ paywall.** `beta` gates on our confidence, `plus` on value capture. The
 round-trip stays **free core** — it *is* the "no ceiling" promise, and Week 11 OSSes the same
 parser on PyPI. Paid differentiation stays on capacity (projects/credits/platform models) per

@@ -417,6 +417,11 @@ export type ParseResult = {
  *
  * The server never fails on unparseable input — it degrades what it can't recognise and says so
  * — so a non-OK response here means the request itself failed, not that the code was bad.
+ *
+ * 402 is the one a user can actually hit: code export is a paid entitlement, so a plan that
+ * doesn't include it gets told that instead of a bare status code. The UI normally hides the
+ * button in that case (`roundtripEnabled`), so this fires when the two disagree — a plan that
+ * changed mid-session, or a hand-rolled request.
  */
 export async function parseCode(code: string): Promise<ParseResult> {
   const res = await fetch("/api/parse", {
@@ -424,6 +429,9 @@ export async function parseCode(code: string): Promise<ParseResult> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ code }),
   });
+  if (res.status === 402) {
+    throw new Error("Code export is a Plus feature — upgrade to apply edits to the canvas.");
+  }
   if (!res.ok) throw new Error(`parse failed (${res.status})`);
   return (await res.json()) as ParseResult;
 }

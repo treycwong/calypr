@@ -25,7 +25,7 @@ from calypr_api.assistant_models import (
     is_allowed,
 )
 from calypr_api.db.models import Agent, ShareLink, Workspace
-from calypr_api.deps import Tenant, tenant
+from calypr_api.deps import Tenant, require_code_export, tenant
 from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -80,14 +80,20 @@ def codegen_spec(graph: GraphSpec) -> CodegenResponse:
     return CodegenResponse(code=code)
 
 
-@router.post("/parse", response_model=ParseResponse, tags=["engine"])
+@router.post(
+    "/parse",
+    response_model=ParseResponse,
+    tags=["engine"],
+    dependencies=[Depends(require_code_export)],
+)
 def parse_code(body: ParseRequest) -> ParseResponse:
     """The reverse of `/codegen`: edited Python back to a GraphSpec the canvas can render.
 
-    Pure and unauthenticated like its sibling — it reads no workspace data, only the code in the
-    request. Never raises on bad input: `parse_python` degrades unrecognised functions to Code
-    nodes and reports them, so the caller always gets a renderable graph plus an honest account
-    of what wasn't understood."""
+    Pure — it reads no workspace data, only the code in the request — but **entitlement-gated**,
+    because code export is what a paid plan buys (`require_code_export`; unenforced in dev/CI).
+    Never raises on bad input: `parse_python` degrades unrecognised functions to Code nodes and
+    reports them, so an entitled caller always gets a renderable graph plus an honest account of
+    what wasn't understood."""
     result = parse_python(body.code)
     posthog_client.capture(
         "graph_parse_requested",

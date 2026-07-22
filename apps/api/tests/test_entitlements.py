@@ -9,10 +9,13 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from calypr_api import entitlements
+from calypr_api import deps, entitlements
+from calypr_api.config import settings
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
+from calypr_codegen import generate_python
+from calypr_compiler.golden import input_agent_output
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -296,3 +299,62 @@ def test_promote_404s_for_an_unknown_workspace(monkeypatch):
         headers={"x-admin-token": ADMIN_TOKEN},
     )
     assert r.status_code == 404
+
+
+# --- the paywall on /parse (code export) ------------------------------------------------------
+#
+# `flags.ts` hides the UI, but the endpoint is what actually has to say no — otherwise the paid
+# feature is free to anyone who posts to it directly.
+
+
+def _parse_body() -> dict:
+    return {"code": generate_python(input_agent_output(model="fake"))}
+
+
+def test_parse_is_open_when_no_internal_key_is_set(monkeypatch):
+    # The dev/CI carve-out: without an internal key every request is the shared dev workspace
+    # (`free`), so enforcing there would make the export path untestable — locally and in the
+    # e2e suite. Deployments always set a key.
+    monkeypatch.setattr(settings, "internal_key", None)
+    assert client.post("/parse", json=_parse_body()).status_code == 200
+
+
+@requires_db
+def test_parse_402s_for_a_workspace_that_has_not_paid(monkeypatch):
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        ws_id, original, ws.plan = ws.id, ws.plan, entitlements.FREE
+        s.commit()
+    monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
+    try:
+        r = client.post("/parse", json=_parse_body())
+        assert r.status_code == 402
+        assert r.json()["detail"]["feature"] == "code_export"
+    finally:
+        with SessionLocal() as s:
+            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
+            s.commit()
+
+
+@requires_db
+@pytest.mark.parametrize("plan", [entitlements.BETA, entitlements.PLUS])
+def test_parse_serves_an_entitled_workspace(monkeypatch, plan: str):
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    with SessionLocal() as s:
+        ws = s.query(Workspace).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        ws_id, original, ws.plan = ws.id, ws.plan, plan
+        s.commit()
+    monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
+    try:
+        r = client.post("/parse", json=_parse_body())
+        assert r.status_code == 200
+        assert r.json()["graph"]["nodes"], "an entitled caller still gets a parsed graph"
+    finally:
+        with SessionLocal() as s:
+            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
+            s.commit()
