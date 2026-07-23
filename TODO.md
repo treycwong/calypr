@@ -25,9 +25,16 @@ The code is merged and correct; nothing works until three values exist. See
       `free` → `checkout.session.completed` → **plus** (customer mapped) → `invoice.paid` holds →
       `past_due` **keeps access** → `subscription.deleted` → **free**. 35/35 billing tests pass
       against a real database.
-- [ ] **Pay once through the real button** with `4242 4242 4242 4242` to confirm the deployed
-      webhook endpoint (not just a locally-signed payload) reaches the handler.
-- [ ] **Only after a real test payment**, swap in the live values (live price is
+- [x] **Real test payment confirmed in production (2026-07-23)** — Stripe reached the deployed
+      endpoint, the signature verified on the wire, and both `checkout.session.completed` and
+      `invoice.paid` are recorded in `stripe_event`. `treycwong@gmail.com` is mapped to
+      `cus_Uw5V71aLHnaox9`.
+- [ ] **Cancellation is unproven *in production*.** It works locally, but the paid account was
+      already `plus` (set by hand earlier), so neither `free → plus` nor `plus → free` was
+      actually *observed* end-to-end on the deployed endpoint. Cancel the test subscription in
+      the Stripe dashboard and watch the plan return to `free` — that closes the last gap, and
+      the downgrade path is the one where a bug costs a paying customer their access.
+- [ ] **Go live** — swap in the live values (live price is
       `price_1TwCr8Q4CLwWKY6VKVaMtiYY`) plus a **separate live webhook signing secret**. Keep
       live values on Railway only, never in `.env`.
 - ⚠️ **`.env` had both TEST and LIVE blocks active**, and since later definitions win, the
