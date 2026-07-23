@@ -1,5 +1,133 @@
 # Calypr — TODO
 
+> **Everything currently open, in priority order.** Sections below this one are the historical
+> record — what shipped and why. Updated 2026-07-23.
+
+## ⏭️ NEXT — what's actually blocking
+
+### 1. Turn Stripe on (blocked on credentials)
+
+The code is merged and correct; nothing works until three values exist. See
+`apps/api/.env.example` for the canonical list, and the "Creating the Plus price" steps below.
+
+- [ ] **Create the Plus product + $20/mo recurring price** in Stripe **test mode** → `price_…`
+- [ ] **Set all three on Railway** (CLI is linked and working):
+      `railway variables --service calypr-api --set STRIPE_SECRET_KEY=… --set STRIPE_WEBHOOK_SECRET=… --set STRIPE_PLUS_PRICE_ID=…`
+- [ ] **Point the webhook** at `https://calypr-api-production.up.railway.app/billing/webhook`
+      — Railway directly, *not* calypr.co: signature verification needs the exact raw bytes, and
+      the signing secret belongs where the DB is. Events: `checkout.session.completed`,
+      `customer.subscription.{created,updated,deleted}`, `invoice.paid`, `invoice.payment_failed`.
+- [ ] **Test the loop end-to-end** on the `tracey@theflowops.com` free workspace: pay in test
+      mode → confirm `plus` → cancel → confirm `free`. **Go through the actual button** — a
+      payment made in the Stripe dashboard carries no `client_reference_id`, so it correctly
+      does nothing, which looks like a bug if you weren't expecting it.
+- Note: the earlier report that the keys were in `.env` didn't take — that file was last
+  modified 2026-07-21 and contains no `STRIPE_*`.
+
+#### Creating the Plus price (Stripe dashboard)
+
+1. Toggle to **Test mode** (top-right). Test and live have entirely separate products, keys,
+   endpoints and signing secrets — a price id from one is meaningless in the other.
+2. **Product catalogue → Add product**.
+3. Name it `Calypr Plus`. The description is customer-visible on the Checkout page.
+4. Pricing: **Recurring**, **$20.00 USD**, billing period **Monthly**. Leave the default
+   "flat rate" / per-unit — our Checkout Session sends `quantity: 1`.
+5. Save, then open the product and copy the **price** id — it starts `price_…`, *not*
+   `prod_…`. `prod_` is the product; Checkout needs the price.
+6. Repeat in **live mode** when you're ready to charge real money, and set the live
+   `STRIPE_PLUS_PRICE_ID` + `sk_live_…` + a *separate* live webhook signing secret.
+
+Or with the Stripe CLI, if you prefer it reproducible:
+
+```bash
+stripe products create --name="Calypr Plus"
+stripe prices create --product=prod_XXX --unit-amount=2000 --currency=usd -d "recurring[interval]=month"
+```
+
+### 2. Credit ledger + enforcement (the other half of billing)
+
+`0013` shipped the *entitlement* half: paying flips the plan. Credits are **computed**
+(`pricing.credits_for`) but nothing debits them, so the 2,000/month grant isn't enforced and a
+Plus user currently has no ceiling beyond `CALYPR_PLATFORM_SPEND_CAP_USD`.
+
+- [ ] `credit_ledger` table (PRICING-SPEC §4) + monthly grant on `invoice.paid`
+- [ ] Debit post-run from the accumulated usage events (same hook as `RunRecorder`)
+- [ ] 402 `{reason: "credits"}` in `create_run` / `/assist` when the balance is spent
+- [ ] Free-tier BYOK enforcement: Free has *no* platform node runs per the plan matrix, and
+      nothing enforces that today
+
+### 3. Before the first real charge (money safety)
+
+- [ ] **Blob GC does not exist** — every image/TTS generation writes a permanent object under
+      `runs/{png,mp3}/…`; nothing deletes them, ever, including on run/agent/share deletion. A
+      monotonically growing bill under a "positive gross margin" gate. Needs `delete_blob` in
+      `calypr_storage` wired to deletions + an orphan sweep.
+- [ ] **FORCE RLS on `run` / `run_usage`** — isolation is app-level `workspace_id` filtering and
+      billing will read these tables. Give the platform-wide `SUM(cost_usd)` spend-cap query a
+      bypass path when forcing.
+- [ ] **Durable assist cap** — `CALYPR_ASSIST_DAILY_CAP` is in-memory and per-process (resets on
+      restart, not shared across instances). The Free tier's assist grant needs the ledger.
+- [ ] **Rotate the Neon prod credential** — the pooler URL with password sits in the repo-root
+      `.env` and has surfaced in a debug session. Ops task, not a PR.
+- [ ] **Verify the non-Anthropic prices in `pricing.py`** against provider pages. They are the
+      input to *both* margin and credits now, and the OpenAI GPT-5.6 tier came from aggregators.
+
+### 4. Revisit the beta cohort (deferred by decision, 2026-07-23)
+
+`beta` currently means "early access, including code export" and is granted by a one-time
+invite. It needs an ending, and the mechanics now support one (`waitlist.granted_at` makes a
+demotion stick — before that fix, demoting the cohort would have silently undone itself).
+
+- [ ] **Decide what `beta` becomes** when the beta ends: convert to paid Plus, drop to Free with
+      a grace period, or keep as a permanent comped tier for early partners.
+- [ ] **Decide whether `beta` should keep code export** once Plus is on sale — right now it's
+      the same entitlement for free, which is fine for ~10 partners and not fine at scale.
+- [ ] Whatever the answer: it's a bulk plan change plus a comms email, not a code change.
+
+### 5. Product decisions still open
+
+- [ ] **Read-only code viewing** — the Code tab shows a 14-line preview to Free today, and the
+      full file to `beta`/`plus`. Decide before Plus goes on sale whether *viewing* is free (it
+      doubles as the "no lock-in" reassurance that sells the plan) or paid.
+- [ ] **Acquisition has no plan.** Cancelling the OSS launch removed the roadmap's only
+      top-of-funnel (Show HN). The blog is shipped, indexed and has two posts — making it a
+      deliberate channel is the cheap replacement, but somebody has to decide that.
+- [ ] **Month-1 code-quality gate never ran** (≥70% would-merge, blind panel). Chosen
+      substitute — the automated harness in `WEEK5-CODEGEN-EVAL-HARNESS-PLAN.md` Layers 1–2 —
+      is also not built. It's a standing kill condition on everything downstream.
+
+### 6. Known defects (not blocking, but real)
+
+- [ ] **Generated Python collapses multi-Tool dispatch.** The runtime was fixed in PR #41
+      (`ctx.tool_owners`); `services/codegen/generate.py:214` still emits one `tools_condition`
+      branch, so an agent wired to two Tool nodes exports code that reaches only one of them.
+      **Must be fixed before any Plus customer exports** — they'd get code that behaves
+      differently from their canvas. Parser must change in step (it discriminates Router vs
+      ReAct by the routing function's name).
+- [ ] **Five config fields the engine never reads** (found by the 2c audit) — implement or
+      delete: `agent.max_steps`, `agent.utility_criteria`, `input.mode`, `output.stream`,
+      `tool.http_method`. The last is a real product gap: "call any JSON API" can't POST.
+- [ ] **`e2e/tests/phase-assistant-model.spec.ts:166` is environment-sensitive** — passes in CI
+      and on a machine with no `.env`, fails identically on unmodified `main` when real provider
+      keys are present (it asserts `.last()`, which becomes a real model answer). Pre-existing.
+- [ ] **Neon preview branches** — nothing auto-deletes a preview's branch when its PR closes, so
+      the limit that broke Vercel Previews for weeks will be hit again. Check the Neon–Vercel
+      integration for an auto-cleanup setting.
+- [ ] **Saved-agent count** — 21 agents exist in prod, all repaired by `0011`. Worth a look
+      before launch to confirm none are half-built experiments a new user could stumble into.
+- [ ] **The prod smoke proves "answers", not "used its tools".** An anonymous run carries no
+      connector or workspace key, so `tpl-mcp-react` / `tpl-notion-assistant` /
+      `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,
+      Notion or Unsplash. Tool *invocation* needs a signed-in pass with credentials attached —
+      worth doing now that Notion is live.
+
+### 7. Feature backlog (Month 4+, unchanged)
+
+RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, Chroma provider,
+Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
+
+---
+
 ## 🔀 PIVOT (2026-07-22): closed product, code export is paid
 
 The lead differentiator is no longer "your graph is yours, here's the Python." The product goes
@@ -90,40 +218,18 @@ page render the truth on first paint.
   rates the 2,000-credit Plus grant buys ~125 images, ~266k characters of speech, or ~9,000 chat
   turns.
 
-### Blocked on credentials
-
-- [ ] **`STRIPE_*` are not set anywhere.** They were reported as added to the repo-root `.env`,
-  but that file was last modified 2026-07-21 and contains none of them — so nothing was saved.
-  Needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PLUS_PRICE_ID` (see
-  `apps/api/.env.example`). Until then `/billing/*` correctly 503s and checkout captures intent.
-- [ ] **Railway vars** — the CLI is linked and working (`calypr-api`), so this is one command
-  per key once they exist:
-  `railway variables --service calypr-api --set STRIPE_SECRET_KEY=sk_test_…`
-- [ ] **Point the Stripe webhook at** `https://calypr-api-production.up.railway.app/billing/webhook`
-  — Railway directly, not calypr.co: signature verification needs the exact raw bytes, and the
-  signing secret belongs where the DB is.
-
-### Deferred (deliberately, not forgotten)
-
-- [ ] **Credit ledger + enforcement.** `0013` is the entitlement half only. Credits are computed
-  (`credits_for`) but nothing debits them, so the grant isn't enforced yet — that needs
-  `credit_ledger` plus a check in `create_run`/`/assist`, and it only becomes meaningful once
-  someone can actually pay.
-- [ ] **Usage limits on Image/Voice** — deliberately none beyond the credit cost. A per-run cap
-  would need the ledger to be worth anything; the platform-wide `CALYPR_PLATFORM_SPEND_CAP_USD`
-  kill-switch remains the interim loss firewall.
+> Operational follow-ups for this section now live in **NEXT §1–§2** at the top of the file.
+> Note on limits: Image/Voice deliberately have no per-run cap beyond their credit cost — a cap
+> needs the ledger to mean anything, and `CALYPR_PLATFORM_SPEND_CAP_USD` is the interim firewall.
 
 ### Still open in the pivot
 
-- [ ] **Saved agents may still carry `fake`.** The fix changes defaults and templates, not user
-  data: an agent someone saved from the old Reflexion template still has `model: "fake"` in its
-  stored `graph_spec` and will keep echoing. Needs a decision — a data migration rewriting
-  `"fake"` → `""` in `agent.graph_spec` would repair them, but it rewrites user data and some
-  people may have chosen `fake` deliberately for testing. **Not done; ask before running it.**
-
-- [ ] **Read-only code viewing is still free** — `POST /codegen` is unauthenticated and the Code
-  tab renders to everyone; only edit + Apply is gated. Decide before Plus goes on sale (it
-  doubles as the "no lock-in" reassurance that *sells* the plan). Flagged in `PRICING-SPEC.md` §1.
+- [x] **Saved agents carrying `fake` — REPAIRED** (migration `0011`, 2026-07-22). Changing the
+  defaults couldn't reach stored data, so an agent saved from the old Reflexion template would
+  have echoed forever. Verified in production: **0 of 21 saved agents** still carry `fake` on an
+  LLM node.
+- [ ] **Read-only code viewing** — now a 14-line preview for Free, full file for `beta`/`plus`.
+  Whether *viewing* stays free is still open → **NEXT §5**.
 - [x] **2c — config-panel completeness — DONE (2026-07-22)**. Audited all 14 node types, ~90
   config fields, against what the canvas actually lets you set. Gaps closed:
   - **`agent_type` had no control at all** — `AGENT_TYPE_OPTIONS` sat in `graph.ts` with six
@@ -142,17 +248,11 @@ page render the truth on first paint.
 
 ### Found by the 2c audit — config fields the engine never reads
 
-These are declared on config models, round-trip through the DSL, and are read by **nothing**.
-They're a lie in the schema: a user setting them would see no effect. Decide per field whether to
-implement or delete (deleting needs a look at saved graphs first).
-
-- [ ] `agent.max_steps` — a ReAct step cap that isn't enforced anywhere (only mentioned in a
-  comment saying it isn't expressed in code); the recursion limit is the real bound today.
-- [ ] `agent.utility_criteria` — zero references; `utility_based` scores against a hard-coded
-  prompt instead.
-- [ ] `input.mode` (`chat|api|form`) — only `chat` behaviour exists.
-- [ ] `output.stream` — streaming is decided by the runtime, not this flag.
-- [ ] `tool.http_method` — `Literal["GET"]`, unread; generic-HTTP tools cannot POST.
+Five fields are declared on config models, round-trip through the DSL, and are read by
+**nothing** — a lie in the schema, since setting them has no effect. They're deliberately absent
+from the config panel (a knob that does nothing is worse than no knob) and listed as
+implement-or-delete in **NEXT §6**. The `INERT` set in
+`services/compiler/tests/test_config_panel_coverage.py` is the enforced copy of that list.
 - [ ] **2b caveat — the smoke proves "answers", not "used its tools".** An anonymous prod run
   has no connector or workspace key, so `tpl-mcp-react` / `tpl-notion-assistant` /
   `tpl-image-finder` passed on the model's own knowledge without necessarily calling MCP,
