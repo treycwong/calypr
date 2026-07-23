@@ -153,6 +153,14 @@ class CheckoutSession(BaseModel):
     url: str
 
 
+class CreditUsage(BaseModel):
+    """This cycle's credit allowance and what's left of it, in whole credits."""
+
+    allowance: int = 0
+    remaining: int = 0
+    used: int = 0
+
+
 class WorkspaceInfo(BaseModel):
     id: str
     name: str
@@ -167,6 +175,8 @@ class WorkspaceInfo(BaseModel):
     assistant_model: str = ""
     # The model canvas LLM nodes inherit; "" = the platform default (gpt-4o-mini).
     default_model: str = ""
+    # This cycle's credits. Enforcement without a display is a limit nobody can plan around.
+    credits: CreditUsage = CreditUsage()
 
 
 class WorkspaceUpdate(BaseModel):

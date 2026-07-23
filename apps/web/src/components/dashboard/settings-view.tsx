@@ -62,6 +62,13 @@ export function SettingsView({
   const [defaultModelMsg, setDefaultModelMsg] = useState("");
   // The entitlement tier, so "why can/can't I export my code?" has a visible answer.
   const [plan, setPlan] = useState("free");
+  // Enforcement without a display is a limit nobody can plan around — a run refused for
+  // "no credits" is only actionable if you can see where you stood.
+  const [credits, setCredits] = useState<{
+    allowance: number;
+    remaining: number;
+    used: number;
+  } | null>(null);
   const { keyed, refresh: refreshKeys } = useProviderKeys();
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   // Per-provider status line, so saving an OpenAI key doesn't flash a message on the Kimi row.
@@ -77,6 +84,7 @@ export function SettingsView({
         setModel(w.assistant_model ?? "");
         setDefaultModel(w.default_model ?? "");
         setPlan(w.plan ?? "free");
+        setCredits(w.credits ?? null);
       })
       .catch(() => {});
     listAssistantModels()
@@ -234,6 +242,46 @@ export function SettingsView({
               ) : null}
             </div>
           </div>
+
+          {credits && credits.allowance > 0 ? (
+            <div className="mt-4 rounded-lg border border-border p-5" data-testid="ws-credits">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 className="text-sm font-medium">Usage this month</h2>
+                <span className="text-xs text-muted-foreground">
+                  <span data-testid="ws-credits-remaining" className="text-foreground">
+                    {credits.remaining.toLocaleString()}
+                  </span>{" "}
+                  of {credits.allowance.toLocaleString()} credits left
+                </span>
+              </div>
+              <div
+                className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted"
+                role="progressbar"
+                aria-valuenow={credits.used}
+                aria-valuemin={0}
+                aria-valuemax={credits.allowance}
+                aria-label="Credits used this month"
+              >
+                <div
+                  className="h-full rounded-full bg-foreground transition-[width]"
+                  style={{
+                    width: `${Math.min(100, (credits.used / credits.allowance) * 100)}%`,
+                  }}
+                />
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Credits meter what our keys spend on your behalf — runs and the AI assistant.
+                They reset each month. Runs on{" "}
+                <span className="text-foreground">your own API key</span> below cost nothing.
+              </p>
+              {credits.remaining === 0 ? (
+                <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
+                  You&rsquo;re out of credits until they reset. Add your own key below to keep
+                  running{plan === "free" ? ", or upgrade to Plus" : ""}.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
 
           <div className="mt-4 rounded-lg border border-border p-5">
             <label htmlFor="ws-default-model" className="text-sm font-medium">

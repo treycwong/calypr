@@ -305,6 +305,8 @@ export type WorkspaceInfo = {
   assistant_model?: string;
   /** The model canvas LLM nodes inherit; "" means the platform default (gpt-4o-mini). */
   default_model?: string;
+  /** This cycle's credit allowance and what's left, in whole credits. */
+  credits?: { allowance: number; remaining: number; used: number };
 };
 
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only

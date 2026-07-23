@@ -240,3 +240,22 @@ def check_can_run(workspace_id: uuid.UUID | None) -> str | None:
     except Exception:
         log.warning("credit check failed — allowing the run", exc_info=True)
         return None
+
+
+def usage_summary(session: Session, workspace: Workspace) -> dict[str, object]:
+    """What Settings shows: how much of this cycle's allowance is left.
+
+    Grants lazily first, so a workspace that has never run sees its real allowance rather than
+    a zero that looks like a bug. Reported in whole credits — micro is a storage detail, and
+    "1,983.4 credits" is noise to a person deciding whether they can run something."""
+    ensure_current_grant(session, workspace)
+    allowance = MONTHLY_GRANT.get(workspace.plan or entitlements.FREE, 0)
+    remaining_micro = balance_micro(session, workspace.id)
+    # Clamp the display at zero: a negative balance is the bounded overshoot of a run that was
+    # already in flight, and "-3 credits" invites a support question with no useful answer.
+    remaining = max(0, remaining_micro // MICRO)
+    return {
+        "allowance": allowance,
+        "remaining": remaining,
+        "used": max(0, allowance - remaining),
+    }

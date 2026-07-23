@@ -50,7 +50,17 @@ export default defineConfig({
       // ADMIN_TOKEN lets the round-trip spec promote a workspace into the beta tier through the
       // real operator endpoint (and demote it again), so entitlement gating is exercised
       // end-to-end rather than stubbed.
-      env: { CALYPR_ASSISTANT_MODEL: "fake", CALYPR_ADMIN_TOKEN: "e2e-admin-token" },
+      // STRIPE_* are pinned empty for the same reason CALYPR_ASSISTANT_MODEL is pinned to
+      // "fake": the API loads the repo-root .env, so a developer with real keys there would
+      // otherwise get a different suite than CI — billing would report `enabled` and the
+      // checkout specs would fail locally while passing in CI (or worse, the reverse).
+      env: {
+        CALYPR_ASSISTANT_MODEL: "fake",
+        CALYPR_ADMIN_TOKEN: "e2e-admin-token",
+        STRIPE_SECRET_KEY: "",
+        STRIPE_WEBHOOK_SECRET: "",
+        STRIPE_PLUS_PRICE_ID: "",
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },
