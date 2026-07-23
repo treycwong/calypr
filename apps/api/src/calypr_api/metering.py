@@ -18,9 +18,10 @@ from typing import Any
 
 from sqlalchemy import func, update
 
+from calypr_api import credits
 from calypr_api.db.models import Run, RunUsage
 from calypr_api.db.session import SessionLocal, set_tenant
-from calypr_api.pricing import platform_cost_usd
+from calypr_api.pricing import platform_cost_usd, platform_credits_for
 
 log = logging.getLogger("calypr_api")
 
@@ -29,10 +30,13 @@ class RunRecorder:
     """A handle to one in-flight run's metering. Construct via `start`; if that fails the
     returned recorder is *disabled* and every method is a silent no-op."""
 
-    def __init__(self, session, run_id, workspace_id) -> None:
+    def __init__(self, session, run_id, workspace_id, source: str = "run") -> None:
         self._session = session
         self._run_id = run_id
         self._workspace_id = workspace_id
+        # Carried so the credit debit can say where the spend came from (`run|assist|share`),
+        # which is what makes a ledger line explainable to the customer who's reading it.
+        self._source = source
         self._usage: list[dict[str, Any]] = []
         self._enabled = session is not None
 
@@ -65,7 +69,9 @@ class RunRecorder:
             session.add(run)
             session.commit()
             run_id = run.id
-            return cls(session=session, run_id=run_id, workspace_id=workspace_id)
+            return cls(
+                session=session, run_id=run_id, workspace_id=workspace_id, source=source
+            )
         except Exception:
             log.warning("run metering disabled: could not start run", exc_info=True)
             if session is not None:
@@ -92,6 +98,7 @@ class RunRecorder:
         try:
             total_in = total_out = 0
             total_cost = 0.0
+            total_credits = 0.0
             rows: list[RunUsage] = []
             for u in self._usage:
                 in_tok = int(u.get("input_tokens") or 0)
@@ -112,6 +119,10 @@ class RunRecorder:
                 # Platform COGS, not provider list price: BYO-key frontier models add $0
                 # (model_access) so they can't trip the platform spend cap.
                 total_cost += platform_cost_usd(model or "", in_tok, out_tok)
+                # Credits follow the same rule for the same reason: a model running on the
+                # workspace's own key is billed to them by the provider, so charging credits
+                # for it too would be charging twice. `platform_credits_for` returns 0 there.
+                total_credits += platform_credits_for(model or "", in_tok, out_tok)
             if rows:
                 self._session.add_all(rows)
             self._session.execute(
@@ -125,6 +136,17 @@ class RunRecorder:
                     finished_at=func.now(),
                 )
             )
+            # Debit in the *same* transaction as the usage rows: a run that was metered but not
+            # charged is free usage, and one charged without a usage row is unexplainable to the
+            # customer. They land together or not at all.
+            if total_credits > 0:
+                credits.debit_run(
+                    self._session,
+                    self._workspace_id,
+                    total_credits,
+                    source=self._source,
+                    ref_id=str(self._run_id),
+                )
             self._session.commit()
         except Exception:
             log.warning("run metering: flush failed", exc_info=True)
