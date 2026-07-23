@@ -109,6 +109,17 @@ Build order (each step is useful on its own):
 - [ ] **Surface the balance** — Settings → Workspace should show credits used/remaining. Nobody
       can be expected to respect a limit they can't see, and it's the natural upgrade prompt.
       **This is now the most user-visible gap**: enforcement is live and invisible.
+- [ ] **DECISION NEEDED — the Free tier is more generous than designed.** `PRICING-SPEC` §1
+      says Free is **BYOK-only** for canvas runs, with its 100 credits reserved for the
+      *assistant*; `/pricing` likewise sells Free as "bring your own key". The shipped ledger
+      gives Free 100 credits spendable on **anything**, so a free user currently gets ~100
+      credits of platform runs nobody advertised.
+      Financially this is already budgeted — the spec itself costs the free grant at ~$0.20/user
+      /month — so the exposure is unchanged; only *where* it can be spent differs. Three options:
+      (a) keep it as a deliberate taste-of-the-product and update spec + pricing copy to match,
+      (b) restrict Free's credits to `source="assist"` so runs require BYOK as designed, or
+      (c) keep it but shrink the grant. **Left generous on purpose**: over-delivering is the
+      safe direction to be wrong in, and quietly making the free tier worse isn't mine to decide.
 - [ ] **Assist is not yet metered against credits.** `/runs` is gated; `/assist` still uses the
       in-memory `CALYPR_ASSIST_DAILY_CAP`. Free's 100-credit grant is *assistant* budget per the
       plan matrix, so this is the half that makes the Free tier's number mean anything.
