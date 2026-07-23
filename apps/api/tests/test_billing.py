@@ -15,10 +15,12 @@ import time
 import uuid
 
 import pytest
+import stripe
 from calypr_api import billing, entitlements
 from calypr_api.db.models import StripeEvent, Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
+from calypr_api.routers import billing as billing_router
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
@@ -212,6 +214,44 @@ def test_malformed_json_with_a_valid_signature_is_a_400(configured):
         headers={"Stripe-Signature": f"t={timestamp},v1={_sign(body, timestamp)}"},
     )
     assert r.status_code == 400
+
+
+# --- reading the payload (no database) -----------------------------------------------------------
+#
+# These exist because the real bug here was invisible locally: `StripeObject.get()` doesn't
+# exist in the v15 SDK, and every test that would have caught it needed a database, so a machine
+# with Docker down reported green and CI reported five 500s. Payload access is pure — test it
+# where it can always run.
+
+
+def _stripe_obj(payload: dict):
+    return stripe.Event.construct_from(
+        {"id": "evt_1", "object": "event", "type": "invoice.paid", "data": {"object": payload}},
+        "sk_test",
+    ).data.object
+
+
+def test_a_stripe_object_is_not_a_dict():
+    """Pins the assumption that broke: it has no `.get`, and `obj["missing"]` raises. If a
+    future SDK makes it dict-like again this fails loudly rather than silently changing how
+    every handler reads its payload."""
+    obj = _stripe_obj({"customer": "cus_x"})
+    assert not isinstance(obj, dict)
+    assert not hasattr(obj, "get")
+
+
+def test_reading_a_present_field():
+    assert billing_router._field(_stripe_obj({"customer": "cus_x"}), "customer") == "cus_x"
+
+
+def test_reading_an_absent_field_is_none_not_an_exception():
+    # Real payloads omit fields — a checkout session started outside our flow has no
+    # `client_reference_id` — and that must not 500 the endpoint.
+    assert billing_router._field(_stripe_obj({"customer": "cus_x"}), "client_reference_id") is None
+
+
+def test_reading_a_null_field_is_none():
+    assert billing_router._field(_stripe_obj({"customer": None}), "customer") is None
 
 
 # --- delivery semantics (database) ---------------------------------------------------------------

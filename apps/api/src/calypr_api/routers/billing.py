@@ -96,6 +96,16 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
     return CheckoutSession(url=checkout.url or "")
 
 
+def _field(obj: object, name: str) -> str | None:
+    """Read an optional field off a Stripe object.
+
+    `StripeObject` is **not** a dict in the v15 SDK — it has no `.get()`, and `obj["missing"]`
+    raises KeyError — so a webhook payload that legitimately omits a field (a checkout session
+    with no `client_reference_id`, say) needs this rather than dict access."""
+    value = getattr(obj, name, None)
+    return str(value) if value is not None else None
+
+
 def _apply(session: Session, event: stripe.Event) -> None:
     """Act on one verified event. Raises only on failures worth a retry."""
     data = event.data.object  # type: ignore[union-attr]
@@ -104,8 +114,8 @@ def _apply(session: Session, event: stripe.Event) -> None:
     if kind == "checkout.session.completed":
         # The one event that can *establish* the mapping: everything later refers to the
         # customer, and this is where we learn which workspace that customer is.
-        workspace_id = data.get("client_reference_id")
-        customer_id = data.get("customer")
+        workspace_id = _field(data, "client_reference_id")
+        customer_id = _field(data, "customer")
         if not workspace_id:
             log.warning("checkout.session.completed with no client_reference_id: %s", event.id)
             return
@@ -126,14 +136,14 @@ def _apply(session: Session, event: stripe.Event) -> None:
         return
 
     if kind.startswith("customer.subscription."):
-        customer_id = data.get("customer")
+        customer_id = _field(data, "customer")
         workspace = billing.workspace_for_customer(session, customer_id)
         if workspace is None:
             # Not an error worth retrying: a customer we have no mapping for (created in the
             # dashboard by hand, or belonging to another environment) will never map on retry.
             log.warning("subscription event for unmapped customer %s", customer_id)
             return
-        status = "canceled" if kind.endswith(".deleted") else str(data.get("status", ""))
+        status = "canceled" if kind.endswith(".deleted") else (_field(data, "status") or "")
         plan = billing.plan_for_status(status)
         if plan and billing.set_plan(workspace, plan):
             session.commit()
@@ -143,7 +153,7 @@ def _apply(session: Session, event: stripe.Event) -> None:
     if kind == "invoice.payment_failed":
         # Deliberately does *not* downgrade. Stripe is still retrying the card; the subscription
         # is what says whether it's over, and that arrives as `customer.subscription.updated`.
-        customer_id = data.get("customer")
+        customer_id = _field(data, "customer")
         workspace = billing.workspace_for_customer(session, customer_id)
         log.warning(
             "invoice payment failed for customer %s (workspace %s)",
@@ -162,7 +172,7 @@ def _apply(session: Session, event: stripe.Event) -> None:
         # Renewal. The plan is already `plus` in the normal case; this re-asserts it so a
         # workspace can't drift out of entitlement while it is genuinely paying. The monthly
         # credit grant hangs here once the ledger exists.
-        workspace = billing.workspace_for_customer(session, data.get("customer"))
+        workspace = billing.workspace_for_customer(session, _field(data, "customer"))
         if workspace is not None and billing.set_plan(workspace, "plus"):
             session.commit()
             log.info("workspace %s re-asserted to plus on renewal", workspace.id)
