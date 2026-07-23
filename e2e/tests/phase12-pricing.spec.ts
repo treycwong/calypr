@@ -62,3 +62,19 @@ test("checkout captures intent", async ({ page }) => {
   await page.getByTestId("checkout-notify").click();
   await expect(page.getByTestId("checkout-done")).toContainText("buyer@example.com");
 });
+
+// The two site headers had drifted into offering different links and a different CTA — same
+// site, two answers to "where can I go?". They now share `site/nav`.
+test("the pricing nav matches the homepage", async ({ page }) => {
+  await page.goto("/");
+  const homeLinks = await page.locator("header nav a").allInnerTexts();
+
+  await page.goto("/pricing");
+  const pricingLinks = await page.locator("header nav a").allInnerTexts();
+
+  expect(pricingLinks).toEqual(homeLinks);
+  // The stale CTA specifically: /pricing used to offer "Open canvas" where home offered the
+  // waitlist, which is how a visitor arriving from search met a different product.
+  await expect(page.locator("header").getByText("Open canvas")).toHaveCount(0);
+  await expect(page.locator("header").getByRole("link", { name: "Join Waitlist" })).toBeVisible();
+});

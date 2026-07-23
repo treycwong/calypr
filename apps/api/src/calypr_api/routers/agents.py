@@ -18,7 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from calypr_api import entitlements
+from calypr_api import credits, entitlements
 from calypr_api.assistant_models import (
     AssistantModelOption,
     assistant_model_options,
@@ -41,6 +41,7 @@ from calypr_api.schemas import (
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
+    CreditUsage,
     ParseRequest,
     ParseResponse,
     ShareCreate,
@@ -332,6 +333,7 @@ def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
         signed_in_as=t.email,
         assistant_model=ws.assistant_model,
         default_model=ws.default_model,
+        credits=CreditUsage(**credits.usage_summary(t.session, ws)),
     )
 
 
@@ -386,4 +388,5 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
         plan=ws.plan,
         assistant_model=ws.assistant_model,
         default_model=ws.default_model,
+        credits=CreditUsage(**credits.usage_summary(t.session, ws)),
     )

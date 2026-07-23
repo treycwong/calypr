@@ -4,17 +4,16 @@ import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 
+import { SITE_CTA, SITE_NAV } from "@/components/site/nav";
+
 // Landing-only header: transparent, floating over the hero image. A centred nav pill on
-// desktop, a hamburger sheet on mobile, the Calypr logo top-left, and the "Join Waitlist"
-// CTA top-right. Other routes (blog, app) keep the standard SiteHeader — this variant
-// assumes a dark, full-bleed backdrop so everything is tuned for white-on-media legibility.
-const NAV = [
-  { label: "Features", href: "/#features" },
-  { label: "Templates", href: "/#templates" },
-  { label: "Blog", href: "/blog" },
-  { label: "Tutorials", href: "/tutorials" },
-  { label: "Pricing", href: "/pricing" },
-];
+// desktop, a hamburger sheet on mobile, the Calypr logo top-left, and the CTA top-right. Other
+// routes keep the standard SiteHeader — this variant assumes a dark, full-bleed backdrop so
+// everything is tuned for white-on-media legibility.
+//
+// Links and CTA come from `site/nav`, shared with SiteHeader: the two headers should look
+// different and say the same thing. They previously each held their own list and drifted apart.
+const NAV = SITE_NAV;
 
 export function LandingHeader() {
   const [open, setOpen] = useState(false);
@@ -58,11 +57,11 @@ export function LandingHeader() {
             Sign in
           </Link>
           <Link
-            href="/waitlist"
+            href={SITE_CTA.href}
             className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-black/40 px-5 py-2 text-sm font-medium text-white backdrop-blur-md transition-colors hover:bg-black/60"
           >
             <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px] shadow-emerald-400/60" />
-            Join Waitlist
+            {SITE_CTA.label}
           </Link>
         </div>
 
@@ -100,12 +99,12 @@ export function LandingHeader() {
               Sign in
             </Link>
             <Link
-              href="/waitlist"
+              href={SITE_CTA.href}
               onClick={() => setOpen(false)}
               className="mt-1 inline-flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-sm font-medium text-black transition-colors hover:bg-white/90"
             >
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              Join Waitlist
+              {SITE_CTA.label}
             </Link>
           </nav>
         </div>

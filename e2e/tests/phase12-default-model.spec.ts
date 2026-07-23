@@ -64,15 +64,75 @@ test("the Account tab shows the workspace plan", async ({ page }) => {
 
 test("an entitled plan says what it includes and offers no upgrade", async ({ page }) => {
   // The control: the copy has to be driven by the plan, not hard-coded next to the badge.
-  await page.route("**/api/workspace", async (route) => {
-    const upstream = await route.fetch();
-    const body = await upstream.json();
-    await route.fulfill({ json: { ...body, plan: "plus" } });
-  });
+  await page.route("**/api/workspace", (route) =>
+    route.fulfill({ json: workspacePayload({ plan: "plus" }) }),
+  );
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
 
   await expect(page.getByTestId("account-plan")).toHaveText("Plus");
   await expect(page.getByText(/yours to edit, download and run anywhere/)).toBeVisible();
   await expect(page.getByTestId("account-upgrade")).toHaveCount(0);
+});
+
+/** A complete workspace payload, so the stub never round-trips upstream.
+ *
+ * `route.fetch()` + modify races the test teardown: the assertion resolves, the test ends, and
+ * the in-flight upstream fetch errors — which surfaced as whichever credit test happened to run
+ * last failing. Fulfilling synthetically removes the race and makes each test state explicit. */
+function workspacePayload(over: Record<string, unknown> = {}) {
+  return {
+    id: "00000000-0000-0000-0000-000000000001",
+    name: "Dev Workspace",
+    plan: "free",
+    signed_in_as: null,
+    assistant_model: "",
+    default_model: "",
+    credits: { allowance: 0, remaining: 0, used: 0 },
+    ...over,
+  };
+}
+
+// Usage display. Enforcement without a display is a limit nobody can plan around: a run
+// refused for "no credits" is only actionable if you can see where you stood.
+test("Settings shows the credit balance", async ({ page }) => {
+  await page.route("**/api/workspace", (route) =>
+    route.fulfill({ json: workspacePayload({ credits: { allowance: 2000, remaining: 1487, used: 513 } }) }),
+  );
+  await page.goto("/dashboard/settings");
+  await page.getByTestId("dev-sign-in").click();
+  await page.getByTestId("tab-workspace").click();
+
+  const panel = page.getByTestId("ws-credits");
+  await expect(panel).toBeVisible();
+  await expect(page.getByTestId("ws-credits-remaining")).toHaveText("1,487");
+  await expect(panel).toContainText("of 2,000 credits left");
+  // BYO-key runs cost nothing — the sentence that stops the panel reading as a hard wall.
+  await expect(panel).toContainText("your own API key");
+});
+
+test("an exhausted balance says what to do about it", async ({ page }) => {
+  await page.route("**/api/workspace", (route) =>
+    route.fulfill({ json: workspacePayload({ plan: "free", credits: { allowance: 100, remaining: 0, used: 100 } }) }),
+  );
+  await page.goto("/dashboard/settings");
+  await page.getByTestId("dev-sign-in").click();
+  await page.getByTestId("tab-workspace").click();
+
+  await expect(page.getByTestId("ws-credits")).toContainText("out of credits");
+  await expect(page.getByTestId("ws-credits")).toContainText("upgrade to Plus");
+});
+
+test("the panel is hidden when there is no allowance", async ({ page }) => {
+  // A workspace with no grant (the shared dev/anonymous one) shouldn't show an empty meter.
+  await page.route("**/api/workspace", (route) =>
+    route.fulfill({ json: workspacePayload({ credits: { allowance: 0, remaining: 0, used: 0 } }) }),
+  );
+  await page.goto("/dashboard/settings");
+  await page.getByTestId("dev-sign-in").click();
+  await page.getByTestId("tab-workspace").click();
+  // Wait for the tab to actually render before asserting an absence — otherwise the assertion
+  // passes instantly against a page that hasn't loaded, and the test ends mid-route-fetch.
+  await expect(page.getByTestId("ws-default-model")).toBeVisible();
+  await expect(page.getByTestId("ws-credits")).toHaveCount(0);
 });
