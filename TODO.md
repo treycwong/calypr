@@ -10,9 +10,20 @@
 The code is merged and correct; nothing works until three values exist. See
 `apps/api/.env.example` for the canonical list, and the "Creating the Plus price" steps below.
 
-- [ ] **Create the Plus product + $20/mo recurring price** in Stripe **test mode** → `price_…`
-- [ ] **Set all three on Railway** (CLI is linked and working):
-      `railway variables --service calypr-api --set STRIPE_SECRET_KEY=… --set STRIPE_WEBHOOK_SECRET=… --set STRIPE_PLUS_PRICE_ID=…`
+- [x] **Live product exists** — "Calypr Plus", $20.00 USD/month, active:
+      `price_1TwCr8Q4CLwWKY6VKVaMtiYY` (livemode). Verified read-only against the live key.
+      The id first put in `.env` (`price_Uw51xN…`) did not exist in that account and was
+      corrected. An earlier `sk_org_live_…` key was also replaced: **Organization API keys need
+      a `Stripe-Context` header** naming the target account, which this code does not send, so
+      every call 400s. Use a plain account key (`sk_test_…` / `sk_live_…`).
+- [ ] **Create the same product + price in TEST mode** → `price_…` (test objects are entirely
+      separate from live ones; a live id is meaningless with a test key and vice versa)
+- [ ] **Create a TEST-mode webhook endpoint** → its own `whsec_…`
+- [ ] **Set the three TEST values on Railway** (CLI is linked and working):
+      `railway variables --service calypr-api --set STRIPE_SECRET_KEY=sk_test_… --set STRIPE_WEBHOOK_SECRET=whsec_… --set STRIPE_PLUS_PRICE_ID=price_…`
+- [ ] **Only after the loop is proven**, swap in the live values (and a *separate* live webhook
+      signing secret). Decided 2026-07-23: test mode first, because the failure that matters is
+      a mismatched signing secret — the customer is charged and does **not** get Plus.
 - [ ] **Point the webhook** at `https://calypr-api-production.up.railway.app/billing/webhook`
       — Railway directly, *not* calypr.co: signature verification needs the exact raw bytes, and
       the signing secret belongs where the DB is. Events: `checkout.session.completed`,
@@ -21,8 +32,10 @@ The code is merged and correct; nothing works until three values exist. See
       mode → confirm `plus` → cancel → confirm `free`. **Go through the actual button** — a
       payment made in the Stripe dashboard carries no `client_reference_id`, so it correctly
       does nothing, which looks like a bug if you weren't expecting it.
-- Note: the earlier report that the keys were in `.env` didn't take — that file was last
-  modified 2026-07-21 and contains no `STRIPE_*`.
+- ⚠️ **Local dev picks up whatever is in the repo-root `.env`** (`config.py` calls
+  `load_dotenv` on it). With live keys sitting there, running the API locally creates **real**
+  Stripe Checkout Sessions — no charge, but real objects in the live account. Keeping *test*
+  keys in `.env` and live keys only on Railway removes the hazard entirely.
 
 #### Creating the Plus price (Stripe dashboard)
 
