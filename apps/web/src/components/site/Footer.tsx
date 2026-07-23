@@ -1,7 +1,7 @@
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
-import { Wordmark } from "@/components/site/Wordmark";
+import { SiteLogo } from "@/components/site/Logo";
 
 // Shared site footer (marketing pages). v0-style multi-column layout: brand mark on the
 // left, link columns on the right. `mt-auto` + the flex-column page layout keep it pinned
@@ -85,9 +85,9 @@ export function SiteFooter() {
       <div className="mx-auto w-full max-w-6xl px-5 py-14">
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div className="space-y-3">
-            <Wordmark />
-            <p className="font-mono text-[11px] text-muted-foreground">
-              prompt → canvas → code · {new Date().getFullYear()}
+            <SiteLogo className="h-5 w-auto" />
+            <p className="max-w-[22ch] text-sm text-muted-foreground">
+              Design AI Agents on Canvas.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-4 md:gap-16">
