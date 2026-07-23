@@ -16,14 +16,23 @@ The code is merged and correct; nothing works until three values exist. See
       corrected. An earlier `sk_org_live_…` key was also replaced: **Organization API keys need
       a `Stripe-Context` header** naming the target account, which this code does not send, so
       every call 400s. Use a plain account key (`sk_test_…` / `sk_live_…`).
-- [ ] **Create the same product + price in TEST mode** → `price_…` (test objects are entirely
-      separate from live ones; a live id is meaningless with a test key and vice versa)
-- [ ] **Create a TEST-mode webhook endpoint** → its own `whsec_…`
-- [ ] **Set the three TEST values on Railway** (CLI is linked and working):
-      `railway variables --service calypr-api --set STRIPE_SECRET_KEY=sk_test_… --set STRIPE_WEBHOOK_SECRET=whsec_… --set STRIPE_PLUS_PRICE_ID=price_…`
-- [ ] **Only after the loop is proven**, swap in the live values (and a *separate* live webhook
-      signing secret). Decided 2026-07-23: test mode first, because the failure that matters is
-      a mismatched signing secret — the customer is charged and does **not** get Plus.
+- [x] **TEST product + price + webhook endpoint created** —
+      `price_1TwD8eQ4CLwWKY6V6GgS09bu` ("Calypr Plus (Test)", $20/mo, `livemode=False`).
+- [x] **TEST values set on Railway** and deployed. `/billing/status` reports `enabled: true`.
+- [x] **Loop proven end-to-end locally against real Stripe test credentials** (2026-07-23):
+      `/billing/checkout` created a real `cs_test_…` session, and the webhook — signed with the
+      **actual** signing secret, not a fixture — walked the whole lifecycle:
+      `free` → `checkout.session.completed` → **plus** (customer mapped) → `invoice.paid` holds →
+      `past_due` **keeps access** → `subscription.deleted` → **free**. 35/35 billing tests pass
+      against a real database.
+- [ ] **Pay once through the real button** with `4242 4242 4242 4242` to confirm the deployed
+      webhook endpoint (not just a locally-signed payload) reaches the handler.
+- [ ] **Only after a real test payment**, swap in the live values (live price is
+      `price_1TwCr8Q4CLwWKY6VKVaMtiYY`) plus a **separate live webhook signing secret**. Keep
+      live values on Railway only, never in `.env`.
+- ⚠️ **`.env` had both TEST and LIVE blocks active**, and since later definitions win, the
+      **live** keys were what actually loaded — it looked test-configured and wasn't. The live
+      block is now commented out. Worth re-checking whenever those keys are touched.
 - [ ] **Point the webhook** at `https://calypr-api-production.up.railway.app/billing/webhook`
       — Railway directly, *not* calypr.co: signature verification needs the exact raw bytes, and
       the signing secret belongs where the DB is. Events: `checkout.session.completed`,
