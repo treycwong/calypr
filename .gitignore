@@ -34,3 +34,8 @@ playwright/.cache/
 .vscode/
 *.log
 .vercel
+
+# An unrelated v0 scratch project ("my-v0-project") that lives in this working tree but is not
+# part of the monorepo — not a pnpm workspace member, not built, not deployed. Ignored so a
+# `git add -A` can't sweep it into a commit again (it did, in PR #49).
+compute/
