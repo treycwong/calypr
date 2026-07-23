@@ -61,6 +61,58 @@ well connected and workable**, then pricing. Consequences, so nothing downstream
   **Router, Evaluator, Memory, Responder and Revisor** to `fake` — the same defect as the
   templates, for hand-built graphs.
 
+## 🟢 Stripe billing — webhook + checkout (Week 9, part 1) — 2026-07-23
+
+The payment → entitlement loop. `POST /billing/webhook` verifies, deduplicates and applies;
+`POST /billing/checkout` hands off to Stripe Checkout; `GET /billing/status` lets the checkout
+page render the truth on first paint.
+
+- [x] **Signature verification before anything else** — the raw body is verified against the
+  signing secret before it is parsed, and *before* a DB session is opened, so an unsigned POST
+  (which anyone can send) costs a hash rather than a connection. 5 tests cover forged, wrong-
+  secret, tampered-body and stale-timestamp; all 5 fail if verification is removed.
+- [x] **Idempotency** — `stripe_event` keyed on Stripe's own `evt_…`, inserted *before* side
+  effects, so the insert is the check. Stripe delivers at-least-once and these handlers are not
+  naturally replay-safe: a redelivered `subscription.deleted` after a re-subscribe would
+  otherwise downgrade a paying customer.
+- [x] **Retry only when retrying helps** — transient failure ⇒ 500 (Stripe backs off, and the
+  idempotency row is dropped so the retry gets a real attempt); permanently unmappable event
+  (a customer we don't know) ⇒ 200, because three days of redelivery changes nothing.
+- [x] **`past_due` keeps access.** The card failed but the subscription isn't over and Stripe is
+  still retrying; cutting someone off mid-dunning turns a hiccup into churn. `unpaid`/`canceled`
+  are where the entitlement ends. Unknown statuses leave the plan alone.
+- [x] **`beta` is never downgraded** by a subscription event — that cohort has no subscription.
+- [x] Migration `0013`: `workspace.stripe_customer_id` (unique) + `stripe_event`.
+- [x] **Credit rates for Image + Voice — the "blocker" dissolved.** It was a documentation gap,
+  not a pricing one: `credits_for` derives from the USD table (`cost_usd × 500`), and both were
+  already priced there. Image is token-billed on image-output tokens; TTS records characters in
+  `input_tokens`. A test asserts the 5× margin holds across every model in the table. At today's
+  rates the 2,000-credit Plus grant buys ~125 images, ~266k characters of speech, or ~9,000 chat
+  turns.
+
+### Blocked on credentials
+
+- [ ] **`STRIPE_*` are not set anywhere.** They were reported as added to the repo-root `.env`,
+  but that file was last modified 2026-07-21 and contains none of them — so nothing was saved.
+  Needed: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PLUS_PRICE_ID` (see
+  `apps/api/.env.example`). Until then `/billing/*` correctly 503s and checkout captures intent.
+- [ ] **Railway vars** — the CLI is linked and working (`calypr-api`), so this is one command
+  per key once they exist:
+  `railway variables --service calypr-api --set STRIPE_SECRET_KEY=sk_test_…`
+- [ ] **Point the Stripe webhook at** `https://calypr-api-production.up.railway.app/billing/webhook`
+  — Railway directly, not calypr.co: signature verification needs the exact raw bytes, and the
+  signing secret belongs where the DB is.
+
+### Deferred (deliberately, not forgotten)
+
+- [ ] **Credit ledger + enforcement.** `0013` is the entitlement half only. Credits are computed
+  (`credits_for`) but nothing debits them, so the grant isn't enforced yet — that needs
+  `credit_ledger` plus a check in `create_run`/`/assist`, and it only becomes meaningful once
+  someone can actually pay.
+- [ ] **Usage limits on Image/Voice** — deliberately none beyond the credit cost. A per-run cap
+  would need the ledger to be worth anything; the platform-wide `CALYPR_PLATFORM_SPEND_CAP_USD`
+  kill-switch remains the interim loss firewall.
+
 ### Still open in the pivot
 
 - [ ] **Saved agents may still carry `fake`.** The fix changes defaults and templates, not user

@@ -363,6 +363,18 @@ export async function setDefaultModel(model: string): Promise<WorkspaceInfo> {
   return res.json();
 }
 
+/** Start a Stripe Checkout Session and return where to send the browser.
+ *
+ * `null` means billing isn't switched on yet (the API 503s without Stripe keys) — the caller
+ * falls back to capturing intent rather than showing an error, because "we can't take your
+ * money yet" is not the user's failure. */
+export async function startCheckout(): Promise<string | null> {
+  const res = await fetch("/api/billing/checkout", { method: "POST" });
+  if (res.status === 503) return null;
+  if (!res.ok) throw new Error(`checkout failed (${res.status})`);
+  return (await res.json()).url as string;
+}
+
 /** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
 export async function joinWaitlist(email: string, source = "landing"): Promise<void> {
   const res = await fetch("/api/waitlist", {

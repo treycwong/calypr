@@ -21,6 +21,7 @@ from calypr_api.middleware import PostHogMiddleware
 from calypr_api.routers import (
     agents,
     assist,
+    billing,
     connectors,
     provider_keys,
     runs,
@@ -109,6 +110,7 @@ def create_app() -> FastAPI:
     app.include_router(connectors.router)
     app.include_router(provider_keys.router)
     app.include_router(waitlist.router)
+    app.include_router(billing.router)
     return app
 
 

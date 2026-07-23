@@ -64,3 +64,50 @@ def test_tts_models_priced_per_character():
     assert pricing.price_for("gpt-4o-mini-tts") is pricing.MODEL_PRICES["gpt-4o-mini-tts"]
     # tts-1-hd must win over tts-1 by longest-prefix.
     assert pricing.price_for("tts-1-hd") is pricing.MODEL_PRICES["tts-1-hd"]
+
+
+# --- credits (PRICING-SPEC §2) -------------------------------------------------------------------
+
+
+def test_the_margin_holds_on_every_priced_model():
+    """The point of deriving credits from USD instead of a second table: a constant 5× on every
+    model and every direction, so no usage mix can erode the margin. A hand-maintained credit
+    table is exactly where that guarantee would rot."""
+    for model_id in pricing.MODEL_PRICES:
+        for tokens_in, tokens_out in ((1_000_000, 0), (0, 1_000_000), (500_000, 500_000)):
+            usd = pricing.cost_usd(model_id, tokens_in, tokens_out)
+            credits = pricing.credits_for(model_id, tokens_in, tokens_out)
+            assert credits * pricing.CREDIT_RETAIL_USD == pytest.approx(
+                usd * pricing.CREDIT_MARGIN
+            ), model_id
+
+
+def test_image_generation_has_a_credit_rate():
+    """The gap PRICING-SPEC left open. Image is token-billed (image-output tokens), so it
+    converts like any other model call — a ~1024x1024 generation lands around 16 credits."""
+    credits = pricing.credits_for("gpt-image-2", 20, 1056)
+    assert 10 < credits < 25
+
+
+def test_speech_has_a_credit_rate():
+    """TTS is billed per character, and the node records characters in `input_tokens`, so the
+    same arithmetic prices it — 7.5 credits per 1,000 characters."""
+    assert pricing.credits_for("gpt-4o-mini-tts", 1000, 0) == pytest.approx(7.5)
+
+
+def test_the_plus_grant_buys_a_sane_amount_of_media():
+    """A sanity floor on the plan: 2,000 credits should be a month of real use, not a demo.
+    If a repricing makes an image cost 200 credits, that is a product decision — this fails so
+    it gets made deliberately."""
+    per_image = pricing.credits_for("gpt-image-2", 20, 1056)
+    assert 2000 / per_image > 50, "Plus should buy well over 50 images a month"
+
+
+def test_credits_are_not_rounded_per_call():
+    """Rounding here would let a graph of many cheap nodes round to zero on every node. Round
+    once when a ledger row is written, not per call."""
+    assert pricing.credits_for("gpt-4o-mini", 10, 0) > 0
+
+
+def test_the_fake_model_is_free_in_credits_too():
+    assert pricing.credits_for("fake", 1_000_000, 1_000_000) == 0.0

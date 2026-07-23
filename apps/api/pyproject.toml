@@ -18,6 +18,7 @@ dependencies = [
   "calypr-roundtrip",
   "calypr-assistant",
   "posthog>=7.22.0",
+  "stripe>=11",  # billing: Checkout Sessions + webhook signature verification
 ]
 
 [dependency-groups]

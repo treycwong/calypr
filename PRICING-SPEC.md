@@ -26,6 +26,22 @@ server-side by `deps.require_code_export` on `POST /parse` (402 `{reason: "plan"
 "code_export"}`), not just hidden in the UI; `beta` workspaces keep it, since we don't take a
 shipped feature back off the cohort already using it.
 
+**Image + Voice credit rates — RESOLVED 2026-07-23.** This spec never listed them, which read
+as "two node types can't be metered". It was a *documentation* gap, not a pricing one: credits
+are derived from the USD table in `pricing.py` (`credits_for` = `cost_usd × 500`), and both were
+already priced there — Image is token-billed on image-OUTPUT tokens, and TTS records its
+character count in the `input_tokens` field, so "per 1M characters" flows through the same
+arithmetic. Deriving rather than keeping a second hand-maintained credit table is what makes the
+5× margin hold on **every** model automatically; a test asserts it across the whole table.
+
+What that buys on the 2,000-credit Plus grant, at today's rates:
+
+| Usage | Credits | Plus grant covers |
+|---|---|---|
+| One 1024×1024 image (`gpt-image-2`) | ~16 | ~125 images/mo |
+| 1,000 characters of speech (`gpt-4o-mini-tts`) | 7.5 | ~266k characters/mo |
+| A chat turn (`gpt-4o-mini`, 1k in / 500 out) | ~0.22 | ~9,000 turns/mo |
+
 **Still open — read-only code viewing.** The Code tab renders generated Python to *everyone*
 today (a `<pre>`; `POST /codegen` is unauthenticated). Only editing + Apply-to-canvas is gated.
 Decide before Plus goes on sale whether viewing/copying is part of the free tier (it doubles as
