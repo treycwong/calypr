@@ -140,6 +140,19 @@ class ShareRunRequest(BaseModel):
         return _validate_run_images(v)
 
 
+class BillingStatus(BaseModel):
+    """Whether checkout can take a payment. Secret-free — presence of keys, nothing about them."""
+
+    enabled: bool
+
+
+class CheckoutSession(BaseModel):
+    """Where to send the browser to pay. The client redirects; Stripe hosts the form, so no
+    card data ever reaches us."""
+
+    url: str
+
+
 class WorkspaceInfo(BaseModel):
     id: str
     name: str

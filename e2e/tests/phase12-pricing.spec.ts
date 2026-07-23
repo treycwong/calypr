@@ -39,14 +39,21 @@ test("Select plan leads to checkout, and Free leads to the canvas", async ({ pag
   await expect(page.getByText("$20")).toBeVisible();
 });
 
-test("checkout is honest that it cannot take a card yet", async ({ page }) => {
-  // The thing that must not regress once Stripe lands: no card fields, no implication of one.
+test("checkout is honest when billing is not configured", async ({ page }) => {
+  // The E2E API runs without Stripe keys, so `/billing/status` reports disabled and the page
+  // says so from first paint — no click needed to discover it, and no card field anywhere.
   await page.goto("/checkout?plan=plus");
 
   await expect(page.getByTestId("checkout-pending")).toContainText("Card payments open shortly");
   await expect(page.locator('input[name="cardnumber"]')).toHaveCount(0);
   await expect(page.getByTestId("checkout-notify")).toBeVisible();
+  await expect(page.getByTestId("checkout-pay")).toHaveCount(0);
 });
+
+// Note: the "billing enabled" path isn't e2e-testable here — `enabled` is decided by the
+// *server* component from `GET /billing/status`, and the E2E API deliberately runs without
+// Stripe keys. That branch is covered where it can be controlled, in
+// `apps/api/tests/test_billing.py::test_status_reports_enabled_when_configured`.
 
 test("checkout captures intent", async ({ page }) => {
   await page.goto("/checkout?plan=plus");

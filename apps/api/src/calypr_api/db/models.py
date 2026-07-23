@@ -51,6 +51,10 @@ class Workspace(Base):
     # Same allow-list as `assistant_model`; resolved into runs and codegen by
     # `calypr_api.workspace_model.apply_default_model`.
     default_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
+    # The Stripe customer this workspace bills as. Subscription events name a customer, not
+    # a workspace, so this is what maps a payment back to whose plan should change. Unique:
+    # two workspaces on one customer would make that mapping ambiguous.
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -264,3 +268,24 @@ class Waitlist(Base):
     # is a one-time key: without this the auto-grant re-ran on every sign-in, so demoting anyone
     # back to `free` — trial over, beta over — silently undid itself at their next login.
     granted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class StripeEvent(Base):
+    """One webhook delivery we've already acted on.
+
+    Stripe guarantees *at-least-once* delivery — it retries on timeout and can duplicate in
+    normal operation — and these handlers are not naturally idempotent: a redelivered
+    `customer.subscription.deleted` arriving after someone re-subscribed would downgrade a paying
+    customer. Stripe's own `evt_…` id is the primary key, so the insert *is* the idempotency
+    check and two concurrent deliveries can't both pass it.
+
+    No `workspace_id`: an event may arrive for a customer we can't map, and the row still has to
+    be recorded so the retry stops."""
+
+    __tablename__ = "stripe_event"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    type: Mapped[str] = mapped_column(String, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

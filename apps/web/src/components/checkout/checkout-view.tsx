@@ -6,7 +6,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { joinWaitlist } from "@/lib/api";
+import { joinWaitlist, startCheckout } from "@/lib/api";
 
 /** Mirrors the Plus column on /pricing. Short on purpose — this page confirms a decision that
  * was already made a click ago, it doesn't re-sell it. */
@@ -17,9 +17,36 @@ const INCLUDED = [
   "Platform keys on every model",
 ];
 
-export function CheckoutView({ email: initialEmail }: { email: string }) {
+export function CheckoutView({
+  email: initialEmail,
+  enabled,
+}: {
+  email: string;
+  /** Whether the API can take a payment right now (Stripe keys present). */
+  enabled: boolean;
+}) {
   const [email, setEmail] = useState(initialEmail);
   const [state, setState] = useState<"idle" | "saving" | "done" | "error">("idle");
+  // Seeded from the server so the page is honest on first paint; a 503 from checkout can still
+  // flip it off, which covers keys being pulled between render and click.
+  const [payable, setPayable] = useState(enabled);
+  const [payError, setPayError] = useState("");
+
+  async function pay() {
+    setPayError("");
+    setState("saving");
+    try {
+      const url = await startCheckout();
+      if (url) {
+        window.location.href = url; // Stripe hosts the form; no card data touches us.
+        return;
+      }
+      setPayable(false); // 503 — billing isn't configured yet.
+    } catch {
+      setPayError("Could not start checkout. Try again in a moment.");
+    }
+    setState("idle");
+  }
 
   async function notifyMe() {
     if (!email.trim()) return;
@@ -60,7 +87,21 @@ export function CheckoutView({ email: initialEmail }: { email: string }) {
         </ul>
       </div>
 
-      {/* The honest state of the world. A fake card form here would be worse than a delay. */}
+      {payable ? (
+        <div className="mt-6 flex flex-col items-start gap-2">
+          <Button onClick={() => void pay()} disabled={state === "saving"} data-testid="checkout-pay">
+            {state === "saving" ? "Starting…" : "Continue to payment"}
+          </Button>
+          {payError ? <span className="text-xs text-destructive">{payError}</span> : null}
+          <p className="text-xs text-muted-foreground">
+            Payment is handled by Stripe — your card details never reach us.
+          </p>
+        </div>
+      ) : null}
+
+      {/* Shown only once the API has told us billing isn't on yet. A fake card form would be
+          worse than a delay, and this way the honest message is never a guess. */}
+      {!payable ? (
       <div className="mt-6 rounded-xl border border-border bg-card/40 p-6" data-testid="checkout-pending">
         <div className="flex items-center gap-2 text-sm font-medium">
           <Lock className="h-4 w-4 text-muted-foreground" />
@@ -101,6 +142,7 @@ export function CheckoutView({ email: initialEmail }: { email: string }) {
           </div>
         )}
       </div>
+      ) : null}
 
       <p className="mt-6 text-center text-xs text-muted-foreground">
         <Link href="/pricing" className="underline underline-offset-4">

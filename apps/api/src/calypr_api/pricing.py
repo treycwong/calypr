@@ -135,3 +135,36 @@ def platform_cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> f
     if is_frontier(model_id):
         return 0.0
     return cost_usd(model_id, input_tokens, output_tokens)
+
+
+# --- credits (PRICING-SPEC §2) -------------------------------------------------------------------
+#
+# 1 credit = $0.002 of model COGS = $0.01 retail, a constant 5× margin applied per direction:
+#
+#     credits_per_1M = provider_usd_per_1M × M / CREDIT_RETAIL_USD = usd × 500
+#
+# Deriving credits from the USD table rather than keeping a second hand-maintained table is what
+# makes the margin hold on *every* model automatically — including the two the spec never listed:
+#
+#   * **Image** is already token-billed here (image-OUTPUT tokens in `output_per_1m`), so a
+#     generation converts like any other model call.
+#   * **TTS** is billed per character, and the node records the character count in the
+#     `input_tokens` field (see the table above), so "per 1M characters" flows through the same
+#     arithmetic with an output rate of 0.
+#
+# So the "Image and TTS have no credit rate" gap was a documentation gap, not a pricing one: the
+# moment they were priced in USD they were priced in credits. What still needs a human is
+# verifying the underlying USD rates — the ⚠️ at the top of this module.
+
+#: Retail price of one credit, in USD.
+CREDIT_RETAIL_USD = 0.01
+#: Margin multiplier over model COGS.
+CREDIT_MARGIN = 5.0
+
+
+def credits_for(model_id: str, input_tokens: int, output_tokens: int) -> float:
+    """Credits this usage costs a workspace.
+
+    Fractional on purpose: rounding *here* would let a graph of many cheap nodes round to zero
+    on every one of them. Round once, when a ledger entry is written, not per node."""
+    return cost_usd(model_id, input_tokens, output_tokens) * CREDIT_MARGIN / CREDIT_RETAIL_USD

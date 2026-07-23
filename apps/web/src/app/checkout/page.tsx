@@ -20,8 +20,21 @@ export const metadata: Metadata = {
  * slots into, and standing it up now means the intent it captures — who tried to pay before
  * we could take money — is the list we open billing with.
  */
+/** Ask the API whether checkout can take a payment. Server-side so the page renders the truth
+ * on first paint rather than making someone click "pay" to find out. Any failure reads as "not
+ * yet" — the fallback captures intent, which is the safe direction to be wrong in. */
+async function billingEnabled(): Promise<boolean> {
+  const api = process.env.CALYPR_API_URL ?? "http://localhost:8000";
+  try {
+    const r = await fetch(`${api}/billing/status`, { cache: "no-store" });
+    return r.ok && Boolean((await r.json()).enabled);
+  } catch {
+    return false;
+  }
+}
+
 export default async function CheckoutPage() {
-  const session = await getSession();
+  const [session, enabled] = await Promise.all([getSession(), billingEnabled()]);
   return (
     <div className="relative flex min-h-full flex-col">
       <div
@@ -30,7 +43,7 @@ export default async function CheckoutPage() {
       />
       <SiteHeader />
       <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-16">
-        <CheckoutView email={session?.email ?? ""} />
+        <CheckoutView email={session?.email ?? ""} enabled={enabled} />
       </main>
       <SiteFooter />
     </div>
