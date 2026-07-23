@@ -21,7 +21,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from calypr_api import billing
+from calypr_api import billing, credits
 from calypr_api.db.models import StripeEvent, Workspace
 from calypr_api.db.session import SessionLocal
 from calypr_api.deps import Tenant, tenant
@@ -126,6 +126,10 @@ def _apply(session: Session, event: stripe.Event) -> None:
         if customer_id:
             workspace.stripe_customer_id = customer_id
         billing.set_plan(workspace, "plus")
+        # Grant immediately: `invoice.paid` usually accompanies the first payment, but relying
+        # on ordering would leave a new subscriber with a Plus plan and no credits if it lands
+        # first or is delayed. `grant_monthly` is idempotent per cycle, so a double is a no-op.
+        credits.grant_monthly(session, workspace, ref_id=f"checkout:{event.id}")
         session.commit()
         posthog_client.capture(
             "subscription_activated",
@@ -169,13 +173,23 @@ def _apply(session: Session, event: stripe.Event) -> None:
         return
 
     if kind == "invoice.paid":
-        # Renewal. The plan is already `plus` in the normal case; this re-asserts it so a
-        # workspace can't drift out of entitlement while it is genuinely paying. The monthly
-        # credit grant hangs here once the ledger exists.
+        # Renewal — and the moment the month's credits are issued. Re-asserting the plan keeps a
+        # workspace from drifting out of entitlement while it is genuinely paying.
         workspace = billing.workspace_for_customer(session, _field(data, "customer"))
-        if workspace is not None and billing.set_plan(workspace, "plus"):
+        if workspace is None:
+            return
+        changed = billing.set_plan(workspace, "plus")
+        # The invoice id is the grant's idempotency key: Stripe delivers at-least-once, and a
+        # redelivery that granted again would be free credits every month, forever.
+        granted = credits.grant_monthly(
+            session, workspace, ref_id=_field(data, "id") or event.id
+        )
+        if changed or granted:
             session.commit()
-            log.info("workspace %s re-asserted to plus on renewal", workspace.id)
+            log.info(
+                "workspace %s renewal (plan_changed=%s credits_granted=%s)",
+                workspace.id, changed, granted,
+            )
         return
 
 

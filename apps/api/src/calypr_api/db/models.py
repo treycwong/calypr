@@ -7,11 +7,14 @@ Domain tables (agents, runs, knowledge bases, …) arrive in later phases and al
 from __future__ import annotations
 
 import uuid
+from datetime import date as dt_date
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -55,6 +58,15 @@ class Workspace(Base):
     # a workspace, so this is what maps a payment back to whose plan should change. Unique:
     # two workspaces on one customer would make that mapping ambiguous.
     stripe_customer_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    # Cached credit balance in micro-credits (1 credit = 1,000 micro). The `credit_ledger` is
+    # the truth; this is kept in the same transaction so the hot path reads one column instead
+    # of summing every row. `credits.recompute_balance` repairs drift in the ledger's favour.
+    credit_balance_micro: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    # The month whose grant has been issued — makes "already granted this cycle?" a comparison
+    # rather than a scan.
+    grant_cycle_anchor: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -287,5 +299,34 @@ class StripeEvent(Base):
     id: Mapped[str] = mapped_column(String, primary_key=True)
     type: Mapped[str] = mapped_column(String, nullable=False)
     received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class CreditLedger(Base):
+    """One credit movement: a grant, a debit for a run, a top-up, or a manual adjustment.
+
+    Append-only and signed — the balance is `SUM(delta_micro)`. Keeping the history rather than
+    just a counter is what makes "why is my balance this?" answerable, which matters the first
+    time a customer disputes a charge.
+
+    `ref_id` is what makes a grant idempotent: unique per workspace for `kind='grant'`, so a
+    redelivered `invoice.paid` cannot grant twice."""
+
+    __tablename__ = "credit_ledger"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False
+    )
+    #: Signed micro-credits: + grant/top-up, − debit.
+    delta_micro: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # grant|debit|topup|adjust
+    source: Mapped[str | None] = mapped_column(String, nullable=True)  # run|assist|share|stripe
+    ref_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    model: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

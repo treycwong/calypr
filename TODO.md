@@ -29,12 +29,15 @@ The code is merged and correct; nothing works until three values exist. See
       endpoint, the signature verified on the wire, and both `checkout.session.completed` and
       `invoice.paid` are recorded in `stripe_event`. `treycwong@gmail.com` is mapped to
       `cus_Uw5V71aLHnaox9`.
-- [ ] **Cancellation is unproven *in production*.** It works locally, but the paid account was
+- [ ] **Cancellation is still unproven in production.** It works locally, but the paid account was
       already `plus` (set by hand earlier), so neither `free → plus` nor `plus → free` was
       actually *observed* end-to-end on the deployed endpoint. Cancel the test subscription in
       the Stripe dashboard and watch the plan return to `free` — that closes the last gap, and
       the downgrade path is the one where a bug costs a paying customer their access.
-- [ ] **Go live** — swap in the live values (live price is
+- [x] **LIVE (2026-07-23)** — live keys set on Railway and deployed; `/checkout` offers payment.
+      Live webhook endpoint `we_1TwE88Q4CLwWKY6VoKTNJdc2` created (there was **none** — the
+      `whsec_` originally supplied was orphaned, so a live payment would have charged the
+      customer and never notified us). Live price is
       `price_1TwCr8Q4CLwWKY6VKVaMtiYY`) plus a **separate live webhook signing secret**. Keep
       live values on Railway only, never in `.env`.
 - ⚠️ **`.env` had both TEST and LIVE blocks active**, and since later definitions win, the
@@ -85,18 +88,19 @@ than the plan. One heavy user can cost far more than they pay, and the 80% gross
 
 Build order (each step is useful on its own):
 
-- [ ] **`credit_ledger` table** (`PRICING-SPEC.md` §4) — `workspace_id` + RLS, `delta_micro`,
+- [x] **`credit_ledger` table** (migration `0014`) — `workspace_id` + RLS, `delta_micro`,
       `kind` (`grant|debit|topup|adjust`), `source` (`run|assist`), `ref_id`, `model`. Balance is
       `SUM(delta_micro)`; cache it on `workspace.credit_balance_micro` in the same transaction.
       Store **micro-credits as integers** — `credits_for` returns a float on purpose (rounding
       per node would round many cheap nodes to zero), so round once, here.
-- [ ] **Grant 2,000 on `invoice.paid`** — the renewal hook already exists in
+- [x] **Grant 2,000 on `invoice.paid`** — the renewal hook already exists in
       `routers/billing.py::_apply`; it currently only re-asserts the plan. Free's 100/mo grant is
       lazy on first assist call in a new calendar month (no cron needed).
-- [ ] **Debit post-run** from the accumulated usage events — same hook that writes `run` /
+- [x] **Debit post-run** from the accumulated usage events — same hook that writes `run` /
       `run_usage` (`RunRecorder`), one ledger row per run/assist call. BYOK usage debits **0**:
       those tokens are billed to the user by their provider, never to us.
-- [ ] **402 `{reason: "credits"}`** in `create_run` / `/assist` when the balance is spent. A run
+- [x] **Refuse the next run when spent** (SSE `code: "credits"`, not a 402 — `/runs` is a
+      stream, so the error arrives in-band where the client already handles it) in `create_run` / `/assist` when the balance is spent. A run
       already in flight completes (bounded overshoot — `max_tokens` caps it); the *next* call
       402s. The web app already handles a 402 from `/parse`, so the shape is established.
 - [ ] **Free-tier BYOK enforcement** — per the plan matrix Free has *no* platform node runs at
@@ -104,6 +108,10 @@ Build order (each step is useful on its own):
       a free user can currently run every model on our keys.
 - [ ] **Surface the balance** — Settings → Workspace should show credits used/remaining. Nobody
       can be expected to respect a limit they can't see, and it's the natural upgrade prompt.
+      **This is now the most user-visible gap**: enforcement is live and invisible.
+- [ ] **Assist is not yet metered against credits.** `/runs` is gated; `/assist` still uses the
+      in-memory `CALYPR_ASSIST_DAILY_CAP`. Free's 100-credit grant is *assistant* budget per the
+      plan matrix, so this is the half that makes the Free tier's number mean anything.
 
 ### 3. Before the first real charge (money safety)
 

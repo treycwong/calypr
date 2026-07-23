@@ -168,3 +168,17 @@ def credits_for(model_id: str, input_tokens: int, output_tokens: int) -> float:
     Fractional on purpose: rounding *here* would let a graph of many cheap nodes round to zero
     on every one of them. Round once, when a ledger entry is written, not per node."""
     return cost_usd(model_id, input_tokens, output_tokens) * CREDIT_MARGIN / CREDIT_RETAIL_USD
+
+
+def platform_credits_for(model_id: str, input_tokens: int, output_tokens: int) -> float:
+    """Credits to charge a *workspace* for this usage — the billing counterpart of
+    `platform_cost_usd`.
+
+    Frontier models are 0 for the same reason they cost the platform nothing: they run only on
+    the workspace's own key (`model_access`), so the provider already billed them directly.
+    Charging credits on top would be charging twice for one call."""
+    from calypr_api.model_access import is_frontier  # local: avoids a DSL import cycle
+
+    if is_frontier(model_id):
+        return 0.0
+    return credits_for(model_id, input_tokens, output_tokens)
