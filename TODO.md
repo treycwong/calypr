@@ -73,17 +73,37 @@ stripe products create --name="Calypr Plus"
 stripe prices create --product=prod_XXX --unit-amount=2000 --currency=usd -d "recurring[interval]=month"
 ```
 
-### 2. Credit ledger + enforcement (the other half of billing)
+### 2. The 2,000-credit grant — ledger + enforcement (the other half of billing)
 
-`0013` shipped the *entitlement* half: paying flips the plan. Credits are **computed**
-(`pricing.credits_for`) but nothing debits them, so the 2,000/month grant isn't enforced and a
-Plus user currently has no ceiling beyond `CALYPR_PLATFORM_SPEND_CAP_USD`.
+**This is the biggest remaining gap, and it is a revenue leak.** `0013` shipped the *entitlement*
+half: paying flips the plan. But the grant advertised on `/pricing` and `/checkout` — "2,000
+credits a month" — is **not enforced anywhere**. Credits are computed (`pricing.credits_for`) and
+nothing debits them, so today a Plus subscriber at $20/mo has **no usage ceiling at all** beyond
+the platform-wide `CALYPR_PLATFORM_SPEND_CAP_USD` kill-switch, which protects the platform rather
+than the plan. One heavy user can cost far more than they pay, and the 80% gross margin in
+`PRICING-SPEC.md` §2 assumes a cap that doesn't exist.
 
-- [ ] `credit_ledger` table (PRICING-SPEC §4) + monthly grant on `invoice.paid`
-- [ ] Debit post-run from the accumulated usage events (same hook as `RunRecorder`)
-- [ ] 402 `{reason: "credits"}` in `create_run` / `/assist` when the balance is spent
-- [ ] Free-tier BYOK enforcement: Free has *no* platform node runs per the plan matrix, and
-      nothing enforces that today
+Build order (each step is useful on its own):
+
+- [ ] **`credit_ledger` table** (`PRICING-SPEC.md` §4) — `workspace_id` + RLS, `delta_micro`,
+      `kind` (`grant|debit|topup|adjust`), `source` (`run|assist`), `ref_id`, `model`. Balance is
+      `SUM(delta_micro)`; cache it on `workspace.credit_balance_micro` in the same transaction.
+      Store **micro-credits as integers** — `credits_for` returns a float on purpose (rounding
+      per node would round many cheap nodes to zero), so round once, here.
+- [ ] **Grant 2,000 on `invoice.paid`** — the renewal hook already exists in
+      `routers/billing.py::_apply`; it currently only re-asserts the plan. Free's 100/mo grant is
+      lazy on first assist call in a new calendar month (no cron needed).
+- [ ] **Debit post-run** from the accumulated usage events — same hook that writes `run` /
+      `run_usage` (`RunRecorder`), one ledger row per run/assist call. BYOK usage debits **0**:
+      those tokens are billed to the user by their provider, never to us.
+- [ ] **402 `{reason: "credits"}`** in `create_run` / `/assist` when the balance is spent. A run
+      already in flight completes (bounded overshoot — `max_tokens` caps it); the *next* call
+      402s. The web app already handles a 402 from `/parse`, so the shape is established.
+- [ ] **Free-tier BYOK enforcement** — per the plan matrix Free has *no* platform node runs at
+      all (BYO key only), and nothing enforces that today. This is the other half of the leak:
+      a free user can currently run every model on our keys.
+- [ ] **Surface the balance** — Settings → Workspace should show credits used/remaining. Nobody
+      can be expected to respect a limit they can't see, and it's the natural upgrade prompt.
 
 ### 3. Before the first real charge (money safety)
 
