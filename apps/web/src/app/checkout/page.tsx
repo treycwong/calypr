@@ -36,7 +36,7 @@ async function billingEnabled(): Promise<boolean> {
 export default async function CheckoutPage() {
   const [session, enabled] = await Promise.all([getSession(), billingEnabled()]);
   return (
-    <div className="relative flex min-h-full flex-col">
+    <div className="relative flex min-h-screen flex-col">
       <div
         aria-hidden
         className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_-10%,rgba(255,255,255,0.06),transparent)]"

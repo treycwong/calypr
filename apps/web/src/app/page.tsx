@@ -100,7 +100,7 @@ export default function Home() {
   const ghostBtn = buttonVariants({ size: "lg", variant: "outline" });
 
   return (
-    <div className="relative flex min-h-full flex-col">
+    <div className="relative flex min-h-screen flex-col">
       {/* hero — full-bleed background image with a floating nav overlaid */}
       <section className="relative isolate min-h-screen overflow-hidden bg-black text-white">
         {/* background image (public/hero.png) — the LCP element, so eager + priority */}
@@ -131,10 +131,11 @@ export default function Home() {
               Create your own AI apps easily.
             </p>
             <div className="mt-8">
-              {/* The beta is invite-only, so the primary CTA collects an email rather than
-                  dropping people straight into the app. Returning users sign in from the header. */}
-              <HoverButton href="/waitlist">
-                Try Beta <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
+              {/* Billing is live (Plus is self-serve from /pricing), so the hero now sends
+                  people straight to sign-in rather than the waitlist. "Join Beta" in the nav
+                  is the separate, still-invite-only path onto the free beta cohort. */}
+              <HoverButton href="/sign-in">
+                Get Started <ArrowRight className="h-4 w-4 transition-transform duration-300 group-hover/cta:translate-x-0.5" />
               </HoverButton>
             </div>
           </div>
