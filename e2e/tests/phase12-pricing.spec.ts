@@ -87,3 +87,36 @@ test("the pricing nav offers the same links as the homepage, with its own CTA", 
   );
   await expect(page.locator("header").getByText("Sign in")).toHaveCount(0);
 });
+
+// Mobile: the inner-page nav had no way to reach the site's other pages from a phone — the
+// "Get Started" button sat alone at the top right on every viewport, with no hamburger and no
+// nav links, unlike the homepage. Mirrors LandingHeader's already-tested pattern.
+test("the inner-page nav collapses to a hamburger on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await page.goto("/pricing");
+
+  const menuButton = page.getByLabel("Open menu");
+  await expect(menuButton).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Get Started" })).not.toBeVisible();
+
+  await menuButton.click();
+  await expect(page.getByLabel("Close menu")).toBeVisible();
+  // Scoped to `header`: the footer also links to "Templates" (and other nav labels), so an
+  // unscoped role query is ambiguous the moment both are in the DOM at once.
+  await expect(page.locator("header").getByRole("link", { name: "Features" })).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Templates" })).toBeVisible();
+
+  // The sheet's own CTA still works and still says "Get Started" — the mobile nav is a
+  // different presentation of the same header, not a different one.
+  await page.locator("header").getByRole("link", { name: "Blog" }).click();
+  await expect(page).toHaveURL(/\/blog/);
+});
+
+test("the inner-page nav keeps the CTA visible with no hamburger on desktop", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/pricing");
+  // The button is always in the DOM (`md:hidden` is a CSS rule, not conditional rendering) —
+  // visibility, not presence, is what a viewport-dependent nav actually needs to prove.
+  await expect(page.getByLabel("Open menu")).not.toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Get Started" })).toBeVisible();
+});
