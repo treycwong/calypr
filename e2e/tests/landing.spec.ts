@@ -84,3 +84,17 @@ test("the footer sits at the bottom of the viewport on a short marketing page", 
   // taller empty page.
   expect(bodyHeight - footerBottom).toBeLessThan(5);
 });
+
+test("the waitlist form's input and button share the same height", async ({ page }) => {
+  // Regression: the input's height came from `py-2` padding and the button from a fixed `h-8`
+  // (later `h-9`) — implicit vs. explicit sizing that had already drifted apart once. Assert
+  // the actual rendered box heights match rather than trusting the class names to agree.
+  await page.goto("/waitlist");
+  const inputHeight = await page
+    .getByLabel("Email address")
+    .evaluate((el) => el.getBoundingClientRect().height);
+  const buttonHeight = await page
+    .getByRole("button", { name: "Join Us" })
+    .evaluate((el) => el.getBoundingClientRect().height);
+  expect(Math.abs(inputHeight - buttonHeight)).toBeLessThan(1);
+});

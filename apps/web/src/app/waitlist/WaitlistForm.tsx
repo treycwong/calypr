@@ -42,9 +42,11 @@ export function WaitlistForm() {
         onSubmit={(e) => void handleSubmit(e)}
         className="flex w-full flex-col gap-3 sm:flex-row"
       >
-        {/* Explicit `h-8` on both, matching `buttonVariants()`'s default size exactly — the
-            previous version relied on `py-2` to imply a height, which came out taller than the
-            button's fixed one and left the button looking inset with a gap above and below it. */}
+        {/* `h-9` on both — matches `buttonVariants({ size: "lg" })` exactly, same height used
+            for form controls elsewhere in the app (Settings' model pickers). The previous `h-8`
+            pairing was this app's smallest control size, comfortable on desktop but noticeably
+            thin as a tap target on a phone; `h-9` reads as a properly-sized field everywhere
+            without the two drifting apart in height again. */}
         <input
           type="email"
           required
@@ -52,9 +54,9 @@ export function WaitlistForm() {
           onChange={(e) => setEmail(e.target.value)}
           placeholder="you@example.com"
           aria-label="Email address"
-          className="h-8 flex-1 rounded-md border border-border bg-card/40 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/40"
+          className="h-9 flex-1 rounded-md border border-border bg-card/40 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/40"
         />
-        <button type="submit" className={buttonVariants()} disabled={busy}>
+        <button type="submit" className={buttonVariants({ size: "lg" })} disabled={busy}>
           {busy ? "Joining…" : "Join Us"}
         </button>
       </form>
