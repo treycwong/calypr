@@ -21,7 +21,6 @@ from calypr_api.db.session import SessionLocal, engine
 from calypr_api.model_access import platform_key_models, runs_on_own_key
 from calypr_api.pricing import credits_for, platform_cost_usd, platform_credits_for
 from calypr_api.run_access import _message
-from calypr_api.vault import encrypt
 from calypr_compiler.golden import input_agent_output
 from calypr_dsl import NodeSpec
 from sqlalchemy import text
@@ -178,9 +177,12 @@ def ws_factory():
             s.refresh(ws)
             wid = ws.id
             for p in providers:
-                s.add(
-                    ProviderKey(workspace_id=wid, provider=p, key_encrypted=encrypt(f"sk-{p}-test"))
-                )
+                # A literal placeholder, not `vault.encrypt`: `byok_providers` reads provider
+                # *names* and never decrypts, so real ciphertext buys nothing here — and asking
+                # for it made these tests depend on `CALYPR_VAULT_KEY`, which the vault demands
+                # whenever `internal_key` is set (as these tests set it). That passed locally,
+                # where a dev key sits in `.env`, and failed in CI, where none does.
+                s.add(ProviderKey(workspace_id=wid, provider=p, key_encrypted=f"not-a-key-{p}"))
             if exhausted:
                 # Anchor this cycle's grant then spend it, so `ensure_current_grant` inside
                 # `check_can_run` can't quietly re-grant and mask the refusal.
