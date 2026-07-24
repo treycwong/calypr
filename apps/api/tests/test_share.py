@@ -34,6 +34,27 @@ def _db_available() -> bool:
 pytest_db = pytest.mark.skipif(not _db_available(), reason="Postgres not available")
 
 
+#: Agents created by `_make_agent`, removed after each test by `_clean_up_agents`.
+#:
+#: These land on the *dev* workspace, which — unlike the foreign workspace above — can't be
+#: dropped to take its rows with it. Without this they simply accumulated: 1,534 agents named
+#: "Shared" had built up in a local database, burying the handful of real ones in the dashboard.
+_created_agents: list[uuid.UUID] = []
+
+
+@pytest.fixture(autouse=True)
+def _clean_up_agents():
+    """Remove anything `_make_agent` created, whatever the test did or how it failed."""
+    yield
+    if not _created_agents:
+        return
+    with SessionLocal() as s:
+        for agent_id in _created_agents:
+            s.query(Agent).filter(Agent.id == agent_id).delete()
+        s.commit()
+    _created_agents.clear()
+
+
 def _make_agent(workspace_id: str) -> uuid.UUID:
     """Insert an agent directly under a workspace and return its id."""
     graph = input_agent_output(model="fake").model_dump()
@@ -43,6 +64,7 @@ def _make_agent(workspace_id: str) -> uuid.UUID:
         s.add(agent)
         s.commit()
         s.refresh(agent)
+        _created_agents.append(agent.id)
         return agent.id
 
 
