@@ -21,12 +21,16 @@ class RunError(Exception):
     so raw tracebacks/provider errors never reach the public share surface."""
 
 
-# Shown when a graph runs to the recursion limit — almost always an unbounded loop that the
-# static cycle check couldn't prove (e.g. a Router that always routes back). Cleaner than
-# LangGraph's raw "Recursion limit of N reached…" message.
+# Shown when a graph runs to the recursion limit. Cleaner than LangGraph's raw "Recursion limit
+# of N reached…", but deliberately no longer *asserts* a cause: it used to say the graph "has a
+# cycle with no exit", which is only one possibility and was wrong in the case that prompted
+# this — a textbook ReAct graph whose Agent kept re-asking for the same tool because its preset
+# discarded the result. Telling someone to remove a back-edge their graph needs sends them to
+# rewrite the one part that was correct.
 _LOOP_MESSAGE = (
-    "This agent looped without finishing — its graph has a cycle with no exit. Remove the "
-    "back-edge, or add a Router/Tool step that can break out of the loop."
+    "This agent kept going without reaching an answer, so it was stopped. Usually one of: a "
+    "loop with no way out, or a step that repeats because it never sees the previous result. "
+    "Check the edges leaving your Agent, and that any Tool result feeds back into it."
 )
 
 
