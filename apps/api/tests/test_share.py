@@ -46,8 +46,14 @@ def _make_agent(workspace_id: str) -> uuid.UUID:
         return agent.id
 
 
-def _make_foreign_workspace_agent() -> tuple[uuid.UUID, uuid.UUID]:
-    """A workspace + agent that is NOT the dev workspace (for isolation checks)."""
+@pytest.fixture
+def foreign_workspace_agent():
+    """A workspace + agent that is NOT the dev workspace (for isolation checks).
+
+    A fixture rather than a plain helper because it has to be *torn down*. As a helper it left
+    its workspace behind on every run, and since nothing else ever deleted them a developer's
+    local database accumulated one row per invocation indefinitely — 120 of them before anyone
+    looked. The agent cascades with the workspace."""
     with SessionLocal() as s:
         ws = Workspace(name="Other")
         s.add(ws)
@@ -62,7 +68,13 @@ def _make_foreign_workspace_agent() -> tuple[uuid.UUID, uuid.UUID]:
         s.add(agent)
         s.commit()
         s.refresh(agent)
-        return ws.id, agent.id
+        ids = (ws.id, agent.id)
+
+    yield ids
+
+    with SessionLocal() as s:
+        s.query(Workspace).filter(Workspace.id == ids[0]).delete()
+        s.commit()
 
 
 # --------------------------------------------------------------------------- routes
@@ -108,9 +120,9 @@ def test_mint_unknown_agent_404():
 
 
 @pytest_db
-def test_tenant_isolation_cannot_touch_foreign_agent_shares():
+def test_tenant_isolation_cannot_touch_foreign_agent_shares(foreign_workspace_agent):
     """The dev-workspace client can't list or revoke another workspace's shares."""
-    _ws, foreign_agent = _make_foreign_workspace_agent()
+    _ws, foreign_agent = foreign_workspace_agent
     # Seed a share under the foreign agent directly.
     with SessionLocal() as s:
         set_tenant(s, str(_ws))
