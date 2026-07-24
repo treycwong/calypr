@@ -251,13 +251,20 @@ export function SettingsView({
                   <span data-testid="ws-credits-remaining" className="text-foreground">
                     {credits.remaining.toLocaleString()}
                   </span>{" "}
-                  of {credits.allowance.toLocaleString()} credits left
+                  {/* "N of M" only reads as sense while N ≤ M. Someone who cancels Plus
+                      mid-month keeps the 2,000 credits they paid for while their plan drops to a
+                      100 allowance, and the pair rendered as "1,999 of 100 credits left". Drop
+                      the denominator rather than the balance: the balance is the true and useful
+                      number, and the allowance is explained below. */}
+                  {credits.remaining > credits.allowance
+                    ? "credits left"
+                    : `of ${credits.allowance.toLocaleString()} credits left`}
                 </span>
               </div>
               <div
                 className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-muted"
                 role="progressbar"
-                aria-valuenow={credits.used}
+                aria-valuenow={Math.min(credits.used, credits.allowance)}
                 aria-valuemin={0}
                 aria-valuemax={credits.allowance}
                 aria-label="Credits used this month"
@@ -265,7 +272,14 @@ export function SettingsView({
                 <div
                   className="h-full rounded-full bg-foreground transition-[width]"
                   style={{
-                    width: `${Math.min(100, (credits.used / credits.allowance) * 100)}%`,
+                    // Carrying more than a full allowance shows a full bar. `used` is
+                    // `max(0, allowance - remaining)`, so that case computes 0% — an empty bar
+                    // next to a balance twenty times the allowance, which reads as "you have
+                    // nothing" at precisely the moment they have the most.
+                    width:
+                      credits.remaining > credits.allowance
+                        ? "100%"
+                        : `${Math.min(100, (credits.used / credits.allowance) * 100)}%`,
                   }}
                 />
               </div>
@@ -274,6 +288,19 @@ export function SettingsView({
                 They reset each month. Runs on{" "}
                 <span className="text-foreground">your own API key</span> below cost nothing.
               </p>
+              {credits.remaining > credits.allowance ? (
+                // Said out loud, because "reset" above otherwise reads as a promise. Grants
+                // replace rather than accumulate (`credits.grant_monthly`), so next month this
+                // balance goes *down* to the plan's allowance. Better they hear it here than
+                // discover it as a number that fell overnight.
+                <p className="mt-2 text-xs text-muted-foreground" data-testid="ws-credits-carry">
+                  You&rsquo;re carrying credits from a previous plan. Your plan grants{" "}
+                  <span className="text-foreground">
+                    {credits.allowance.toLocaleString()} a month
+                  </span>
+                  , so this balance drops to that at the next reset — spend them before then.
+                </p>
+              ) : null}
               {credits.remaining === 0 ? (
                 <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
                   You&rsquo;re out of credits until they reset. Add your own key below to keep

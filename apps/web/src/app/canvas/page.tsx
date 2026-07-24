@@ -510,7 +510,14 @@ function CanvasInner() {
             <Link
               href="/dashboard/settings"
               data-testid="nav-credits"
-              title={`${credits.used.toLocaleString()} of ${credits.allowance.toLocaleString()} credits used this cycle`}
+              // Same reason the Settings meter drops its denominator when the balance exceeds
+              // the allowance: after a mid-month downgrade, "0 of 100 used" is a strange way to
+              // describe holding 1,999.
+              title={
+                credits.remaining > credits.allowance
+                  ? `${credits.remaining.toLocaleString()} credits left, carried from a previous plan (this plan grants ${credits.allowance.toLocaleString()} a month)`
+                  : `${credits.used.toLocaleString()} of ${credits.allowance.toLocaleString()} credits used this cycle`
+              }
               className={`rounded-md px-2 py-1 text-xs tabular-nums transition hover:bg-muted ${
                 credits.remaining === 0 ? "text-destructive" : "text-muted-foreground"
               }`}
