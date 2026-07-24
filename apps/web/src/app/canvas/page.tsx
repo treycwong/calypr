@@ -117,6 +117,13 @@ function CanvasInner() {
   // surface never flashes for someone who isn't entitled to it.
   const [plan, setPlan] = useState("free");
   const [signedInAs, setSignedInAs] = useState<string | null>(null);
+  // This cycle's credit allowance, shown in the header. `null` until it loads (and on any
+  // failure), which renders nothing — an allowance we couldn't read must not display as "0 left".
+  const [credits, setCredits] = useState<{
+    allowance: number;
+    remaining: number;
+    used: number;
+  } | null>(null);
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
@@ -139,16 +146,22 @@ function CanvasInner() {
       .catch(() => setTemplates([]));
   }, []);
 
-  // The workspace's entitlement tier, for gating beta features (the round-trip Code editor).
-  // Failure falls back to `free` — a gate that can't be read stays shut.
-  useEffect(() => {
+  // The workspace's entitlement tier, for gating beta features (the round-trip Code editor), and
+  // its credit balance for the header. Failure falls back to `free` — a gate that can't be read
+  // stays shut.
+  const refreshWorkspace = useCallback(() => {
     getWorkspace()
       .then((w) => {
         setPlan(w.plan);
         setSignedInAs(w.signed_in_as ?? null);
+        setCredits(w.credits ?? null);
       })
       .catch(() => setPlan("free"));
   }, []);
+
+  useEffect(() => {
+    refreshWorkspace();
+  }, [refreshWorkspace]);
 
   // Open an existing agent when arriving via /canvas?agent=<id> (from the dashboard), so Save
   // updates that agent rather than creating a new one.
@@ -493,6 +506,21 @@ function CanvasInner() {
           ) : null}
         </div>
         <div className="flex items-center gap-2">
+          {credits && credits.allowance > 0 ? (
+            <Link
+              href="/dashboard/settings"
+              data-testid="nav-credits"
+              title={`${credits.used.toLocaleString()} of ${credits.allowance.toLocaleString()} credits used this cycle`}
+              className={`rounded-md px-2 py-1 text-xs tabular-nums transition hover:bg-muted ${
+                credits.remaining === 0 ? "text-destructive" : "text-muted-foreground"
+              }`}
+            >
+              <span data-testid="nav-credits-remaining">
+                {credits.remaining.toLocaleString()}
+              </span>
+              <span className="hidden sm:inline"> credits left</span>
+            </Link>
+          ) : null}
           <Button
             variant="ghost"
             size="icon"
@@ -744,6 +772,7 @@ function CanvasInner() {
               getGraph={getGraph}
               onNodeEvent={onNodeEvent}
               onRunReset={onRunReset}
+              onRunFinished={refreshWorkspace}
             />
           </aside>
         ) : null}
