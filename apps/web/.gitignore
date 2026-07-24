@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# …except the template. `.env*` swallowed it, so `.env.example` had never actually been
+# committed — a fresh clone got no web env documentation at all, while the file sat on
+# whichever machine created it. It holds no secrets; that's the point of it.
+!.env.example
 
 # vercel
 .vercel
