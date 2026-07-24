@@ -123,16 +123,19 @@ def cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
     )
 
 
-def platform_cost_usd(model_id: str, input_tokens: int, output_tokens: int) -> float:
+def platform_cost_usd(
+    model_id: str, input_tokens: int, output_tokens: int, *, own_key: bool = False
+) -> float:
     """What this usage costs *the platform* — i.e. what the spend kill-switch should sum.
 
-    Identical to `cost_usd` except that frontier models are $0: they run only on a workspace's
-    own key (`model_access`), so the tokens are billed to that workspace by the provider and
-    never hit our account. Counting them would let one BYO-key user trip the platform-wide
-    monthly cap for everyone else."""
+    Identical to `cost_usd` except that usage we never paid for is $0. Two ways that happens:
+    the model is frontier (BYO-key only by policy, `model_access`), or `own_key` says this
+    particular workspace supplied a key for this model's provider. Either way the tokens are
+    billed to that workspace by the provider and never hit our account, and counting them would
+    let one BYO-key user trip the platform-wide monthly cap for everyone else."""
     from calypr_api.model_access import is_frontier  # local: avoids a DSL import cycle
 
-    if is_frontier(model_id):
+    if own_key or is_frontier(model_id):
         return 0.0
     return cost_usd(model_id, input_tokens, output_tokens)
 
@@ -170,15 +173,19 @@ def credits_for(model_id: str, input_tokens: int, output_tokens: int) -> float:
     return cost_usd(model_id, input_tokens, output_tokens) * CREDIT_MARGIN / CREDIT_RETAIL_USD
 
 
-def platform_credits_for(model_id: str, input_tokens: int, output_tokens: int) -> float:
+def platform_credits_for(
+    model_id: str, input_tokens: int, output_tokens: int, *, own_key: bool = False
+) -> float:
     """Credits to charge a *workspace* for this usage — the billing counterpart of
     `platform_cost_usd`.
 
-    Frontier models are 0 for the same reason they cost the platform nothing: they run only on
-    the workspace's own key (`model_access`), so the provider already billed them directly.
-    Charging credits on top would be charging twice for one call."""
+    0 whenever the call ran on the workspace's own key, which is true for every frontier model
+    (BYO-key only by policy) and for any model whose provider this workspace supplied a key for
+    (`own_key`). The provider already billed them directly; charging credits on top would be
+    charging twice for one call, and `/pricing` promises the opposite — "your own keys still run
+    free, at zero credits"."""
     from calypr_api.model_access import is_frontier  # local: avoids a DSL import cycle
 
-    if is_frontier(model_id):
+    if own_key or is_frontier(model_id):
         return 0.0
     return credits_for(model_id, input_tokens, output_tokens)

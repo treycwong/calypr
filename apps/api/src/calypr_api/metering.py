@@ -21,7 +21,9 @@ from sqlalchemy import func, update
 from calypr_api import credits
 from calypr_api.db.models import Run, RunUsage
 from calypr_api.db.session import SessionLocal, set_tenant
+from calypr_api.model_access import runs_on_own_key
 from calypr_api.pricing import platform_cost_usd, platform_credits_for
+from calypr_api.provider_keys import byok_providers
 
 log = logging.getLogger("calypr_api")
 
@@ -30,13 +32,25 @@ class RunRecorder:
     """A handle to one in-flight run's metering. Construct via `start`; if that fails the
     returned recorder is *disabled* and every method is a silent no-op."""
 
-    def __init__(self, session, run_id, workspace_id, source: str = "run") -> None:
+    def __init__(
+        self,
+        session,
+        run_id,
+        workspace_id,
+        source: str = "run",
+        byok: set[str] | None = None,
+    ) -> None:
         self._session = session
         self._run_id = run_id
         self._workspace_id = workspace_id
         # Carried so the credit debit can say where the spend came from (`run|assist|share`),
         # which is what makes a ledger line explainable to the customer who's reading it.
         self._source = source
+        # Providers this workspace has a key on file for, snapshotted at run start. Usage that
+        # names a model from one of these ran on *their* key, so it costs the platform nothing
+        # and must not be charged credits. Snapshotted rather than re-read at flush so a key
+        # added or removed mid-run can't retroactively change what this run costs.
+        self._byok = byok or set()
         self._usage: list[dict[str, Any]] = []
         self._enabled = session is not None
 
@@ -70,7 +84,11 @@ class RunRecorder:
             session.commit()
             run_id = run.id
             return cls(
-                session=session, run_id=run_id, workspace_id=workspace_id, source=source
+                session=session,
+                run_id=run_id,
+                workspace_id=workspace_id,
+                source=source,
+                byok=byok_providers(workspace_id),
             )
         except Exception:
             log.warning("run metering disabled: could not start run", exc_info=True)
@@ -116,13 +134,17 @@ class RunRecorder:
                 )
                 total_in += in_tok
                 total_out += out_tok
-                # Platform COGS, not provider list price: BYO-key frontier models add $0
-                # (model_access) so they can't trip the platform spend cap.
-                total_cost += platform_cost_usd(model or "", in_tok, out_tok)
+                # Did this specific call run on the workspace's own key? If so it never touched
+                # our provider account, and both the spend cap and the credit debit must treat
+                # it as free — see `model_access.runs_on_own_key`.
+                own_key = runs_on_own_key(model or "", self._byok)
+                # Platform COGS, not provider list price: BYO-key usage adds $0 (own key, or a
+                # frontier model, which is BYO-key by policy) so it can't trip the spend cap.
+                total_cost += platform_cost_usd(model or "", in_tok, out_tok, own_key=own_key)
                 # Credits follow the same rule for the same reason: a model running on the
                 # workspace's own key is billed to them by the provider, so charging credits
                 # for it too would be charging twice. `platform_credits_for` returns 0 there.
-                total_credits += platform_credits_for(model or "", in_tok, out_tok)
+                total_credits += platform_credits_for(model or "", in_tok, out_tok, own_key=own_key)
             if rows:
                 self._session.add_all(rows)
             self._session.execute(

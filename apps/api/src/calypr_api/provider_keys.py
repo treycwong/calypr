@@ -20,6 +20,30 @@ from calypr_api.vault import decrypt
 log = logging.getLogger("calypr_api")
 
 
+def byok_providers(workspace_id: uuid.UUID | None) -> set[str]:
+    """Which providers this workspace has a key on file for — names only, never decrypted.
+
+    Billing and plan gating only need to know *whether* a call will run on the workspace's key,
+    not what the key is (`factory._key`: a stored key always overrides the server env for that
+    provider). Reading names avoids a vault round-trip per run, and keeps secret material out of
+    a path that exists purely to decide who pays.
+
+    Fails **open to "no keys"** like `resolve_model_keys`, which is the safe direction for
+    metering — an unreadable DB bills us rather than silently making usage free."""
+    if workspace_id is None:
+        return set()
+    try:
+        with SessionLocal() as session:
+            set_tenant(session, str(workspace_id))
+            rows = session.execute(
+                select(ProviderKey.provider).where(ProviderKey.workspace_id == workspace_id)
+            ).scalars()
+            return {p for p in rows if p}
+    except Exception:
+        log.warning("BYO-key provider lookup skipped (DB unavailable)", exc_info=True)
+        return set()
+
+
 def resolve_model_keys(workspace_id: uuid.UUID) -> dict[str, str]:
     """The workspace's decrypted provider keys ({provider: api_key}); {} on any DB/vault error."""
     try:
