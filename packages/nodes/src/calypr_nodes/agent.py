@@ -190,10 +190,23 @@ def _critique_prompt(cfg: AgentConfig) -> str:
 
 
 def _latest_user_turn(history: list[Msg]) -> list[Msg]:
-    """Simple-reflex sees only the most recent user input (no memory)."""
-    for m in reversed(history):
-        if m.role == Role.user:
-            return [m]
+    """Simple-reflex sees the most recent user input — and everything that input has produced
+    since (no memory of *earlier* turns).
+
+    The trailing slice is what makes tools work. Returning only the user message discarded the
+    `tool_calls` this agent had just emitted and the results the Tool node had just written, so
+    on re-entry it saw the original question again, asked for the same tool again, and could
+    never terminate: every ReAct graph built on `simple_reflex` ran to the recursion limit and
+    surfaced as "this agent looped without finishing", which blamed the user's topology for a
+    correct one.
+
+    "React to the current input, not the conversation" is the intent, and it survives — a tool
+    result the agent asked for *is* part of the current input, not prior conversation. A history
+    ending at the user's message still yields exactly that one message.
+    """
+    for i in range(len(history) - 1, -1, -1):
+        if history[i].role == Role.user:
+            return history[i:]
     return history[-1:] if history else []
 
 

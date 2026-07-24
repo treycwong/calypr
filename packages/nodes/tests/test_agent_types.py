@@ -8,7 +8,7 @@ import pytest
 from calypr_model import Done, FakeModelClient, Msg, Role, TextDelta
 from calypr_nodes import AgentConfig, NodeContext
 from calypr_nodes.agent import AgentNode
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
 AGENT_TYPES = [
     "simple_reflex",
@@ -95,6 +95,34 @@ async def test_simple_reflex_forgets_history():
     assert len(sent) == 1  # latest input only — no memory
     assert sent[0].role == Role.user
     assert sent[0].content == "second question"
+
+
+async def test_simple_reflex_still_sees_the_tool_result_it_asked_for():
+    """Forgetting *earlier turns* must not mean forgetting what this turn just produced.
+
+    Truncating to the bare user message threw away the tool call the agent had emitted and the
+    result the Tool node wrote back, so on re-entry it saw the original question again and asked
+    for the same tool again — forever. Every ReAct graph on `simple_reflex` ran to the recursion
+    limit and reported "this agent looped without finishing", blaming a topology that was right.
+    """
+    spy = SpyModel()
+    cfg = AgentConfig(agent_type="simple_reflex", model="x")
+    history = [
+        HumanMessage(content="old question"),
+        AIMessage(content="old answer"),
+        HumanMessage(content="search the web for latest news"),
+        AIMessage(content="", tool_calls=[{"name": "web_search", "args": {}, "id": "c1"}]),
+        ToolMessage(content="Headline: something happened", tool_call_id="c1"),
+    ]
+    await AgentNode.compile(cfg, NodeContext(model=spy))({"messages": history})
+    sent = spy.calls[0]
+
+    # The prior turn is still forgotten…
+    assert all("old" not in (m.content or "") for m in sent)
+    # …but the current turn arrives whole, tool result included — without it the agent has no
+    # way to know the search already happened.
+    assert any(m.role == Role.tool for m in sent), "the tool result must survive truncation"
+    assert any("something happened" in (m.content or "") for m in sent)
 
 
 async def test_model_based_keeps_history():
