@@ -142,17 +142,27 @@ Build order (each step is useful on its own):
       stream, so the error arrives in-band where the client already handles it) in `create_run` / `/assist` when the balance is spent. A run
       already in flight completes (bounded overshoot — `max_tokens` caps it); the *next* call
       402s. The web app already handles a 402 from `/parse`, so the shape is established.
-- [x] **Free-tier BYOK enforcement SHIPPED (2026-07-24)** — `run_access.check_run_gates`, the
-      pre-run gate (same carve-outs as `credits.check_can_run`, also fails open). Free may not
-      spend platform keys at all: any LLM node that would run on ours is refused in-band with
-      `code: "own_key_required"` and a message naming the *provider* to add a key for.
-      Crucially it resolves the **effective** model (node → workspace default → platform default)
-      rather than reading `config["model"]`: an untouched canvas ships `model: ""` on every node,
-      so a raw read would have found nothing to gate and waved the default case straight through.
-- [x] **DECISION RESOLVED — option (b), 2026-07-24.** Free's credits are an *assistant* budget;
-      canvas runs require BYOK, as `PRICING-SPEC` §1 and the `/pricing` copy already said. The
-      earlier "left generous on purpose" call is reversed deliberately, with the cliff understood:
-      a Free user with no key can no longer run a canvas at all.
+- [x] **DECISION RESOLVED — option (a), 2026-07-24: credits first, BYO-key as the fallback.**
+      **Both plans work identically**: spend the monthly grant on platform models (Free 100,
+      Plus 2,000), and when it runs out either add your own key or wait for the reset. Grants
+      replace per **calendar month** for both — `grant_monthly` compares `(year, month)`, so the
+      old Plus copy promising a reset "on your next billing date" was wrong for a mid-month
+      renewal and now says "next month".
+      This reverses an option (b) that was built and then removed before it ever shipped: Free
+      as BYO-key-only for canvas runs, per an older reading of `PRICING-SPEC` §1. It was correct
+      to the spec and wrong for the product — a new Free user's very first Run became an error
+      message telling them to go get an API key. `PRICING-SPEC` §1 and the `/pricing` copy have
+      been updated to match what actually ships; **the spec is now the thing that was stale.**
+      What survives from that work is the part that was right either way:
+      `run_access.check_run_gates` skips the balance check entirely when every node runs on the
+      workspace's own keys, and it resolves the **effective** model (node → workspace default →
+      platform default) rather than reading `config["model"]` — an untouched canvas ships
+      `model: ""` on every node, so a raw read would see nothing at all.
+- [ ] **Is 100 credits the right Free grant now that it buys runs?** It was sized as an
+      *assistant* budget. At `gpt-4o-mini` rates a small run costs ~0.006 credits, so 100 covers
+      thousands of them and the ~$0.20/user/month costing in `PRICING-SPEC` §2 still holds — but
+      that number was never chosen with runs in mind. Worth confirming against real usage rather
+      than assuming it lands right by accident.
 - [x] **Surface the balance SHIPPED** — Settings → Workspace already had the meter
       (`settings-view.tsx`, `data-testid="ws-credits"`); the canvas header now shows
       "N credits left" (`data-testid="nav-credits"`), linking to Settings and turning

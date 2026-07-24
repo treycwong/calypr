@@ -87,17 +87,15 @@ async def create_run(
             yield "data: [DONE]\n\n"
             return
 
-        # May this workspace run this graph — plan rule and credit balance in one answer. Both
-        # are skipped when every node runs on the workspace's own keys, because then the run
-        # costs us nothing and there is nothing to refuse. Checked before the run rather than
-        # during, so a refusal is a clear answer instead of a half-finished one; a run already
-        # started always finishes (`credits.debit_run` may take the balance negative).
+        # The plan's ceiling — skipped when every node runs on the workspace's own keys, because
+        # then the run costs us nothing and there is nothing to refuse. Checked before the run
+        # rather than during, so a refusal is a clear answer instead of a half-finished one; a
+        # run already started always finishes (`credits.debit_run` may take the balance
+        # negative).
         if gate := await asyncio.to_thread(run_access.check_run_gates, workspace_id, req.graph):
             code, message = gate
             posthog_client.capture(
-                "agent_run_own_key_required"
-                if code == run_access.OWN_KEY_REQUIRED
-                else "agent_run_credits_exhausted",
+                "agent_run_credits_exhausted",
                 distinct_id=str(workspace_id),
                 properties={"workspace_id": str(workspace_id)},
             )

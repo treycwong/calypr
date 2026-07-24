@@ -45,20 +45,6 @@ def has_roundtrip(plan: str | None) -> bool:
     return plan in (BETA, PLUS)
 
 
-def requires_own_key(plan: str | None) -> bool:
-    """Whether this plan must bring its own provider key to run a canvas.
-
-    Free is **BYO-key only** for node runs (`PRICING-SPEC.md` §1), which is exactly what
-    `/pricing` sells it as — "Free to build and run with your own API key". Its monthly credits
-    are an *assistant* budget, not a run budget.
-
-    Enforced rather than implied, because until 2026-07-24 it was only implied: the shipped
-    ledger let a Free workspace spend its 100 credits on platform-key node runs nobody had
-    advertised, which is the revenue leak `TODO` §2 tracked. `beta` and `plus` pay for platform
-    access and are unaffected."""
-    return (plan or FREE) == FREE
-
-
 def is_invited(session: Session, email: str | None) -> bool:
     """Whether this address is on the beta invite list.
 

@@ -10,9 +10,9 @@ pricing surface); consumed by the assistant in [`AI-ASSISTANT-SPEC.md`](./AI-ASS
 |---|---|---|
 | Projects (agents) | **3** | **20** |
 | **Code export** — edit the generated Python + Apply to canvas (`POST /parse`) | ✗ | **✓** |
-| Node LLM calls (canvas runs) | **BYOK only** — user's own OpenAI/Moonshot/DeepSeek key; 0 credits consumed | Platform keys on all 3 models, metered in credits; **BYOK still allowed** (0 credits) |
-| AI chatbot (assistant) | **100 credits/mo**, chatbot-only, **DeepSeek-routed** (~15–20 graph generations) | Full credit pool, any of the 3 models |
-| Monthly credit grant | 100 (chatbot-only) | **2,000** (shared across node runs + chatbot) |
+| Node LLM calls (canvas runs) | Platform keys, metered against the grant; **BYOK allowed** (0 credits) | Platform keys on all 3 models, metered in credits; **BYOK still allowed** (0 credits) |
+| AI chatbot (assistant) | Shares the same grant, **DeepSeek-routed** | Full credit pool, any of the 3 models |
+| Monthly credit grant | 100 (shared across node runs + chatbot) | **2,000** (shared across node runs + chatbot) |
 | Rollover / top-ups | none v1 | none v1 (top-up packs = fast-follow) |
 | Share links | run-capped per link (existing `run_cap`) | run-capped; runs debit the owner's credits (or BYOK) |
 
@@ -221,7 +221,11 @@ All worst-case numbers assume 100% credit burn. 1 credit = $0.002 COGS by constr
 - Dormant = $0 because grants are **lazy** (§4: granted on first assist call of the
   calendar month) and don't roll over — a signed-up-but-inactive "subscriber for a year"
   costs literally nothing in model spend.
-- Free **node runs are BYOK-only** → $0 to us, including runs through their share links.
+- Free node runs **spend the 100-credit grant** — the same $0.20 ceiling as the chatbot budget,
+  because it is the same grant. Once spent, the workspace is refused or continues on its own key,
+  so the ceiling holds either way. (**Revised 2026-07-24**: this said "BYOK-only". Enforcing that
+  literally made a new user's first Run an error page, so the grant now covers runs too. The
+  ceiling is unchanged — only *where* the 100 credits can be spent.)
 - Marginal infra per free user (rows in Neon, a few KB of JSONB graphs) is ~pennies/year.
 
 **So: a free user subscribed for a year costs at most ~$2.40, typically well under $1,

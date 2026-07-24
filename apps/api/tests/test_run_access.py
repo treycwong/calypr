@@ -1,14 +1,14 @@
-"""Free is BYO-key only for node runs, and own-key usage is never charged twice.
+"""Whose key pays for a run, and what follows from the answer.
 
-Two rules that shipped together on 2026-07-24 because they need the same primitive — "will this
-call run on the workspace's key or ours?" (`model_access.runs_on_own_key`). Before it existed,
-zero-rating keyed off a hardcoded frontier-model list, which got both directions wrong: Free could
-spend its assistant credits on platform node runs nobody advertised, and a Plus user with their own
-OpenAI key was charged credits for calls OpenAI had already billed them for.
+Both plans spend a monthly grant on platform models and fall back to BYO-key when it runs out, so
+one question decides everything: *will this call run on the workspace's key or ours?*
+(`model_access.runs_on_own_key`). Two rules hang off it, and both were broken before it existed —
+zero-rating keyed off a hardcoded frontier-model list, so a user with their own OpenAI key was
+charged credits for calls OpenAI had already billed them for; and the balance was consulted even
+for runs we don't pay for, so "add your own API key to keep running" was advice that didn't work.
 
-The pure decisions come first and need no database. The composed gate that reads a plan and a
-key set out of Postgres (`run_access.check_run_gates`) is exercised in the DB-backed section at
-the bottom.
+The pure decisions come first and need no database. The gate that reads a workspace and a key set
+out of Postgres (`run_access.check_run_gates`) is exercised in the DB-backed section below.
 """
 
 import uuid
@@ -20,7 +20,6 @@ from calypr_api.db.models import ProviderKey, Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.model_access import platform_key_models, runs_on_own_key
 from calypr_api.pricing import credits_for, platform_cost_usd, platform_credits_for
-from calypr_api.run_access import _message
 from calypr_compiler.golden import input_agent_output
 from calypr_dsl import NodeSpec
 from sqlalchemy import text
@@ -129,33 +128,7 @@ def test_models_are_deduplicated() -> None:
     assert platform_key_models(graph, set()) == ["gpt-4o-mini"]
 
 
-# --- the plan rule ------------------------------------------------------------------------------
-
-
-def test_only_free_must_bring_its_own_key() -> None:
-    assert entitlements.requires_own_key("free") is True
-    assert entitlements.requires_own_key(None) is True  # unset defaults to the most limited plan
-    assert entitlements.requires_own_key("beta") is False
-    assert entitlements.requires_own_key("plus") is False
-
-
-# --- the message --------------------------------------------------------------------------------
-
-
-def test_message_names_providers_and_both_ways_out() -> None:
-    msg = _message(["gpt-4o-mini"])
-    assert "OpenAI" in msg  # the provider, not the model id — that's what they go and get
-    assert "Settings" in msg and "Plus" in msg  # add a key, or upgrade
-    assert "an OpenAI API key" in msg  # article agrees with the label
-
-
-def test_message_lists_every_provider_needed() -> None:
-    msg = _message(["gpt-4o-mini", "claude-3-5-sonnet"])
-    assert "Anthropic" in msg and "OpenAI" in msg
-    assert "API keys for" in msg
-
-
-# --- the composed gate (DB-backed) --------------------------------------------------------------
+# --- the gate (DB-backed) ------------------------------------------------------------------------
 #
 # The property under test is a single sentence: **a run that costs us nothing is never refused.**
 # It was violated in both directions on the day this landed — `check_can_run` looked only at the
@@ -226,8 +199,8 @@ def test_exhausted_plus_is_refused_when_it_would_spend_ours(monkeypatch, ws_fact
 
 @requires_db
 def test_free_runs_on_its_own_keys_even_at_zero_balance(monkeypatch, ws_factory) -> None:
-    """Free's credits are an assistant budget. Having spent them must not block a BYO-key run —
-    otherwise the plan's own rule ("run on your own key") would be unusable in its normal case."""
+    """Having spent the monthly grant must not block a BYO-key run — otherwise "add your own API
+    key to keep running", which is what an exhausted user is told, would be advice that fails."""
     monkeypatch.setattr(settings, "internal_key", "prod-key")
     wid = ws_factory(entitlements.FREE, providers=("openai",), exhausted=True)
     graph = input_agent_output(model="gpt-4o-mini")
@@ -235,18 +208,28 @@ def test_free_runs_on_its_own_keys_even_at_zero_balance(monkeypatch, ws_factory)
 
 
 @requires_db
-def test_free_without_a_key_gets_the_own_key_answer_not_a_credit_one(
-    monkeypatch, ws_factory
-) -> None:
-    """Ordering matters: Free with credits left but no key must be told to add a key, not that
-    it has run out of something it still has."""
+def test_free_spends_its_grant_on_platform_models(monkeypatch, ws_factory) -> None:
+    """A Free workspace with credits and *no* key runs on ours. This is the whole free tier:
+    someone signs up, hits Run, and it works — no key, no card.
+
+    Pinned because the opposite shipped briefly. Refusing this made a new user's first Run an
+    error message telling them to go get an API key, which is a strange way to open a product."""
     monkeypatch.setattr(settings, "internal_key", "prod-key")
-    wid = ws_factory(entitlements.FREE)  # credits intact, no keys
+    wid = ws_factory(entitlements.FREE)  # grant intact, no keys on file
     graph = input_agent_output(model="gpt-4o-mini")
-    gate = run_access.check_run_gates(wid, graph)
+    assert run_access.check_run_gates(wid, graph) is None
+
+
+@requires_db
+def test_free_is_refused_once_the_grant_is_spent(monkeypatch, ws_factory) -> None:
+    """…and the ceiling is real: no key, no credits, no run. The message is the upgrade prompt."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE, exhausted=True)  # no keys, grant spent
+    gate = run_access.check_run_gates(wid, input_agent_output(model="gpt-4o-mini"))
     assert gate is not None
-    assert gate[0] == run_access.OWN_KEY_REQUIRED
-    assert "OpenAI" in gate[1]
+    assert gate[0] == credits.INSUFFICIENT_CREDITS
+    # Both ways forward, since either genuinely works from here.
+    assert "API key" in gate[1] and "Plus" in gate[1]
 
 
 @requires_db
