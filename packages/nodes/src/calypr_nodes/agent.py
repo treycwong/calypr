@@ -60,6 +60,7 @@ def _placeholders(text: str) -> list[tuple[str, str]]:
         seen.setdefault(m.group(0), m.group(1))
     return list(seen.items())
 
+
 AgentType = Literal[
     "simple_reflex",
     "model_based",
@@ -82,9 +83,7 @@ _SCAFFOLD: dict[str, str] = {
     "utility_based": (
         "You optimise for quality. Aim for the most complete, accurate, and helpful answer."
     ),
-    "learning": (
-        "You adapt from feedback in the conversation, improving your answers over time."
-    ),
+    "learning": ("You adapt from feedback in the conversation, improving your answers over time."),
     "reflection": (
         "You answer, then critically review and revise your own answer before finalising."
     ),
@@ -228,9 +227,7 @@ class AgentNode(BaseNode):
         model = model_for_node(ctx, cfg.model)  # each agent uses its own provider
         tool_schemas = ctx.tools or []  # bound by the compiler from wired Tool nodes
 
-        async def _call(
-            system: str, messages: list[Msg], writer
-        ) -> tuple[str, list[ToolCall]]:
+        async def _call(system: str, messages: list[Msg], writer) -> tuple[str, list[ToolCall]]:
             """One streaming model call; returns the final text + any tool calls."""
             text = ""
             calls: list[ToolCall] = []
@@ -251,7 +248,13 @@ class AgentNode(BaseNode):
                         {
                             "type": "usage",
                             "node_id": current_node_id.get(None),
-                            "model": cfg.model,
+                            # The *resolved* id, not `cfg.model` — this node's config defaults to
+                            # "" (inherit), and an empty id is priced at `pricing`'s fail-closed
+                            # most-expensive rate. In production that billed ordinary gpt-4o-mini
+                            # traffic at ~163× its real cost and accounted for over half of all
+                            # recorded platform spend. Harmless while nothing read the number;
+                            # once credits are enforced it over-debits real customers.
+                            "model": model_id,
                             "input_tokens": ev.input_tokens,
                             "output_tokens": ev.output_tokens,
                         }
@@ -307,9 +310,7 @@ class AgentNode(BaseNode):
             else:
                 reply, calls = await _call(system, history, writer)
                 # Preserve tool calls so a wired Tool node + conditional edge can act (ReAct).
-                message = AIMessage(
-                    content=reply, tool_calls=_to_lc_tool_calls(calls)
-                )
+                message = AIMessage(content=reply, tool_calls=_to_lc_tool_calls(calls))
 
             return {cfg.output_channel: [message]}
 
@@ -381,17 +382,14 @@ class AgentNode(BaseNode):
             # `{{ state.x }}` placeholders fill from state at runtime, mirroring render_template.
             for placeholder, channel in _placeholders(system):
                 head.append(
-                    f"    system = system.replace({placeholder!r}, "
-                    f'str(state.get({channel!r}, "")))'
+                    f'    system = system.replace({placeholder!r}, str(state.get({channel!r}, "")))'
                 )
 
         prompt = "[SystemMessage(content=system), *messages]" if system else "messages"
 
         if cfg.agent_type == "simple_reflex":
             msg_imports.add("HumanMessage")
-            latest = (
-                "[SystemMessage(content=system), *latest]" if system else "latest"
-            )
+            latest = "[SystemMessage(content=system), *latest]" if system else "latest"
             body = [
                 "    latest = [m for m in messages if isinstance(m, HumanMessage)][-1:]",
                 f"    reply = model.invoke({latest})",
@@ -420,8 +418,7 @@ class AgentNode(BaseNode):
                 "                HumanMessage(content=reply),",
                 "            ]",
                 "        ).content",
-                f"        revise_system = {base_sys} + "
-                '"\\n\\nA reviewer noted:\\n" + critique',
+                f'        revise_system = {base_sys} + "\\n\\nA reviewer noted:\\n" + critique',
                 "        reply = model.invoke(",
                 "            [",
                 "                SystemMessage(content=revise_system),",
@@ -438,9 +435,7 @@ class AgentNode(BaseNode):
             ]
 
         if msg_imports:
-            imports.append(
-                "from langchain_core.messages import " + ", ".join(sorted(msg_imports))
-            )
+            imports.append("from langchain_core.messages import " + ", ".join(sorted(msg_imports)))
         return CodeFragment(
             fn_name=fn_name, function="\n".join(head + body) + "\n", imports=imports
         )
@@ -499,9 +494,7 @@ class AgentNode(BaseNode):
                 cfg.max_reflections = n
             critique = _string_assign(fn, "critique_prompt") or ""
             if critique.startswith(_CRITIQUE_PREFIX) and critique.endswith(_CRITIQUE_SUFFIX):
-                cfg.reflection_criteria = critique[
-                    len(_CRITIQUE_PREFIX) : -len(_CRITIQUE_SUFFIX)
-                ]
+                cfg.reflection_criteria = critique[len(_CRITIQUE_PREFIX) : -len(_CRITIQUE_SUFFIX)]
         elif agent_type == "utility_based":
             n = _first_range_int(fn)
             if n is not None:
