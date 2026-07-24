@@ -26,11 +26,10 @@ from __future__ import annotations
 
 import argparse
 
-from sqlalchemy import desc, or_, select
-
 from calypr_api.config import settings
 from calypr_api.db.models import CreditLedger, StripeEvent, Workspace
 from calypr_api.db.session import SessionLocal
+from sqlalchemy import desc, or_, select
 
 MICRO = 1_000  # micro-credits per credit; mirrors calypr_api.credits.MICRO
 
@@ -106,7 +105,7 @@ def main() -> None:
                 .where(or_(Workspace.plan != "free", Workspace.stripe_customer_id.isnot(None)))
                 .order_by(desc(Workspace.created_at))
             ).all()
-            print(f"candidate workspaces (not plain free, or has a customer id) — {len(candidates)}")
+            print(f"candidates (not plain free, or has a customer id) — {len(candidates)}")
             if not candidates:
                 print("  (none — everyone is plain free with no Stripe customer)")
             for w in candidates:
