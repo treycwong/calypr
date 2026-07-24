@@ -31,8 +31,9 @@ import sys
 
 from calypr_api import credits, entitlements
 from calypr_api.config import settings
-from calypr_api.db.models import Workspace
+from calypr_api.db.models import CreditLedger, Workspace
 from calypr_api.db.session import SessionLocal
+from sqlalchemy import func, select
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
@@ -84,6 +85,27 @@ def main() -> None:
         print(f"workspace {workspace.id} ({workspace.name!r})\nbefore:")
         _show(session, workspace)
 
+        # Reconcile against the ledger before doing anything else. `balance_micro` reads the
+        # *cache*, so computing the adjustment from it would size the delta against a number
+        # that may be wrong — leaving the cache at the target, the ledger somewhere else, and
+        # the discrepancy exactly as large as before. Drift would survive every run of this
+        # script and never be visible. The ledger is the truth (`credits.recompute_balance`),
+        # so start from it and say so when they disagree.
+        ledger_micro = int(
+            session.scalar(
+                select(func.coalesce(func.sum(CreditLedger.delta_micro), 0)).where(
+                    CreditLedger.workspace_id == workspace.id
+                )
+            )
+            or 0
+        )
+        cached_micro = credits.balance_micro(session, workspace.id)
+        if ledger_micro != cached_micro:
+            print(
+                f"\n  ** cache/ledger drift: cached {cached_micro / credits.MICRO:,.3f} vs "
+                f"ledger {ledger_micro / credits.MICRO:,.3f} credits — the ledger wins **"
+            )
+
         plan = args.plan or workspace.plan
         changes: list[str] = []
         if args.plan and args.plan != workspace.plan:
@@ -91,7 +113,7 @@ def main() -> None:
         delta = 0
         if args.credits is not None:
             target = credits.to_micro(args.credits)
-            delta = target - credits.balance_micro(session, workspace.id)
+            delta = target - ledger_micro
             changes.append(f"balance → {args.credits:,.3f} credits (adjust {delta:+,} micro)")
 
         if not changes:
@@ -121,6 +143,15 @@ def main() -> None:
             # Anchor this cycle so `ensure_current_grant` doesn't immediately top the balance
             # back up to the plan allowance and silently undo what was just set.
             workspace.grant_cycle_anchor = credits.date.today()
+            # Repair the cache from the ledger rather than trusting the running total. The
+            # adjust above was sized against the ledger, so this is what actually lands the
+            # cache on the target when the two had drifted.
+            #
+            # `flush` first, or the adjust row is still pending in the session and the SUM below
+            # reads the ledger *without* it — recomputing the cache to the pre-adjustment total
+            # and overwriting the very correction just made.
+            session.flush()
+            credits.recompute_balance(session, workspace.id)
         session.commit()
 
         session.refresh(workspace)
