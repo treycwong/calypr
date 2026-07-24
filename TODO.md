@@ -1,9 +1,18 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-07-23.
+> record — what shipped and why. Updated 2026-07-25.
 
 ## ⏭️ NEXT — what's actually blocking
+
+**One thing stands between here and a paying customer: the live Stripe webhook endpoint has never
+received a single event** (§1). Its event list and signing secret are both unverified, and a
+mode-mismatched secret already silently swallowed a cancellation once — a customer who cancels
+against an endpoint we cannot verify keeps full Plus access indefinitely, with nothing logged
+beyond a 400.
+
+§2 is closed: billing is enforced end-to-end and live. §3 is the money-safety work that should
+land before real charges, none of it blocking.
 
 ### 1. Turn Stripe on (blocked on credentials)
 
@@ -115,15 +124,30 @@ stripe products create --name="Calypr Plus"
 stripe prices create --product=prod_XXX --unit-amount=2000 --currency=usd -d "recurring[interval]=month"
 ```
 
-### 2. The 2,000-credit grant — ledger + enforcement (the other half of billing)
+### 2. ✅ CLOSED (2026-07-25) — the credit grant: ledger + enforcement
 
-**This is the biggest remaining gap, and it is a revenue leak.** `0013` shipped the *entitlement*
-half: paying flips the plan. But the grant advertised on `/pricing` and `/checkout` — "2,000
-credits a month" — is **not enforced anywhere**. Credits are computed (`pricing.credits_for`) and
-nothing debits them, so today a Plus subscriber at $20/mo has **no usage ceiling at all** beyond
-the platform-wide `CALYPR_PLATFORM_SPEND_CAP_USD` kill-switch, which protects the platform rather
-than the plan. One heavy user can cost far more than they pay, and the 80% gross margin in
-`PRICING-SPEC.md` §2 assumes a cap that doesn't exist.
+**Done and live in production.** Both plans now spend a monthly grant on platform models and fall
+back to BYO-key when it runs out; the ledger grants, debits and refuses; the balance is visible in
+Settings and the canvas header.
+
+Precisely what has been *observed*, as opposed to tested: **debiting**, on a real tenant-scoped
+workspace in a browser — credits fall per run and the header tracks them. **Refusal at zero has
+only been proven by the DB-backed tests**, never watched end-to-end. That is the same gap that
+made the Stripe cancellation unprovable for a month, so it is written down rather than assumed:
+set a workspace to `--credits 0.01` and run twice — the first completes, the second is refused.
+
+The one item left below is a *question*, not a build task.
+
+The section is kept for the record because two of the bugs it turned up were live and neither was
+found by reading the billing code — both came from looking at production data:
+
+- **BYO-key usage was charged twice.** Zero-rating keyed off a hardcoded frontier-model list
+  rather than off whether the workspace had actually supplied a key.
+- **Agent nodes metered at ~163× their true cost** (see §6) — over half of all recorded platform
+  spend, and invisible until credits were enforced.
+
+The original entry read: *"the biggest remaining gap, and it is a revenue leak — the grant
+advertised on `/pricing` is not enforced anywhere."* It was right, and the leak is closed.
 
 Build order (each step is useful on its own):
 
@@ -206,6 +230,20 @@ Build order (each step is useful on its own):
 
 ### 3. Before the first real charge (money safety)
 
+- [ ] **UNEXPLAINED — a local database accumulated ~22,900 credits of cache/ledger drift.**
+      `workspace.credit_balance_micro` had diverged from `SUM(credit_ledger.delta_micro)` on the
+      shared dev workspace. **Production was checked and has none, on any workspace**, which is
+      why this is not urgent — but the cause was never found, and "we don't know why the money
+      column disagreed with its own audit trail" is not a state to have paying customers in.
+      What was ruled out: `credits._write` is atomic (one transaction, SQL-expression update, no
+      read-modify-write), and the one test that deliberately corrupts a cache
+      (`test_the_ledger_wins_when_the_cache_drifts`) does so on a throwaway workspace.
+      What *was* fixed is the diagnostic gap that hid it: `scripts/set_credits.py` sized its
+      adjustment from the **cached** balance, so it preserved drift exactly and could never
+      repair or report it. It now reads the ledger, prints any disagreement, and recomputes.
+      A `recompute_balance` sweep with an alert on any non-zero difference would turn this from
+      "nobody looked" into "we would know" — that is probably the right next step rather than
+      hunting the original cause cold.
 - [ ] **Blob GC does not exist** — every image/TTS generation writes a permanent object under
       `runs/{png,mp3}/…`; nothing deletes them, ever, including on run/agent/share deletion. A
       monotonically growing bill under a "positive gross margin" gate. Needs `delete_blob` in
@@ -246,6 +284,30 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 ### 6. Known defects (not blocking, but real)
 
+- [x] **FIXED (2026-07-25) — Agent nodes metered at ~163× their true cost.** `agent.py` resolved
+      the model, used it to make the call, then reported `cfg.model` in the usage payload — which
+      defaults to `""` (inherit). `pricing.price_for("")` falls back to the most-expensive known
+      rate, deliberately, so metering never under-records. Two production runs with identical
+      38-in/9-out counts recorded **$0.001815** and **$0.000011**; the second is correct.
+      In production: 38 usage rows across 23 runs, **$0.349 of $0.659 total recorded platform
+      spend**. Harm was confined to `run.cost_usd` — the figure the spend kill-switch sums, so the
+      cap would have tripped early for everyone — because the ledger only began debiting
+      afterwards. Image and TTS were never affected; their configs carry concrete model defaults,
+      which is exactly why only agent nodes appear in the empty-model rows.
+      **Found by reading production data, not the code.** Nothing in the billing tests would ever
+      have caught it: they assert the arithmetic, and the arithmetic was right — it was being fed
+      the wrong model id.
+- [x] **FIXED (2026-07-25) — `simple_reflex` could never finish a tool loop.**
+      `_latest_user_turn` truncated history to the bare user message, discarding the `tool_calls`
+      the agent had just emitted and the result the Tool node had just written back. On re-entry
+      it saw the original question again, asked for the same tool again, and ran to the recursion
+      limit. **Every ReAct graph on `simple_reflex` failed** — structurally, not intermittently.
+      Two lessons worth keeping. The error message asserted a cause it had not checked ("your
+      graph has a cycle with no exit"), sending the user to delete a back-edge their correct
+      topology needed; it now states only what is known. And this is a hole in the
+      **accepted ⇒ runnable** guarantee of the node-wiring matrix: `Agent(simple_reflex) + Tool`
+      is accepted by the validator and was not runnable. Worth asking what else the matrix accepts
+      that only fails at runtime — the matrix checks wiring, not preset behaviour.
 - [ ] **Generated Python collapses multi-Tool dispatch.** The runtime was fixed in PR #41
       (`ctx.tool_owners`); `services/codegen/generate.py:214` still emits one `tools_condition`
       branch, so an agent wired to two Tool nodes exports code that reaches only one of them.
