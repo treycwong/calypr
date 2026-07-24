@@ -227,15 +227,20 @@ def check_can_run(workspace_id: uuid.UUID | None) -> str | None:
             # object still holds the pre-grant value.
             if balance_micro(session, workspace_id) > 0:
                 return None
-            # Out of credits. What to say depends on why they have none.
+            # Out of credits. Both answers name the two things that actually work from here —
+            # wait for the reset, or bring a key — because the reset is a calendar month away
+            # and "wait" alone is not an answer to someone mid-task. `grant_monthly` compares
+            # (year, month), so "next month" is literally true for both plans; the copy used to
+            # promise Plus a reset "on your next billing date", which a mid-month renewal does
+            # not deliver.
             if plan == entitlements.FREE:
                 return (
-                    "You're out of monthly credits. Add your own API key in Settings to keep "
-                    "running for free, or upgrade to Plus."
+                    "You're out of credits for this month. They reset next month — or add your "
+                    "own API key in Settings to keep running now, or upgrade to Plus."
                 )
             return (
-                "You're out of credits for this month. They reset on your next billing date — "
-                "or add your own API key in Settings to keep running."
+                "You're out of credits for this month. They reset next month — or add your own "
+                "API key in Settings to keep running now."
             )
     except Exception:
         log.warning("credit check failed — allowing the run", exc_info=True)

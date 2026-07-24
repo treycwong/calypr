@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 export const metadata: Metadata = {
   title: "Pricing — Calypr",
   description:
-    "Free to build and run with your own API key. Plus adds code export, more projects, and platform credits for $20/month.",
+    "Start free with monthly credits — no key, no card. Plus adds code export, more projects, and 2,000 credits a month for $20.",
 };
 
 /** The plan matrix from PRICING-SPEC §1, ordered the way a reader evaluates it.
@@ -23,15 +23,15 @@ const PLANS = [
     name: "Free",
     price: "$0",
     cadence: "/month",
-    pitch: "Build and run real agents with your own API key.",
+    pitch: "Build and run real agents. No key, no card.",
     cta: "Start building",
     href: "/canvas",
     featured: false,
     features: [
       "3 projects",
-      "Bring your own key — OpenAI, Anthropic or Moonshot",
+      "100 credits a month, across runs and the assistant",
       "Every block, template and canvas run",
-      "100 assistant credits a month for generating graphs",
+      "Keep going on your own key when the credits run out",
       "Share links, run-capped per link",
     ],
   },
@@ -40,7 +40,7 @@ const PLANS = [
     name: "Plus",
     price: "$20",
     cadence: "/month",
-    pitch: "Take the code with you, and run on our keys instead of your own.",
+    pitch: "Take the code with you, and 20× the monthly credits.",
     cta: "Select plan",
     href: "/checkout?plan=plus",
     featured: true,
@@ -51,6 +51,7 @@ const PLANS = [
       "2,000 credits a month, shared across runs and the assistant",
       "Platform keys on every model — nothing to set up",
       "Your own keys still run free, at zero credits",
+      "Credits reset at the start of each month",
     ],
   },
 ] as const;
@@ -73,8 +74,8 @@ export default function PricingPage() {
             Plans and pricing
           </h1>
           <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-            Start free with your own API key — no card, no trial clock. Upgrade when you want
-            the generated Python in your hands.
+            Start free with monthly credits — no key, no card, no trial clock. Bring your own key
+            when they run out, or upgrade when you want the generated Python in your hands.
           </p>
         </div>
 

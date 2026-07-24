@@ -29,11 +29,46 @@ The code is merged and correct; nothing works until three values exist. See
       endpoint, the signature verified on the wire, and both `checkout.session.completed` and
       `invoice.paid` are recorded in `stripe_event`. `treycwong@gmail.com` is mapped to
       `cus_Uw5V71aLHnaox9`.
-- [ ] **Cancellation is still unproven in production.** It works locally, but the paid account was
-      already `plus` (set by hand earlier), so neither `free → plus` nor `plus → free` was
-      actually *observed* end-to-end on the deployed endpoint. Cancel the test subscription in
-      the Stripe dashboard and watch the plan return to `free` — that closes the last gap, and
-      the downgrade path is the one where a bug costs a paying customer their access.
+- [x] **Cancellation PROVEN in production (2026-07-24)** — `plus → free` observed end-to-end on
+      the deployed endpoint for the first time: `customer.subscription.deleted`
+      (`evt_1TwcdaQ4CLwWKY6VUnNcwRPa`) delivered **200** at 06:49:14, recorded in `stripe_event`,
+      and workspace `914f15cf-9cde-430c-bb1a-186b9d88fa47` flipped `plus` → `free`.
+      **It failed the first time, and the failure is the lesson.** The first cancel was delivered
+      twice and rejected **400 "bad signature"** both times — Railway held the *live* webhook
+      secret (`whsec_FE…`) while the subscription being cancelled was *test* mode
+      (`whsec_PX…`). Signature verification runs before anything else, so nothing was recorded
+      and the plan silently stayed `plus`: **a real customer cancelling would have kept full Plus
+      access indefinitely, with no error surfaced anywhere.** Test and live have separate
+      endpoints and separate signing secrets — a mode mismatch is invisible until you look at the
+      HTTP status. Proven by switching Railway to the test key set and hitting *Resend* on the
+      already-failed event (no re-subscribe needed).
+      Observe any of this with `apps/api/scripts/observe_billing.py` (read-only):
+      `railway run --service calypr-api -- uv run python scripts/observe_billing.py --customer cus_…`
+- [x] **`free → plus` PROVEN through the real button (2026-07-24)** — paid in test mode from a
+      genuinely `free` workspace: `free` → **`plus`**, balance `0` → **2,000.000 credits**,
+      `grant_cycle_anchor` `2026-07-24`, ledger row `grant 2,000 source=stripe
+      ref=in_1Twd5XQ4CLwWKY6V5670cQJg`. **The whole loop is now observed end-to-end on the
+      deployed endpoint: `free → plus → free → plus`.**
+      One thing this run confirmed by accident: `invoice.paid` landed at 07:00:11, a second
+      *before* `checkout.session.completed` at 07:00:12. Stripe does not guarantee ordering, and
+      the grant was issued by `invoice.paid` (ref is the `in_…` invoice id) with the checkout
+      handler's grant correctly a no-op. Granting from **both** handlers, idempotent per cycle,
+      is what stops a new subscriber landing on Plus with zero credits — don't "simplify" it to
+      one.
+- [x] **Railway restored to LIVE keys (2026-07-24)** — swapped to test to prove the loop, then
+      restored and redeployed clean (`sk_live_…`, `whsec_FE…`, `price_1TwCr8Q4CLwWKY6VKVaMtiYY`;
+      verified byte-length-identical to the pre-swap backup). The test subscription was cancelled
+      **before** the restore, so the workspace is back to `free` honestly rather than by hand —
+      once live keys are in, a test-mode event can never verify again, so the cleanup has to
+      happen while the test keys are still loaded. Do it in that order if you ever swap again.
+      Residue: the workspace keeps its 2,000 test-granted credits until the next cycle, when
+      `grant_monthly` tops *down* to the Free grant (delta is negative by design — grants replace,
+      never stack). Harmless, but it explains a Free workspace sitting above 100 credits.
+- [ ] **The LIVE webhook endpoint has never received a single event.** `we_1TwE88Q4CLwWKY6VoKTNJdc2`
+      is unexercised: its event list and signing secret are both unverified. Given the test
+      endpoint was mismatched *and* the original live `whsec_` was orphaned, assume nothing here
+      — confirm `customer.subscription.{updated,deleted}` are subscribed and the secret matches
+      before the first real customer.
 - [x] **LIVE (2026-07-23)** — live keys set on Railway and deployed; `/checkout` offers payment.
       Live webhook endpoint `we_1TwE88Q4CLwWKY6VoKTNJdc2` created (there was **none** — the
       `whsec_` originally supplied was orphaned, so a live payment would have charged the
@@ -47,10 +82,14 @@ The code is merged and correct; nothing works until three values exist. See
       — Railway directly, *not* calypr.co: signature verification needs the exact raw bytes, and
       the signing secret belongs where the DB is. Events: `checkout.session.completed`,
       `customer.subscription.{created,updated,deleted}`, `invoice.paid`, `invoice.payment_failed`.
-- [ ] **Test the loop end-to-end** on the `tracey@theflowops.com` free workspace: pay in test
-      mode → confirm `plus` → cancel → confirm `free`. **Go through the actual button** — a
-      payment made in the Stripe dashboard carries no `client_reference_id`, so it correctly
-      does nothing, which looks like a bug if you weren't expecting it.
+      **TEST endpoint: confirmed done (2026-07-24)** — it delivered to Railway and verified.
+      **LIVE endpoint: still unconfirmed** — see the unchecked item above.
+- [x] **Loop tested end-to-end through the actual button (2026-07-24)** — done on workspace
+      `914f15cf…` ("Personal", `treycwong@gmail.com`) rather than `tracey@theflowops.com`, which
+      satisfies the intent: a genuinely `free` workspace, paid via the real Upgrade button.
+      Observed `free → plus → free`. (The warning still holds: a payment made *in the Stripe
+      dashboard* carries no `client_reference_id`, so it correctly does nothing —
+      `routers/billing.py:117-121` — which looks like a bug if you weren't expecting it.)
 - ⚠️ **Local dev picks up whatever is in the repo-root `.env`** (`config.py` calls
   `load_dotenv` on it). With live keys sitting there, running the API locally creates **real**
   Stripe Checkout Sessions — no charge, but real objects in the live account. Keeping *test*
@@ -103,26 +142,67 @@ Build order (each step is useful on its own):
       stream, so the error arrives in-band where the client already handles it) in `create_run` / `/assist` when the balance is spent. A run
       already in flight completes (bounded overshoot — `max_tokens` caps it); the *next* call
       402s. The web app already handles a 402 from `/parse`, so the shape is established.
-- [ ] **Free-tier BYOK enforcement** — per the plan matrix Free has *no* platform node runs at
-      all (BYO key only), and nothing enforces that today. This is the other half of the leak:
-      a free user can currently run every model on our keys.
-- [ ] **Surface the balance** — Settings → Workspace should show credits used/remaining. Nobody
-      can be expected to respect a limit they can't see, and it's the natural upgrade prompt.
-      **This is now the most user-visible gap**: enforcement is live and invisible.
-- [ ] **DECISION NEEDED — the Free tier is more generous than designed.** `PRICING-SPEC` §1
-      says Free is **BYOK-only** for canvas runs, with its 100 credits reserved for the
-      *assistant*; `/pricing` likewise sells Free as "bring your own key". The shipped ledger
-      gives Free 100 credits spendable on **anything**, so a free user currently gets ~100
-      credits of platform runs nobody advertised.
-      Financially this is already budgeted — the spec itself costs the free grant at ~$0.20/user
-      /month — so the exposure is unchanged; only *where* it can be spent differs. Three options:
-      (a) keep it as a deliberate taste-of-the-product and update spec + pricing copy to match,
-      (b) restrict Free's credits to `source="assist"` so runs require BYOK as designed, or
-      (c) keep it but shrink the grant. **Left generous on purpose**: over-delivering is the
-      safe direction to be wrong in, and quietly making the free tier worse isn't mine to decide.
-- [ ] **Assist is not yet metered against credits.** `/runs` is gated; `/assist` still uses the
-      in-memory `CALYPR_ASSIST_DAILY_CAP`. Free's 100-credit grant is *assistant* budget per the
-      plan matrix, so this is the half that makes the Free tier's number mean anything.
+- [x] **DECISION RESOLVED — option (a), 2026-07-24: credits first, BYO-key as the fallback.**
+      **Both plans work identically**: spend the monthly grant on platform models (Free 100,
+      Plus 2,000), and when it runs out either add your own key or wait for the reset. Grants
+      replace per **calendar month** for both — `grant_monthly` compares `(year, month)`, so the
+      old Plus copy promising a reset "on your next billing date" was wrong for a mid-month
+      renewal and now says "next month".
+      This reverses an option (b) that was built and then removed before it ever shipped: Free
+      as BYO-key-only for canvas runs, per an older reading of `PRICING-SPEC` §1. It was correct
+      to the spec and wrong for the product — a new Free user's very first Run became an error
+      message telling them to go get an API key. `PRICING-SPEC` §1 and the `/pricing` copy have
+      been updated to match what actually ships; **the spec is now the thing that was stale.**
+      What survives from that work is the part that was right either way:
+      `run_access.check_run_gates` skips the balance check entirely when every node runs on the
+      workspace's own keys, and it resolves the **effective** model (node → workspace default →
+      platform default) rather than reading `config["model"]` — an untouched canvas ships
+      `model: ""` on every node, so a raw read would see nothing at all.
+- [ ] **Is 100 credits the right Free grant now that it buys runs?** It was sized as an
+      *assistant* budget. At `gpt-4o-mini` rates a small run costs ~0.006 credits, so 100 covers
+      thousands of them and the ~$0.20/user/month costing in `PRICING-SPEC` §2 still holds — but
+      that number was never chosen with runs in mind. Worth confirming against real usage rather
+      than assuming it lands right by accident.
+- [x] **Surface the balance SHIPPED** — Settings → Workspace already had the meter
+      (`settings-view.tsx`, `data-testid="ws-credits"`); the canvas header now shows
+      "N credits left" (`data-testid="nav-credits"`), linking to Settings and turning
+      `text-destructive` at zero. It refreshes when a run settles (`Playground.onRunFinished`) —
+      otherwise the number someone watches while deciding whether to run again is the one from
+      before their last few runs.
+- [x] **Assist gating SHIPPED — and the old entry here was wrong.** It claimed assist "is not yet
+      metered against credits". It always was: `assist.py` has run `RunRecorder.start(...,
+      source="assist")` since it shipped, and `metering._flush` debits from that. What was missing
+      was the *refusal* — nothing called `check_can_run`, so an exhausted workspace kept drafting
+      graphs and drove its balance further negative, bounded only by the in-memory daily call cap.
+      `/assist` now returns `code: "credits"` when the balance is spent. The daily cap stays as a
+      cheap abuse guard on top (still per-process — see §3).
+- [x] **BYO-key usage was being charged twice — fixed (2026-07-24).** Not previously tracked here,
+      and it was live: zero-rating keyed off `is_frontier(model_id)`, a hardcoded list of three
+      models, rather than off whether the workspace had actually supplied a key. But
+      `factory._key` prefers a stored key over the server env for *any* provider, so a Plus user
+      with their own OpenAI key ran `gpt-4o-mini` on their own account **and** paid us credits for
+      it — while `/pricing` promised "your own keys still run free, at zero credits".
+      `model_access.runs_on_own_key` now answers the real question, and both `platform_cost_usd`
+      and `platform_credits_for` take `own_key=`. The provider set is snapshotted at run start
+      (`RunRecorder._byok`) so a key added or removed mid-run can't retroactively reprice it, and
+      it reads provider *names* only — no vault round-trip, no secret material on the path that
+      decides who pays.
+- [x] **A run that costs us nothing is never refused (2026-07-24)** — the rule the two gates were
+      missing, and the reason they're now one function. `check_can_run` looked only at the
+      balance, so bringing your own key — the exact thing an exhausted user is told to do — left
+      you blocked anyway: a Plus workspace at zero credits was refused a run billed entirely to
+      its own provider account, and a Free workspace with keys for every node was refused for
+      having spent an assistant budget that was never the constraint. Same bug on `/assist`, where
+      it was a *regression*: adding the credit check there took away behaviour BYO-key users had
+      the day before. `check_run_gates` now short-circuits before either refusal when
+      `platform_key_models(...)` is empty, and `/assist` skips the check when
+      `assist_on_own_key(...)`. Pinned by a test that asserts the bare `check_can_run` still
+      refuses that same workspace, so it can't decay into testing a solvent one.
+      **This is why a "use my own keys" toggle isn't needed**: storing a key already routes
+      traffic to it (`factory._key`) and now already costs 0 credits, so the toggle would have
+      been a switch for something that is simply true. The control that *is* missing is the
+      inverse — "prefer platform credits even though I have a key stored", for someone whose own
+      provider budget is tighter than the credits they've already paid for. Not built.
 
 ### 3. Before the first real charge (money safety)
 

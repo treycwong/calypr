@@ -16,7 +16,7 @@ from calypr_runtime import run_stream
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api import credits, engine, spend
+from calypr_api import engine, run_access, spend
 from calypr_api.connectors import assert_tool_urls_allowed, resolve_graph
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
@@ -87,18 +87,19 @@ async def create_run(
             yield "data: [DONE]\n\n"
             return
 
-        # The plan's own ceiling. Checked before the run rather than during, so someone out of
-        # credits gets a clear answer instead of a half-finished one; a run already started is
-        # always allowed to finish (`credits.debit_run` may take the balance negative).
-        if credit_error := await asyncio.to_thread(credits.check_can_run, workspace_id):
+        # The plan's ceiling — skipped when every node runs on the workspace's own keys, because
+        # then the run costs us nothing and there is nothing to refuse. Checked before the run
+        # rather than during, so a refusal is a clear answer instead of a half-finished one; a
+        # run already started always finishes (`credits.debit_run` may take the balance
+        # negative).
+        if gate := await asyncio.to_thread(run_access.check_run_gates, workspace_id, req.graph):
+            code, message = gate
             posthog_client.capture(
                 "agent_run_credits_exhausted",
                 distinct_id=str(workspace_id),
                 properties={"workspace_id": str(workspace_id)},
             )
-            yield _sse(
-                {"type": "error", "message": credit_error, "code": credits.INSUFFICIENT_CREDITS}
-            )
+            yield _sse({"type": "error", "message": message, "code": code})
             yield "data: [DONE]\n\n"
             return
 

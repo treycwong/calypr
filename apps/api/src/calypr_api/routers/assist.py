@@ -17,7 +17,7 @@ from calypr_model import model_for, provider_of
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api import spend
+from calypr_api import credits, run_access, spend
 from calypr_api.config import settings
 from calypr_api.deps import request_workspace
 from calypr_api.errors import (
@@ -102,6 +102,36 @@ async def create_assist(
                 {
                     "type": "error",
                     "message": "Service temporarily unavailable. Try again later.",
+                    "issues": [],
+                }
+            )
+            yield "data: [DONE]\n\n"
+            return
+
+        # The plan's credit ceiling. Assist usage has always been *debited* (the recorder below
+        # is tagged source="assist"), but until now nothing *refused* a call once the balance was
+        # spent — so an exhausted workspace kept drafting graphs and drove its balance further
+        # negative, bounded only by the daily call cap above. For Free this is the meaningful
+        # limit: their 100 credits are an assistant budget, since node runs are BYO-key only.
+        #
+        # Skipped entirely when the assistant is drafting on the workspace's *own* key: that call
+        # is billed to them by the provider, so a zero balance is no reason to refuse it. Without
+        # this, adding a key — the very thing we tell an exhausted user to do — would leave the
+        # assistant locked anyway.
+        on_own_key = await asyncio.to_thread(run_access.assist_on_own_key, workspace_id, model_id)
+        if not on_own_key and (
+            credit_error := await asyncio.to_thread(credits.check_can_run, workspace_id)
+        ):
+            posthog_client.capture(
+                "assist_credits_exhausted",
+                distinct_id=str(workspace_id),
+                properties={"workspace_id": str(workspace_id), "model": model_id},
+            )
+            yield _sse(
+                {
+                    "type": "error",
+                    "message": credit_error,
+                    "code": credits.INSUFFICIENT_CREDITS,
                     "issues": [],
                 }
             )

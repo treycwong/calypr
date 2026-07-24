@@ -30,12 +30,17 @@ export function Playground({
   getGraph,
   onNodeEvent,
   onRunReset,
+  onRunFinished,
 }: {
   getGraph: () => GraphSpec;
   // Drives the canvas run animation. `onRunReset` clears prior run state at the start of a
   // send (and on New chat); `onNodeEvent` reports node enter/exit and run errors.
   onNodeEvent?: (nodeId: string, phase: "start" | "end") => void;
   onRunReset?: (opts?: { error?: boolean }) => void;
+  // Fires once a send has settled, however it ended. The credit balance in the canvas header is
+  // read at page load, and a run is the thing that moves it — without this the number a user
+  // watches while deciding whether to run again is the one from before their last few runs.
+  onRunFinished?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
@@ -101,6 +106,7 @@ export function Playground({
       track("run_errored");
     } finally {
       setBusy(false);
+      onRunFinished?.();
     }
   }
 

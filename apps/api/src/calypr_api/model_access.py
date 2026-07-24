@@ -18,6 +18,7 @@ is metered normally.
 from __future__ import annotations
 
 from calypr_dsl import GraphSpec
+from calypr_model import provider_of
 
 # Model-id prefix → the provider key a workspace must supply to use it. Prefix-matched (like
 # `pricing.MODEL_PRICES`) so dated/suffixed ids — "kimi-k3-0711-preview" — are covered too.
@@ -61,6 +62,53 @@ def missing_frontier_keys(graph: GraphSpec, keys: dict[str, str] | None) -> list
             if pair not in missing:
                 missing.append(pair)
     return missing
+
+
+def runs_on_own_key(model_id: str, providers: set[str] | None) -> bool:
+    """Whether `model_id` will run on the *workspace's* key rather than the platform's.
+
+    This is the billing question, and it has exactly one correct answer: `factory._key` prefers a
+    stored key over the server env for that provider, so "the workspace has a key for this
+    model's provider" *is* "this call is billed to them, not us".
+
+    Not to be confused with `is_frontier`, which asks whether a model is BYO-key **only**. Every
+    frontier model runs on an own key, but the reverse doesn't hold — a workspace with an OpenAI
+    key runs ordinary `gpt-4o-mini` traffic on it too, and charging credits for that would bill
+    them twice for one call."""
+    if not providers:
+        return False
+    return provider_of(model_id) in providers
+
+
+def platform_key_models(
+    graph: GraphSpec, providers: set[str] | None, default_model: str = ""
+) -> list[str]:
+    """Every distinct LLM model in `graph` that would run on the **platform's** key.
+
+    Empty ⇒ the whole graph runs on the workspace's own keys. Used to enforce Free's BYO-key-only
+    rule (`PRICING-SPEC` §1), so it resolves the same fallback chain the runtime does —
+    `calypr_nodes.effective_model`: the node's own model → the workspace default → the platform
+    default. Resolving it here rather than reading `config["model"]` raw is the difference between
+    gating what actually runs and gating only the nodes that happened to name a model; a canvas of
+    untouched nodes ships `model: ""` and would otherwise sail straight through the gate.
+    """
+    # Local imports: `registry` pulls the node runtime and `workspace_model` the DB session —
+    # neither belongs in this module's import graph, which `pricing` imports lazily for the same
+    # reason.
+    from calypr_nodes.registry import PLATFORM_DEFAULT_MODEL
+
+    from calypr_api.workspace_model import LLM_NODE_TYPES
+
+    on_platform: list[str] = []
+    for node in graph.nodes:
+        if node.type not in LLM_NODE_TYPES or not isinstance(node.config, dict):
+            continue
+        configured = node.config.get("model")
+        model = (configured if isinstance(configured, str) else "") or default_model
+        model = model or PLATFORM_DEFAULT_MODEL
+        if not runs_on_own_key(model, providers) and model not in on_platform:
+            on_platform.append(model)
+    return on_platform
 
 
 #: Display names for the error copy. `.title()` would render "Openai" and "Moonshot (kimi)".
