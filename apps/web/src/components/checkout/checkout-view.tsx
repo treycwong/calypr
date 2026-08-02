@@ -7,15 +7,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { joinWaitlist, startCheckout } from "@/lib/api";
-
-/** Mirrors the Plus column on /pricing. Short on purpose — this page confirms a decision that
- * was already made a click ago, it doesn't re-sell it. */
-const INCLUDED = [
-  "Code export — the generated Python, yours to edit and run",
-  "20 projects",
-  "2,000 credits a month across runs and the assistant",
-  "Platform keys on every model",
-];
+import { CHECKOUT_INCLUDED as INCLUDED } from "@/lib/plans";
 
 export function CheckoutView({
   email: initialEmail,

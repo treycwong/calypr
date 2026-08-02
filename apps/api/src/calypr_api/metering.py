@@ -18,7 +18,7 @@ from typing import Any
 
 from sqlalchemy import func, update
 
-from calypr_api import credits
+from calypr_api import accounts, credits
 from calypr_api.db.models import Run, RunUsage
 from calypr_api.db.session import SessionLocal, set_tenant
 from calypr_api.model_access import runs_on_own_key
@@ -161,13 +161,19 @@ class RunRecorder:
             # Debit in the *same* transaction as the usage rows: a run that was metered but not
             # charged is free usage, and one charged without a usage row is unexplainable to the
             # customer. They land together or not at all.
-            if total_credits > 0:
+            # Credits are the account's, so the debit needs the account behind this workspace.
+            # If it can't be resolved (the shared dev workspace, a deleted row) there is no
+            # balance to move and the usage rows above still land — metering never blocks on
+            # billing.
+            account = accounts.account_for_workspace(self._session, self._workspace_id)
+            if total_credits > 0 and account is not None:
                 credits.debit_run(
                     self._session,
-                    self._workspace_id,
+                    account.id,
                     total_credits,
                     source=self._source,
                     ref_id=str(self._run_id),
+                    workspace_id=self._workspace_id,
                 )
             self._session.commit()
         except Exception:

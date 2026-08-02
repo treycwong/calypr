@@ -16,7 +16,7 @@ import uuid
 import pytest
 from calypr_api import credits, entitlements, run_access
 from calypr_api.config import settings
-from calypr_api.db.models import ProviderKey, Workspace
+from calypr_api.db.models import Account, ProviderKey, Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.model_access import platform_key_models, runs_on_own_key
 from calypr_api.pricing import credits_for, platform_cost_usd, platform_credits_for
@@ -139,16 +139,23 @@ def test_models_are_deduplicated() -> None:
 
 @pytest.fixture
 def ws_factory():
-    """Throwaway workspaces with optional stored provider keys; cleaned up afterwards."""
+    """Throwaway workspaces with optional stored provider keys; cleaned up afterwards.
+
+    Returns a *workspace* id, which is what `run_access` and `check_can_run` take. The plan and
+    the credit balance sit on the account behind it — that hop is the fixture's job so the tests
+    can stay about the gate."""
     made: list[uuid.UUID] = []
 
     def make(plan: str, providers: tuple[str, ...] = (), exhausted: bool = False) -> uuid.UUID:
         with SessionLocal() as s:
-            ws = Workspace(name=f"run-access-{uuid.uuid4().hex[:8]}", plan=plan)
+            account = Account(plan=plan)
+            s.add(account)
+            s.flush()
+            ws = Workspace(account_id=account.id, name=f"run-access-{uuid.uuid4().hex[:8]}")
             s.add(ws)
             s.commit()
             s.refresh(ws)
-            wid = ws.id
+            wid, aid = ws.id, account.id
             for p in providers:
                 # A literal placeholder, not `vault.encrypt`: `byok_providers` reads provider
                 # *names* and never decrypts, so real ciphertext buys nothing here — and asking
@@ -159,17 +166,17 @@ def ws_factory():
             if exhausted:
                 # Anchor this cycle's grant then spend it, so `ensure_current_grant` inside
                 # `check_can_run` can't quietly re-grant and mask the refusal.
-                ws = s.get(Workspace, wid)
-                credits.grant_monthly(s, ws, ref_id=f"test:{wid}")
-                credits.debit_run(s, wid, 10_000, source="run")
+                acct = s.get(Account, aid)
+                credits.grant_monthly(s, acct, ref_id=f"test:{aid}")
+                credits.debit_run(s, aid, 10_000, source="run", workspace_id=wid)
             s.commit()
-        made.append(wid)
+        made.append(aid)
         return wid
 
     yield make
     with SessionLocal() as s:
-        for wid in made:
-            s.query(Workspace).filter(Workspace.id == wid).delete()
+        for aid in made:
+            s.query(Account).filter(Account.id == aid).delete()
         s.commit()
 
 

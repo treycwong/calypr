@@ -2,9 +2,15 @@
 
 The public API can't trust a raw user-id header from the internet, so when `CALYPR_INTERNAL_KEY`
 is set the Next proxy must present it (`X-Calypr-Internal-Key`) alongside `X-Calypr-User-Id`; the
-API then maps that user to their personal workspace via the `resolve_workspace()` SQL function and
-scopes the session to it (the RLS GUC). With no key set (local / CI / E2E), every request falls
-back to the shared dev workspace — so existing tests keep working unchanged.
+API then maps that user to a workspace via the `resolve_workspace()` SQL function and scopes the
+session to it (the RLS GUC). With no key set (local / CI / E2E), every request falls back to the
+shared dev workspace — so existing tests keep working unchanged.
+
+Since 0016 a user can own several workspaces, so the browser also *claims* one via
+`X-Calypr-Workspace-Id` (forwarded by the Next proxy from a cookie). **That claim is never
+trusted.** It goes to SQL as an argument, and `resolve_workspace(user, workspace)` returns it only
+if it belongs to the caller's account — otherwise the caller gets their own default workspace.
+The proxy is trusted to assert *who you are*; nothing is trusted to assert *what you may open*.
 """
 
 from __future__ import annotations
@@ -24,6 +30,33 @@ from calypr_api.db.session import SessionLocal, get_session, set_tenant
 
 log = logging.getLogger(__name__)
 
+#: The workspace the browser is asking for. A *claim*, validated in SQL against the caller's
+#: account — see the module docstring.
+WORKSPACE_HEADER = "x-calypr-workspace-id"
+
+#: A workspace's plan now lives on its account. Every gate that used to read `workspace.plan`
+#: reads through this join instead.
+_PLAN_FOR_WORKSPACE = (
+    "SELECT a.plan FROM account a JOIN workspace w ON w.account_id = a.id WHERE w.id = :id"
+)
+
+
+def _claimed_workspace(request: Request) -> uuid.UUID | None:
+    """The workspace id the caller is asking for, if it's even well-formed.
+
+    A missing or malformed claim is simply no claim — never a 4xx. The value comes from a cookie
+    that can go stale in perfectly ordinary ways (the workspace was deleted, someone else signed
+    in on this machine), and erroring would wedge the dashboard with no way back. SQL decides
+    whether a well-formed claim is *allowed*; this only decides whether it's parseable."""
+    raw = request.headers.get(WORKSPACE_HEADER)
+    if not raw:
+        return None
+    try:
+        return uuid.UUID(raw)
+    except ValueError:
+        log.info("ignoring malformed workspace claim")
+        return None
+
 
 @dataclass
 class Tenant:
@@ -40,7 +73,8 @@ class Tenant:
 def _resolve_workspace_id(request: Request, session: Session) -> uuid.UUID:
     """The workspace a request belongs to. Dev/CI (no internal key) → the shared dev
     workspace, resolved without touching the DB. With an internal key set, the trusted Next
-    proxy must present it plus the user id, which is mapped to a workspace via SQL."""
+    proxy must present it plus the user id, which — together with the caller's workspace claim —
+    is mapped to a workspace via SQL."""
     if not settings.internal_key:
         return uuid.UUID(DEV_WORKSPACE_ID)
     if request.headers.get("x-calypr-internal-key") != settings.internal_key:
@@ -48,10 +82,24 @@ def _resolve_workspace_id(request: Request, session: Session) -> uuid.UUID:
     user_id = request.headers.get("x-calypr-user-id")
     if not user_id:
         raise HTTPException(status_code=401, detail="missing user")
+    claimed = _claimed_workspace(request)
     resolved = session.execute(
-        text("SELECT resolve_workspace(:uid)"), {"uid": user_id}
+        text("SELECT resolve_workspace(:uid, :ws)"), {"uid": user_id, "ws": claimed}
     ).scalar_one()
-    return uuid.UUID(str(resolved))
+    # Commit the find-or-create immediately. It is a side effect that has to outlive the request,
+    # and most requests are reads that never commit — so without this a brand-new user's account
+    # and workspace were rolled back on the way out and rebuilt, with fresh ids, on every single
+    # request until the first *writing* one happened to persist them. The unique constraint on
+    # `owner_user_id` hid it (the row settled as soon as anything committed) but the churn was
+    # real, and with a workspace switcher it becomes visible: the id in the cookie would never
+    # match anything. Safe to commit here because nothing else has touched this session yet.
+    session.commit()
+    resolved_id = uuid.UUID(str(resolved))
+    if claimed is not None and claimed != resolved_id:
+        # Not an error — a stale or foreign claim falls back by design — but worth seeing, since
+        # it's also what a cross-tenant probe looks like.
+        log.info("rejected workspace claim %s; served %s", claimed, resolved_id)
+    return resolved_id
 
 
 def tenant(request: Request, session: Session = Depends(get_session)) -> Tenant:
@@ -102,7 +150,8 @@ def run_workspace(request: Request) -> uuid.UUID:
     try:
         with SessionLocal() as session:
             resolved = session.execute(
-                text("SELECT resolve_workspace(:uid)"), {"uid": user_id}
+                text("SELECT resolve_workspace(:uid, :ws)"),
+                {"uid": user_id, "ws": _claimed_workspace(request)},
             ).scalar_one()
         return uuid.UUID(str(resolved))
     except Exception:
@@ -129,7 +178,7 @@ def require_code_export(request: Request) -> None:
     with SessionLocal() as session:
         workspace_id = _resolve_workspace_id(request, session)  # 401s on a bad key / no user
         plan = session.execute(
-            text("SELECT plan FROM workspace WHERE id = :id"), {"id": str(workspace_id)}
+            text(_PLAN_FOR_WORKSPACE), {"id": str(workspace_id)}
         ).scalar_one_or_none()
     if not entitlements.has_roundtrip(plan):
         raise HTTPException(
@@ -159,7 +208,7 @@ def may_export_code(request: Request) -> bool:
             # raises (401) on a bad key or a missing user; here that means "preview".
             workspace_id = _resolve_workspace_id(request, session)
             plan = session.execute(
-                text("SELECT plan FROM workspace WHERE id = :id"), {"id": str(workspace_id)}
+                text(_PLAN_FOR_WORKSPACE), {"id": str(workspace_id)}
             ).scalar_one_or_none()
     except Exception:
         log.info("code-export entitlement unresolved; serving a preview", exc_info=True)

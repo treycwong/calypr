@@ -8,13 +8,32 @@ pricing surface); consumed by the assistant in [`AI-ASSISTANT-SPEC.md`](./AI-ASS
 
 | | **Free** | **Plus — $20/mo** |
 |---|---|---|
-| Projects (agents) | **3** | **20** |
+| Workspaces | **1** | **3** |
+| Projects (agents) | **3** | **20** — pooled across all workspaces |
+| Storage | **500 MB** | **5 GB** — pooled; displayed, not enforced (see below) |
 | **Code export** — edit the generated Python + Apply to canvas (`POST /parse`) | ✗ | **✓** |
 | Node LLM calls (canvas runs) | Platform keys, metered against the grant; **BYOK allowed** (0 credits) | Platform keys on all 3 models, metered in credits; **BYOK still allowed** (0 credits) |
 | AI chatbot (assistant) | Shares the same grant, **DeepSeek-routed** | Full credit pool, any of the 3 models |
 | Monthly credit grant | 100 (shared across node runs + chatbot) | **2,000** (shared across node runs + chatbot) |
 | Rollover / top-ups | none v1 | none v1 (top-up packs = fast-follow) |
 | Share links | run-capped per link (existing `run_cap`) | run-capped; runs debit the owner's credits (or BYOK) |
+
+**Workspaces + pooled quotas (added 2026-08-02, migration 0016).** A workspace is where work
+lives; an **account** is who pays. Plan, Stripe customer and credit balance all moved onto the
+account, so three workspaces mean one subscription and one grant rather than three. Every
+capacity limit above pools per account for the same reason — a second workspace is somewhere to
+organise work, never a way to get more of it. Enforced by `entitlements.LIMITS` (one table, one
+edit) via `routers/workspaces.enforce_project_cap` and the `workspace_cap` check on
+`POST /workspaces`, both returning 402 with a `reason` the UI renders in place.
+
+**Storage is displayed, not enforced — deliberately.** The dominant consumer is LangGraph's
+checkpoint tables, which sit outside Alembic, carry no `workspace_id`, and are reachable only
+through `run.thread_id`; Vercel Blob uploads wrote no DB row at all before 0016, so bytes spent
+before then are unrecoverable. What actually bounds storage is a **per-plan retention window on
+run state** — 7 days Free, 30 days Plus (`Limits.checkpoint_ttl_days`), swept nightly by
+`POST /internal/gc/checkpoints`. The GB figure on the Usage tab is measured on that same
+schedule and shown with its timestamp; a byte-based 402 is deferred until the measurement has a
+track record.
 
 One credit system, two spenders: **canvas node runs** and the **AI chatbot**. Both already
 flow through the same `usage` event pipeline (`services/model` → `services/runtime` →

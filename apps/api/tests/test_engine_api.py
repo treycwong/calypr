@@ -1,5 +1,8 @@
+import uuid
+
 import pytest
-from calypr_api.db.session import engine
+from calypr_api.db.models import Account
+from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
 from calypr_compiler.golden import input_agent_output
 from fastapi.testclient import TestClient
@@ -188,15 +191,27 @@ def test_per_user_workspace_isolation(monkeypatch):
     monkeypatch.setattr(settings, "internal_key", "test-key")
     graph = input_agent_output(model="fake").model_dump()
 
+    # Fresh user ids per run. `resolve_account` finds-or-creates, so fixed ids would accumulate
+    # an agent per run forever and eventually trip the free plan's 3-project cap — a green test
+    # that starts failing on its fourth run for reasons that have nothing to do with isolation.
+    user_a = f"user-a-{uuid.uuid4().hex[:8]}"
+    user_b = f"user-b-{uuid.uuid4().hex[:8]}"
+
     def hdr(uid: str) -> dict[str, str]:
         return {"x-calypr-internal-key": "test-key", "x-calypr-user-id": uid}
 
-    a = client.post("/agents", json={"name": "A", "graph": graph}, headers=hdr("user-a"))
+    a = client.post("/agents", json={"name": "A", "graph": graph}, headers=hdr(user_a))
     assert a.status_code == 200
     a_id = a.json()["id"]
 
-    assert any(x["id"] == a_id for x in client.get("/agents", headers=hdr("user-a")).json())
-    assert all(x["id"] != a_id for x in client.get("/agents", headers=hdr("user-b")).json())
+    assert any(x["id"] == a_id for x in client.get("/agents", headers=hdr(user_a)).json())
+    assert all(x["id"] != a_id for x in client.get("/agents", headers=hdr(user_b)).json())
 
     # missing/incorrect internal key → 401 (can't spoof identity from the public internet)
-    assert client.get("/agents", headers={"x-calypr-user-id": "user-a"}).status_code == 401
+    assert client.get("/agents", headers={"x-calypr-user-id": user_a}).status_code == 401
+
+    with SessionLocal() as s:
+        s.query(Account).filter(Account.owner_user_id.in_([user_a, user_b])).delete(
+            synchronize_session=False
+        )
+        s.commit()

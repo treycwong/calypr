@@ -1,4 +1,7 @@
+import { cookies } from "next/headers";
+
 import { getSession } from "@/lib/auth";
+import { WORKSPACE_COOKIE } from "@/lib/constants";
 
 // Headers that identify a proxied request to the Python API: the shared internal key proves the
 // Next proxy is the trusted caller, and the user id selects that user's workspace. Server-side
@@ -15,5 +18,11 @@ export async function internalHeaders(): Promise<Record<string, string>> {
   // the beta invite list. Same trust boundary as the user id above — only the proxy, holding
   // the internal key, can assert it.
   if (session?.email) headers["x-calypr-user-email"] = session.email;
+  // Which workspace the user has open. Unlike the two headers above this is *not* an assertion
+  // we are vouching for — it comes from a cookie the browser controls, and the API treats it as
+  // a claim to be checked against the caller's account. Forwarding it unvalidated is safe
+  // precisely because nothing downstream trusts it.
+  const workspaceId = (await cookies()).get(WORKSPACE_COOKIE)?.value;
+  if (workspaceId) headers["x-calypr-workspace-id"] = workspaceId;
   return headers;
 }

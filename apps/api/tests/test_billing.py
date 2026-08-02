@@ -17,9 +17,9 @@ from types import SimpleNamespace
 
 import pytest
 import stripe
-from calypr_api import billing, entitlements
+from calypr_api import accounts, billing, entitlements
 from calypr_api.constants import DEV_WORKSPACE_ID
-from calypr_api.db.models import StripeEvent, Workspace
+from calypr_api.db.models import Account, StripeEvent
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
 from calypr_api.routers import billing as billing_router
@@ -104,23 +104,23 @@ def test_unknown_statuses_leave_the_plan_alone(status: str):
     assert billing.plan_for_status(status) is None
 
 
-def test_a_beta_workspace_is_never_downgraded_by_a_subscription_event():
+def test_a_beta_account_is_never_downgraded_by_a_subscription_event():
     """The beta cohort was granted by hand and has no subscription, so a stray cancellation for
     a customer that somehow maps to them must not take their access away."""
-    ws = Workspace(name="beta ws", plan=entitlements.BETA)
-    assert billing.set_plan(ws, entitlements.FREE) is False
-    assert ws.plan == entitlements.BETA
+    acct = Account(plan=entitlements.BETA)
+    assert billing.set_plan(acct, entitlements.FREE) is False
+    assert acct.plan == entitlements.BETA
 
 
-def test_a_beta_workspace_can_still_be_upgraded():
-    ws = Workspace(name="beta ws", plan=entitlements.BETA)
-    assert billing.set_plan(ws, entitlements.PLUS) is True
-    assert ws.plan == entitlements.PLUS
+def test_a_beta_account_can_still_be_upgraded():
+    acct = Account(plan=entitlements.BETA)
+    assert billing.set_plan(acct, entitlements.PLUS) is True
+    assert acct.plan == entitlements.PLUS
 
 
 def test_setting_the_same_plan_is_not_a_change():
-    ws = Workspace(name="ws", plan=entitlements.PLUS)
-    assert billing.set_plan(ws, entitlements.PLUS) is False
+    acct = Account(plan=entitlements.PLUS)
+    assert billing.set_plan(acct, entitlements.PLUS) is False
 
 
 # --- configuration ------------------------------------------------------------------------------
@@ -349,44 +349,36 @@ def test_an_unhandled_event_type_is_accepted_quietly(configured):
 
 
 @requires_db
-def test_a_completed_checkout_upgrades_the_workspace_and_maps_the_customer(configured):
-    """The loop that makes the Plus button mean something."""
+def test_a_completed_checkout_upgrades_the_account_and_maps_the_customer(
+    configured, tenant_factory
+):
+    """The loop that makes the Plus button mean something.
+
+    `client_reference_id` is an **account** id — the payment upgrades the payer, so every
+    workspace they own goes Plus at once."""
     customer = f"cus_{uuid.uuid4().hex[:12]}"
+    tenant = tenant_factory(entitlements.FREE)
+
+    body, headers = _signed(
+        _event(
+            "checkout.session.completed",
+            {"client_reference_id": str(tenant.account_id), "customer": customer},
+        )
+    )
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+
     with SessionLocal() as s:
-        ws = s.query(Workspace).filter(Workspace.owner_user_id.is_(None)).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        ws_id, original_plan, original_customer = ws.id, ws.plan, ws.stripe_customer_id
-        ws.plan, ws.stripe_customer_id = entitlements.FREE, None
-        s.commit()
+        acct = s.get(Account, tenant.account_id)
+        assert acct.plan == entitlements.PLUS
+        assert acct.stripe_customer_id == customer, "the customer must be mapped for later events"
 
-    try:
-        body, headers = _signed(
-            _event(
-                "checkout.session.completed",
-                {"client_reference_id": str(ws_id), "customer": customer},
-            )
-        )
-        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
-
-        with SessionLocal() as s:
-            ws = s.get(Workspace, ws_id)
-            assert ws.plan == entitlements.PLUS
-            assert ws.stripe_customer_id == customer, "the customer must be mapped for later events"
-
-        # ...and a later cancellation for that customer takes it away again.
-        body, headers = _signed(
-            _event("customer.subscription.deleted", {"customer": customer, "status": "canceled"})
-        )
-        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
-        with SessionLocal() as s:
-            assert s.get(Workspace, ws_id).plan == entitlements.FREE
-    finally:
-        with SessionLocal() as s:
-            s.query(Workspace).filter(Workspace.id == ws_id).update(
-                {"plan": original_plan, "stripe_customer_id": original_customer}
-            )
-            s.commit()
+    # ...and a later cancellation for that customer takes it away again.
+    body, headers = _signed(
+        _event("customer.subscription.deleted", {"customer": customer, "status": "canceled"})
+    )
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+    with SessionLocal() as s:
+        assert s.get(Account, tenant.account_id).plan == entitlements.FREE
 
 
 @requires_db
@@ -400,71 +392,51 @@ def test_a_checkout_without_a_workspace_reference_is_ignored(configured):
 
 
 @requires_db
-def test_a_subscription_update_mirrors_the_cycle_for_the_billing_tab(configured):
+def test_a_subscription_update_mirrors_the_cycle_for_the_billing_tab(configured, tenant_factory):
     """The Billing tab reads mirrored columns, not Stripe. A `customer.subscription.updated` with
     a pending cancellation must land `current_period_end` + `cancel_at_period_end` + the
     subscription id on the row — even though the plan is unchanged (an `active` sub set to cancel
     at period end still entitles Plus until then) — and a later `.deleted` must clear them."""
     customer = f"cus_{uuid.uuid4().hex[:12]}"
     period_end = int(time.time()) + 30 * 86400
+    tenant = tenant_factory(entitlements.PLUS)
     with SessionLocal() as s:
-        ws = s.query(Workspace).filter(Workspace.owner_user_id.is_(None)).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        ws_id = ws.id
-        saved = (ws.plan, ws.stripe_customer_id, ws.stripe_subscription_id,
-                 ws.current_period_end, ws.cancel_at_period_end)
-        ws.plan, ws.stripe_customer_id = entitlements.PLUS, customer
-        ws.stripe_subscription_id, ws.current_period_end = None, None
-        ws.cancel_at_period_end = False
+        s.get(Account, tenant.account_id).stripe_customer_id = customer
         s.commit()
 
-    try:
-        body, headers = _signed(
-            _event(
-                "customer.subscription.updated",
-                {
-                    "id": "sub_test_cycle",
-                    "customer": customer,
-                    "status": "active",
-                    # Item-level, matching the current Stripe API shape (see `_period_end`).
-                    "items": {"object": "list", "data": [{"current_period_end": period_end}]},
-                    "cancel_at_period_end": True,
-                },
-            )
+    body, headers = _signed(
+        _event(
+            "customer.subscription.updated",
+            {
+                "id": "sub_test_cycle",
+                "customer": customer,
+                "status": "active",
+                # Item-level, matching the current Stripe API shape (see `_period_end`).
+                "items": {"object": "list", "data": [{"current_period_end": period_end}]},
+                "cancel_at_period_end": True,
+            },
         )
-        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+    )
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
 
-        with SessionLocal() as s:
-            ws = s.get(Workspace, ws_id)
-            assert ws.plan == entitlements.PLUS, "cancel-at-period-end still entitles Plus"
-            assert ws.stripe_subscription_id == "sub_test_cycle"
-            assert ws.cancel_at_period_end is True
-            assert ws.current_period_end is not None
-            assert int(ws.current_period_end.timestamp()) == period_end
+    with SessionLocal() as s:
+        acct = s.get(Account, tenant.account_id)
+        assert acct.plan == entitlements.PLUS, "cancel-at-period-end still entitles Plus"
+        assert acct.stripe_subscription_id == "sub_test_cycle"
+        assert acct.cancel_at_period_end is True
+        assert acct.current_period_end is not None
+        assert int(acct.current_period_end.timestamp()) == period_end
 
-        # The subscription actually ending clears the mirror.
-        body, headers = _signed(
-            _event("customer.subscription.deleted", {"customer": customer, "status": "canceled"})
-        )
-        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
-        with SessionLocal() as s:
-            ws = s.get(Workspace, ws_id)
-            assert ws.stripe_subscription_id is None
-            assert ws.current_period_end is None
-            assert ws.cancel_at_period_end is False
-    finally:
-        with SessionLocal() as s:
-            s.query(Workspace).filter(Workspace.id == ws_id).update(
-                {
-                    "plan": saved[0],
-                    "stripe_customer_id": saved[1],
-                    "stripe_subscription_id": saved[2],
-                    "current_period_end": saved[3],
-                    "cancel_at_period_end": saved[4],
-                }
-            )
-            s.commit()
+    # The subscription actually ending clears the mirror.
+    body, headers = _signed(
+        _event("customer.subscription.deleted", {"customer": customer, "status": "canceled"})
+    )
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+    with SessionLocal() as s:
+        acct = s.get(Account, tenant.account_id)
+        assert acct.stripe_subscription_id is None
+        assert acct.current_period_end is None
+        assert acct.cancel_at_period_end is False
 
 
 # --- stale-customer recovery (database) ----------------------------------------------------------
@@ -488,11 +460,11 @@ def test_checkout_recovers_from_a_stale_customer(configured, monkeypatch):
     monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
 
     with SessionLocal() as s:
-        ws = s.get(Workspace, DEV_WORKSPACE_ID)
-        if ws is None:
+        acct = accounts.account_for_workspace(s, uuid.UUID(DEV_WORKSPACE_ID))
+        if acct is None:
             pytest.skip("no dev workspace")
-        saved = ws.stripe_customer_id
-        ws.stripe_customer_id = "cus_stale"
+        acct_id, saved = acct.id, acct.stripe_customer_id
+        acct.stripe_customer_id = "cus_stale"
         s.commit()
     try:
         r = client.post("/billing/checkout")
@@ -500,11 +472,10 @@ def test_checkout_recovers_from_a_stale_customer(configured, monkeypatch):
         assert r.json()["url"] == "https://checkout.example/s"
         assert seen == ["cus_stale", None], "retried without the dead customer"
         with SessionLocal() as s:
-            assert s.get(Workspace, DEV_WORKSPACE_ID).stripe_customer_id is None
+            assert s.get(Account, acct_id).stripe_customer_id is None
     finally:
         with SessionLocal() as s:
-            ws = s.get(Workspace, DEV_WORKSPACE_ID)
-            ws.stripe_customer_id = saved
+            s.get(Account, acct_id).stripe_customer_id = saved
             s.commit()
 
 
@@ -521,18 +492,17 @@ def test_portal_forgets_a_stale_customer_and_asks_to_resubscribe(configured, mon
     monkeypatch.setattr(stripe.billing_portal.Session, "create", fake_create)
 
     with SessionLocal() as s:
-        ws = s.get(Workspace, DEV_WORKSPACE_ID)
-        if ws is None:
+        acct = accounts.account_for_workspace(s, uuid.UUID(DEV_WORKSPACE_ID))
+        if acct is None:
             pytest.skip("no dev workspace")
-        saved = ws.stripe_customer_id
-        ws.stripe_customer_id = "cus_stale"
+        acct_id, saved = acct.id, acct.stripe_customer_id
+        acct.stripe_customer_id = "cus_stale"
         s.commit()
     try:
         assert client.post("/billing/portal").status_code == 409
         with SessionLocal() as s:
-            assert s.get(Workspace, DEV_WORKSPACE_ID).stripe_customer_id is None
+            assert s.get(Account, acct_id).stripe_customer_id is None
     finally:
         with SessionLocal() as s:
-            ws = s.get(Workspace, DEV_WORKSPACE_ID)
-            ws.stripe_customer_id = saved
+            s.get(Account, acct_id).stripe_customer_id = saved
             s.commit()

@@ -1,30 +1,78 @@
 "use client";
 
-import { LayoutGrid, Settings } from "lucide-react";
+import { useState } from "react";
+import {
+  Check,
+  ChevronsUpDown,
+  Gauge,
+  LayoutGrid,
+  LayoutTemplate,
+  Plus,
+  Settings,
+} from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import {
+  CapReachedError,
+  createWorkspace,
+  switchWorkspace,
+  type WorkspaceInfo,
+  type WorkspaceSummary,
+} from "@/lib/api";
 import type { Session } from "@/lib/auth";
 import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Projects", icon: LayoutGrid },
+  { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/dashboard/usage", label: "Usage", icon: Gauge },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;
 
 export function Sidebar({
   session,
   betterAuth,
+  workspaces = [],
+  current = null,
 }: {
   session: Session;
   betterAuth: boolean;
+  workspaces?: WorkspaceSummary[];
+  current?: WorkspaceInfo | null;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const initials = (session.name || session.email || "U").slice(0, 2).toUpperCase();
 
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
   async function signOut() {
+    // Clear the workspace cookie too: the next person to sign in on this machine would
+    // otherwise send someone else's workspace id. The API rejects it, but they'd land on a
+    // confusing first paint before it self-corrected.
+    await switchWorkspace().catch(() => {});
     if (betterAuth) {
       const { authClient } = await import("@/lib/auth-client");
       await authClient.signOut().catch(() => {});
@@ -34,12 +82,84 @@ export function Sidebar({
     window.location.href = "/sign-in";
   }
 
+  async function selectWorkspace(id: string) {
+    if (id === current?.id) return;
+    await switchWorkspace(id);
+    // Leave any page scoped to a single agent — that agent belongs to the workspace we just
+    // left, so staying would 404 the moment the shell re-renders.
+    if (pathname !== "/dashboard") router.push("/dashboard");
+    // The shell is a server component reading the cookie, so re-rendering it is the whole
+    // update. There's no client cache to invalidate.
+    router.refresh();
+  }
+
+  async function submitNewWorkspace() {
+    const name = newName.trim();
+    if (!name || busy) return;
+    setBusy(true);
+    setCreateError(null);
+    try {
+      const created = await createWorkspace(name);
+      setCreating(false);
+      setNewName("");
+      await selectWorkspace(created.id);
+    } catch (err) {
+      // A cap is an expected answer, not a failure — show what they ran out of, in place.
+      setCreateError(
+        err instanceof CapReachedError ? err.message : "Could not create that workspace.",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const workspaceName = current?.name ?? "Workspace";
+  const atCap =
+    current?.limits != null && workspaces.length >= current.limits.workspaces;
+
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card/30">
-      <div className="flex h-14 items-center px-4">
-        <Link href="/dashboard" className="font-sans text-sm font-semibold tracking-tight">
-          calypr
-        </Link>
+      <div className="flex h-14 items-center px-2">
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            data-testid="ws-switcher"
+            aria-label="Switch workspace"
+            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50 data-[popup-open]:bg-muted"
+          >
+            <div className="min-w-0 flex-1">
+              <div className="font-sans text-sm font-semibold tracking-tight">calypr</div>
+              <div className="truncate text-xs text-muted-foreground">{workspaceName}</div>
+            </div>
+            <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-52">
+            {workspaces.map((ws) => (
+              <DropdownMenuItem
+                key={ws.id}
+                data-testid={`ws-option-${ws.id}`}
+                onClick={() => selectWorkspace(ws.id)}
+              >
+                <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                {ws.id === current?.id ? <Check className="h-3.5 w-3.5" /> : null}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              data-testid="ws-new"
+              onClick={() => {
+                setCreateError(null);
+                setNewName("");
+                setCreating(true);
+              }}
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New workspace
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => router.push("/dashboard/settings?tab=workspace")}>
+              Workspace settings
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
       <nav className="flex-1 space-y-1 px-2 py-2">
         {NAV.map((item) => {
@@ -86,6 +206,57 @@ export function Sidebar({
           Sign out
         </Button>
       </div>
+
+      <Dialog open={creating} onOpenChange={setCreating}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>New workspace</DialogTitle>
+            <DialogDescription>
+              A separate set of projects. Your plan&rsquo;s projects, credits and storage are
+              shared across all of your workspaces.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            value={newName}
+            data-testid="ws-new-name"
+            placeholder="Client work"
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") submitNewWorkspace();
+            }}
+          />
+          {createError ? (
+            <p className="text-xs text-amber-600 dark:text-amber-500" data-testid="ws-new-error">
+              {createError}{" "}
+              <Link href="/pricing" className="underline">
+                See plans
+              </Link>
+            </p>
+          ) : atCap ? (
+            // Said before they type, not after: filling in a name and then being refused is a
+            // worse way to learn the limit than seeing it up front.
+            <p className="text-xs text-muted-foreground">
+              You&rsquo;re using all {current?.limits?.workspaces} of your workspaces.{" "}
+              <Link href="/pricing" className="underline">
+                See plans
+              </Link>
+            </p>
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={submitNewWorkspace}
+              disabled={!newName.trim() || busy}
+              data-testid="ws-new-submit"
+            >
+              {busy ? "Creating…" : "Create"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </aside>
   );
 }

@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CALYPR_", env_file=".env", extra="ignore")
 
     environment: str = "development"
+    # Level for this package's own loggers (`calypr_api`, `calypr_runtime`). INFO because the
+    # things logged at that level are the ones you need after the fact — a plan change, a
+    # rejected workspace claim, a grant that was skipped as a duplicate. Uvicorn's access log is
+    # configured separately and unaffected.
+    log_level: str = "INFO"
     # Web origin(s) allowed to call the API directly (CORS). The web app normally
     # proxies server-side, so this is a dev convenience.
     cors_origins: list[str] = ["http://localhost:3000", "http://localhost:3100"]

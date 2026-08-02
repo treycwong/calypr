@@ -17,6 +17,10 @@ test("dev sign-in lands on the dashboard", async ({ page }) => {
   await expect(page).toHaveURL(/\/dashboard/);
   await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
   await expect(page.getByTestId("nav-projects")).toBeVisible();
+  await expect(page.getByTestId("nav-templates")).toBeVisible();
+  await expect(page.getByTestId("nav-usage")).toBeVisible();
+  // The workspace switcher replaced the plain "calypr" wordmark in the sidebar header.
+  await expect(page.getByTestId("ws-switcher")).toBeVisible();
 });
 
 test("API /health returns ok", async ({ request }) => {

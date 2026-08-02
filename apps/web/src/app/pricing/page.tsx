@@ -5,12 +5,13 @@ import Link from "next/link";
 import { SiteFooter } from "@/components/site/Footer";
 import { SiteHeader } from "@/components/site/Header";
 import { buttonVariants } from "@/components/ui/button";
+import { FREE_FEATURES, PLUS_FEATURES } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
   title: "Pricing — Calypr",
   description:
-    "Start free with monthly credits — no key, no card. Plus adds code export, more projects, and 2,000 credits a month for $20.",
+    "Start free with monthly credits — no key, no card. Plus adds code export, three workspaces, 20 projects, and 2,000 credits a month for $20.",
 };
 
 /** The plan matrix from PRICING-SPEC §1, ordered the way a reader evaluates it.
@@ -27,32 +28,18 @@ const PLANS = [
     cta: "Start building",
     href: "/canvas",
     featured: false,
-    features: [
-      "3 projects",
-      "100 credits a month, across runs and the assistant",
-      "Every block, template and canvas run",
-      "Keep going on your own key when the credits run out",
-      "Share links, run-capped per link",
-    ],
+    features: FREE_FEATURES,
   },
   {
     id: "plus",
     name: "Plus",
     price: "$20",
     cadence: "/month",
-    pitch: "Take the code with you, and 20× the monthly credits.",
+    pitch: "Take the code with you, room to organise it, and 20× the monthly credits.",
     cta: "Select plan",
     href: "/checkout?plan=plus",
     featured: true,
-    features: [
-      "Everything in Free",
-      "Code export — edit the generated Python and apply it back to the canvas",
-      "20 projects",
-      "2,000 credits a month, shared across runs and the assistant",
-      "Platform keys on every model — nothing to set up",
-      "Your own keys still run free, at zero credits",
-      "Credits reset at the start of each month",
-    ],
+    features: PLUS_FEATURES,
   },
 ] as const;
 

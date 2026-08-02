@@ -18,13 +18,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from calypr_api import credits, entitlements
 from calypr_api.assistant_models import (
     AssistantModelOption,
     assistant_model_options,
-    is_allowed,
 )
-from calypr_api.db.models import Agent, ShareLink, Workspace
+from calypr_api.db.models import Agent, ShareLink
 from calypr_api.deps import (
     Tenant,
     may_export_code,
@@ -34,6 +32,7 @@ from calypr_api.deps import (
 )
 from calypr_api.llm_providers import LLMProvider, llm_providers
 from calypr_api.posthog_client import posthog_client
+from calypr_api.routers.workspaces import enforce_project_cap
 from calypr_api.schemas import (
     AgentCreate,
     AgentDetail,
@@ -41,14 +40,11 @@ from calypr_api.schemas import (
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
-    CreditUsage,
     ParseRequest,
     ParseResponse,
     ShareCreate,
     ShareInfo,
     TemplateInfo,
-    WorkspaceInfo,
-    WorkspaceUpdate,
 )
 from calypr_api.workspace_model import apply_default_model, workspace_default_model
 
@@ -162,6 +158,9 @@ def _get_owned(session: Session, workspace_id: uuid.UUID, agent_id: str) -> Agen
 
 @router.post("/agents", response_model=AgentDetail, tags=["agents"])
 def create_agent(body: AgentCreate, t: Tenant = Depends(tenant)) -> AgentDetail:
+    # 402s when the account is out of project slots. `/pricing` has advertised "3 projects" /
+    # "20 projects" since launch and nothing enforced it until now.
+    enforce_project_cap(t)
     agent = Agent(workspace_id=t.workspace_id, name=body.name, graph_spec=body.graph.model_dump())
     t.session.add(agent)
     t.session.commit()
@@ -312,31 +311,6 @@ def revoke_share(agent_id: str, token: str, t: Tenant = Depends(tenant)) -> Shar
     return _share_info(link)
 
 
-@router.get("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
-def get_current_workspace(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
-    ws = t.session.get(Workspace, t.workspace_id)
-    if ws is None:
-        raise HTTPException(status_code=404, detail="workspace not found")
-    # Redeem a beta invite here rather than on every request: the client asks for its workspace
-    # once per page load, and this is exactly when it needs to know what it's entitled to.
-    if entitlements.grant_beta_if_invited(t.session, ws, t.email):
-        t.session.commit()
-        posthog_client.capture(
-            "beta_access_granted",
-            distinct_id=str(ws.id),
-            properties={"workspace_id": str(ws.id)},
-        )
-    return WorkspaceInfo(
-        id=str(ws.id),
-        name=ws.name,
-        plan=ws.plan,
-        signed_in_as=t.email,
-        assistant_model=ws.assistant_model,
-        default_model=ws.default_model,
-        credits=CreditUsage(**credits.usage_summary(t.session, ws)),
-    )
-
-
 @router.get("/assistant-models", response_model=list[AssistantModelOption], tags=["workspace"])
 def list_assistant_models() -> list[AssistantModelOption]:
     """The models the assistant may be pointed at. Served from the API so the settings picker
@@ -348,45 +322,3 @@ def list_assistant_models() -> list[AssistantModelOption]:
 def list_llm_providers() -> list[LLMProvider]:
     """The BYO-key provider list for Settings, each row carrying whether it's wired up yet."""
     return llm_providers()
-
-
-@router.patch("/workspaces/current", response_model=WorkspaceInfo, tags=["workspace"])
-def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> WorkspaceInfo:
-    """Partial update of the current workspace (name and/or assistant model)."""
-    ws = t.session.get(Workspace, t.workspace_id)
-    if ws is None:
-        raise HTTPException(status_code=404, detail="workspace not found")
-    if body.name is not None:
-        ws.name = body.name
-    if body.assistant_model is not None:
-        # Allow-listed: this value is persisted and later handed to the model factory, so an
-        # arbitrary string here would point the assistant at an unpriced model.
-        if not is_allowed(body.assistant_model):
-            raise HTTPException(status_code=422, detail="unsupported assistant model")
-        ws.assistant_model = body.assistant_model
-    if body.default_model is not None:
-        # Same allow-list as the assistant: this value is persisted and later handed to the
-        # model factory for every node that inherits, so an arbitrary string here would point
-        # the whole canvas at an unpriced model.
-        if not is_allowed(body.default_model):
-            raise HTTPException(status_code=422, detail="unsupported default model")
-        ws.default_model = body.default_model
-    t.session.commit()
-    posthog_client.capture(
-        "workspace_updated",
-        distinct_id=str(t.workspace_id),
-        properties={
-            "workspace_id": str(t.workspace_id),
-            "renamed": body.name is not None,
-            "assistant_model": body.assistant_model,
-            "default_model": body.default_model,
-        },
-    )
-    return WorkspaceInfo(
-        id=str(ws.id),
-        name=ws.name,
-        plan=ws.plan,
-        assistant_model=ws.assistant_model,
-        default_model=ws.default_model,
-        credits=CreditUsage(**credits.usage_summary(t.session, ws)),
-    )

@@ -1,7 +1,10 @@
 """Stripe configuration and the subscription → plan mapping.
 
 Kept out of the router so the *decisions* are testable without a request: which subscription
-statuses count as paid, and how a Stripe customer maps back to a workspace.
+statuses count as paid, and how a Stripe customer maps back to an account.
+
+Billing hangs off the **account**, not the workspace (0016) — one subscription covers all the
+workspaces a user owns, which is the whole point of letting them have more than one.
 """
 
 from __future__ import annotations
@@ -13,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from calypr_api import entitlements
-from calypr_api.db.models import Workspace
+from calypr_api.db.models import Account
 
 log = logging.getLogger(__name__)
 
@@ -42,7 +45,7 @@ def is_configured() -> bool:
     return bool(secret_key() and webhook_secret())
 
 
-#: Subscription statuses that entitle a workspace to Plus.
+#: Subscription statuses that entitle an account to Plus.
 #:
 #: `past_due` is deliberately included: the card failed but Stripe is still retrying, and the
 #: subscription is not over. Cutting someone off mid-dunning — while they may well fix the card
@@ -64,24 +67,24 @@ def plan_for_status(status: str) -> str | None:
     return None
 
 
-def workspace_for_customer(session: Session, customer_id: str | None) -> Workspace | None:
-    """The workspace billing as this Stripe customer, if we know it."""
+def account_for_customer(session: Session, customer_id: str | None) -> Account | None:
+    """The account billing as this Stripe customer, if we know it."""
     if not customer_id:
         return None
-    return session.scalar(select(Workspace).where(Workspace.stripe_customer_id == customer_id))
+    return session.scalar(select(Account).where(Account.stripe_customer_id == customer_id))
 
 
-def set_plan(workspace: Workspace, plan: str) -> bool:
-    """Move a workspace onto `plan`. Returns whether anything changed. Callers commit.
+def set_plan(account: Account, plan: str) -> bool:
+    """Move an account onto `plan`. Returns whether anything changed. Callers commit.
 
     `beta` is never overwritten by a *downgrade*: the beta cohort was granted access by hand and
     doesn't have a subscription, so a stray `customer.subscription.deleted` for a customer that
     somehow maps to them must not take it away. An upgrade to `plus` is allowed from any tier —
     they paid."""
-    if plan == entitlements.FREE and workspace.plan == entitlements.BETA:
-        log.info("ignoring downgrade of a beta workspace %s", workspace.id)
+    if plan == entitlements.FREE and account.plan == entitlements.BETA:
+        log.info("ignoring downgrade of a beta account %s", account.id)
         return False
-    if workspace.plan == plan:
+    if account.plan == plan:
         return False
-    workspace.plan = plan
+    account.plan = plan
     return True

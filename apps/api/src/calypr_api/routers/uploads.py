@@ -14,14 +14,19 @@ open anonymous upload endpoint — per-token rate limiting is a logged follow-up
 from __future__ import annotations
 
 import asyncio
+import logging
 import uuid as uuid_mod
 from uuid import uuid4
 
 from calypr_storage import BlobError, put_blob
 from fastapi import APIRouter, Depends, HTTPException, Request
 
+from calypr_api.db.models import Upload
+from calypr_api.db.session import SessionLocal, set_tenant
 from calypr_api.deps import run_workspace
 from calypr_api.routers.share import _agent_name
+
+log = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -48,7 +53,32 @@ async def _read_capped(request: Request) -> bytes:
     return b"".join(chunks)
 
 
-async def _handle_upload(request: Request) -> dict:
+def _record(workspace_id: uuid_mod.UUID | None, url: str, pathname: str, size: int, ct: str):
+    """Note the blob against its workspace, so its bytes are attributable.
+
+    Best-effort, exactly like run metering: the file is already stored and handed to the user, so
+    failing here must not turn a successful upload into an error. The cost of a missed row is one
+    unaccounted file in the storage figure — the cost of raising would be a broken upload."""
+    if workspace_id is None:
+        return
+    try:
+        with SessionLocal() as session:
+            set_tenant(session, str(workspace_id))
+            session.add(
+                Upload(
+                    workspace_id=workspace_id,
+                    blob_url=url,
+                    pathname=pathname,
+                    bytes=size,
+                    content_type=ct,
+                )
+            )
+            session.commit()
+    except Exception:
+        log.warning("upload accounting failed for %s", pathname, exc_info=True)
+
+
+async def _handle_upload(request: Request, workspace_id: uuid_mod.UUID | None = None) -> dict:
     content_type = (request.headers.get("content-type") or "").split(";")[0].strip().lower()
     allowed = _ALLOWED.get(content_type)
     if allowed is None:
@@ -66,12 +96,12 @@ async def _handle_upload(request: Request) -> dict:
     ):
         raise HTTPException(status_code=400, detail="file content does not match its image type")
 
+    pathname = f"uploads/{uuid4().hex}.{ext}"
     try:
-        url = await put_blob(
-            data, pathname=f"uploads/{uuid4().hex}.{ext}", content_type=content_type
-        )
+        url = await put_blob(data, pathname=pathname, content_type=content_type)
     except BlobError as exc:
         raise HTTPException(status_code=503, detail="upload storage unavailable") from exc
+    await asyncio.to_thread(_record, workspace_id, url, pathname, len(data), content_type)
     return {"url": url}
 
 
@@ -80,7 +110,7 @@ async def create_upload(
     request: Request, workspace_id: uuid_mod.UUID = Depends(run_workspace)
 ) -> dict:
     """Playground upload — same workspace resolution as `/runs`."""
-    return await _handle_upload(request)
+    return await _handle_upload(request, workspace_id)
 
 
 @router.post("/share/{token}/uploads", tags=["share"])
