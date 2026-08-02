@@ -13,10 +13,12 @@ import hmac
 import json
 import time
 import uuid
+from types import SimpleNamespace
 
 import pytest
 import stripe
 from calypr_api import billing, entitlements
+from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import StripeEvent, Workspace
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
@@ -279,6 +281,30 @@ def test_period_end_is_none_when_absent_everywhere():
     assert billing_router._period_end(_subscription({"items": {"data": []}})) is None
 
 
+def test_is_missing_customer_matches_a_dead_customer_reference():
+    """The wedge this guards: a test-mode customer under a live key returns `resource_missing`
+    on the `customer` param. Matched on codes, not the message, so copy changes don't break it."""
+    exc = stripe.InvalidRequestError("No such customer", param="customer", code="resource_missing")
+    assert billing_router._is_missing_customer(exc) is True
+
+
+def test_is_missing_customer_ignores_unrelated_errors():
+    # A missing *price* (not our recoverable case) and a different error code must not trigger the
+    # forget-and-retry path, or we'd silently drop a still-valid customer.
+    assert (
+        billing_router._is_missing_customer(
+            stripe.InvalidRequestError("No such price", param="price", code="resource_missing")
+        )
+        is False
+    )
+    assert (
+        billing_router._is_missing_customer(
+            stripe.InvalidRequestError("bad", param="customer", code="parameter_invalid")
+        )
+        is False
+    )
+
+
 # --- delivery semantics (database) ---------------------------------------------------------------
 
 
@@ -438,4 +464,75 @@ def test_a_subscription_update_mirrors_the_cycle_for_the_billing_tab(configured)
                     "cancel_at_period_end": saved[4],
                 }
             )
+            s.commit()
+
+
+# --- stale-customer recovery (database) ----------------------------------------------------------
+
+
+@requires_db
+def test_checkout_recovers_from_a_stale_customer(configured, monkeypatch):
+    """A test-mode customer left on a workspace (or one deleted in Stripe) must not wedge upgrades
+    forever: checkout forgets the dead id and retries once with a fresh customer. This is the exact
+    502 the first live subscriber hit."""
+    seen: list[str | None] = []
+
+    def fake_create(**kwargs):
+        seen.append(kwargs.get("customer"))
+        if len(seen) == 1:
+            raise stripe.InvalidRequestError(
+                "No such customer: 'cus_stale'", param="customer", code="resource_missing"
+            )
+        return SimpleNamespace(url="https://checkout.example/s")
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+
+    with SessionLocal() as s:
+        ws = s.get(Workspace, DEV_WORKSPACE_ID)
+        if ws is None:
+            pytest.skip("no dev workspace")
+        saved = ws.stripe_customer_id
+        ws.stripe_customer_id = "cus_stale"
+        s.commit()
+    try:
+        r = client.post("/billing/checkout")
+        assert r.status_code == 200
+        assert r.json()["url"] == "https://checkout.example/s"
+        assert seen == ["cus_stale", None], "retried without the dead customer"
+        with SessionLocal() as s:
+            assert s.get(Workspace, DEV_WORKSPACE_ID).stripe_customer_id is None
+    finally:
+        with SessionLocal() as s:
+            ws = s.get(Workspace, DEV_WORKSPACE_ID)
+            ws.stripe_customer_id = saved
+            s.commit()
+
+
+@requires_db
+def test_portal_forgets_a_stale_customer_and_asks_to_resubscribe(configured, monkeypatch):
+    """The portal can't be opened for a customer that no longer exists — forget the dead mapping
+    (so the tab falls back to Upgrade) and 409 rather than 502."""
+
+    def fake_create(**kwargs):
+        raise stripe.InvalidRequestError(
+            "No such customer: 'cus_stale'", param="customer", code="resource_missing"
+        )
+
+    monkeypatch.setattr(stripe.billing_portal.Session, "create", fake_create)
+
+    with SessionLocal() as s:
+        ws = s.get(Workspace, DEV_WORKSPACE_ID)
+        if ws is None:
+            pytest.skip("no dev workspace")
+        saved = ws.stripe_customer_id
+        ws.stripe_customer_id = "cus_stale"
+        s.commit()
+    try:
+        assert client.post("/billing/portal").status_code == 409
+        with SessionLocal() as s:
+            assert s.get(Workspace, DEV_WORKSPACE_ID).stripe_customer_id is None
+    finally:
+        with SessionLocal() as s:
+            ws = s.get(Workspace, DEV_WORKSPACE_ID)
+            ws.stripe_customer_id = saved
             s.commit()
