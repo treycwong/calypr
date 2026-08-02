@@ -23,7 +23,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import text
 
-from calypr_api import engine, spend
+from calypr_api import engine, spend, threads
 from calypr_api.db.session import SessionLocal
 from calypr_api.engine import context_for
 from calypr_api.errors import run_error_message
@@ -76,10 +76,22 @@ async def get_share(token: str) -> dict:
 
 @router.post("/share/{token}/runs", tags=["share"])
 async def create_share_run(token: str, req: ShareRunRequest) -> StreamingResponse:
-    # Anonymous visitors must not collide on / resume each other's threads.
-    thread_id = f"share:{token}:{req.thread_id or uuid.uuid4()}"
+    """Run a shared agent for an anonymous visitor.
+
+    Every visitor to a share link is anonymous on the same public token, so the conversation id
+    is the *only* thing separating two strangers — which makes it a credential, not a convenience.
+    The server therefore mints it (`secrets`, 128 bits) and hands it back on the first turn; the
+    client echoes it to continue. Accepting the browser's own value, as this used to, meant a
+    visitor could name another visitor's thread and resume their conversation. See `threads.py`.
+    """
+    # A continuation carries a suffix we minted; a first turn gets a fresh one.
+    suffix = req.thread_id or threads.new_share_suffix()
+    thread_id = threads.share_thread(token, suffix)
 
     async def event_stream() -> AsyncIterator[str]:
+        # Told to the client before anything can fail, so a continuation always has an id to
+        # send back even if the run itself is refused.
+        yield _sse({"type": "thread", "thread_id": suffix})
         # Platform loss firewall first — anonymous share traffic can't blow past the monthly cap.
         if await asyncio.to_thread(spend.over_spend_cap):
             posthog_client.capture("share_run_spend_capped")

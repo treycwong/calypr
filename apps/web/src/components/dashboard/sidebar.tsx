@@ -35,7 +35,6 @@ import {
   CapReachedError,
   createWorkspace,
   switchWorkspace,
-  type WorkspaceInfo,
   type WorkspaceSummary,
 } from "@/lib/api";
 import type { Session } from "@/lib/auth";
@@ -52,13 +51,14 @@ export function Sidebar({
   session,
   betterAuth,
   workspaces = [],
-  current = null,
 }: {
   session: Session;
   betterAuth: boolean;
   workspaces?: WorkspaceSummary[];
-  current?: WorkspaceInfo | null;
 }) {
+  // The list already says which one the request resolved to. That's the *resolved* workspace,
+  // not what the cookie asked for, so a stale or foreign cookie self-corrects on the next paint.
+  const current = workspaces.find((w) => w.is_current) ?? null;
   const pathname = usePathname();
   const router = useRouter();
   const initials = (session.name || session.email || "U").slice(0, 2).toUpperCase();
@@ -114,8 +114,6 @@ export function Sidebar({
   }
 
   const workspaceName = current?.name ?? "Workspace";
-  const atCap =
-    current?.limits != null && workspaces.length >= current.limits.workspaces;
 
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card/30">
@@ -229,15 +227,6 @@ export function Sidebar({
           {createError ? (
             <p className="text-xs text-amber-600 dark:text-amber-500" data-testid="ws-new-error">
               {createError}{" "}
-              <Link href="/pricing" className="underline">
-                See plans
-              </Link>
-            </p>
-          ) : atCap ? (
-            // Said before they type, not after: filling in a name and then being refused is a
-            // worse way to learn the limit than seeing it up front.
-            <p className="text-xs text-muted-foreground">
-              You&rsquo;re using all {current?.limits?.workspaces} of your workspaces.{" "}
               <Link href="/pricing" className="underline">
                 See plans
               </Link>

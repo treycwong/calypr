@@ -11,7 +11,12 @@ export type RunEvent =
   // surface this — the output is not from the model the user selected.
   | { type: "notice"; message: string }
   // `code` is a stable hint for the UI; "provider_key_rejected" gets a Fix it action.
-  | { type: "error"; message: string; code?: string };
+  | { type: "error"; message: string; code?: string }
+  // Share links only, and always first. Anonymous visitors all share one public token, so the
+  // conversation id is the only thing separating two strangers — which makes it a credential.
+  // The server therefore mints it rather than trusting one from the browser, and the client
+  // echoes this value back to continue the conversation.
+  | { type: "thread"; thread_id: string };
 
 /** POST a JSON body to a same-origin SSE proxy and yield parsed `data:` events until the
  * stream ends (`[DONE]`). Shared by `runAgent` and `assistAgent`. */
@@ -71,7 +76,8 @@ export async function* runAgent(
 export async function* runShare(
   token: string,
   message: string,
-  threadId: string,
+  /** Omitted on the first turn — the server mints it and returns it as a `thread` event. */
+  threadId: string | undefined,
   images: string[] = [],
 ): AsyncGenerator<RunEvent> {
   yield* streamSSE<RunEvent>(

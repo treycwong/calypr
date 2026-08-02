@@ -16,7 +16,7 @@ from calypr_runtime import run_stream
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api import engine, run_access, spend
+from calypr_api import engine, run_access, spend, threads
 from calypr_api.connectors import assert_tool_urls_allowed, resolve_graph
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
@@ -76,6 +76,9 @@ async def create_run(
         },
     )
     agent_id = uuid.UUID(req.agent_id) if req.agent_id else None
+    # Namespace the caller's conversation id under their resolved workspace. The request body no
+    # longer decides which thread is loaded — `threads.py` explains why that mattered.
+    thread_id = threads.workspace_thread(workspace_id, req.thread_id)
 
     async def event_stream() -> AsyncIterator[str]:
         # Platform loss firewall: refuse before running if the monthly spend cap is hit.
@@ -110,7 +113,7 @@ async def create_run(
             workspace_id,
             source="playground",
             agent_id=agent_id,
-            thread_id=req.thread_id,
+            thread_id=thread_id,
         )
         completed = False
         graph = ctx = None
@@ -148,7 +151,7 @@ async def create_run(
                 ctx,
                 req.message,
                 images=req.images,
-                thread_id=req.thread_id,
+                thread_id=thread_id,
                 # Read at call time (not import time) so a lifespan swap to the durable
                 # Postgres checkpointer is visible here (WEEK2 plan §C1).
                 checkpointer=engine.checkpointer,

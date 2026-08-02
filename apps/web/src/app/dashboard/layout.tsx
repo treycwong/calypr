@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { Sidebar } from "@/components/dashboard/sidebar";
-import { fetchCurrentWorkspace, fetchWorkspaces } from "@/lib/api-server";
+import { fetchWorkspaces } from "@/lib/api-server";
 import { betterAuthEnabled, getSession } from "@/lib/auth";
 
 export default async function DashboardLayout({
@@ -14,14 +14,16 @@ export default async function DashboardLayout({
   const session = await getSession();
   if (!session) redirect("/sign-in?next=/dashboard");
 
-  // Fetched here rather than in the client sidebar for two reasons: it avoids a waterfall on
-  // every dashboard page, and it means the workspace name is correct on first paint instead of
-  // flashing the wrong one. This layout re-renders on `router.refresh()`, which is exactly what
+  // The list only — deliberately not `/workspaces/current` as well. That endpoint summarises
+  // credits (which can *write* a lazy grant) and counts projects and workspaces, and this layout
+  // renders on every page under /dashboard; paying for all of it on each navigation to render a
+  // name in the sidebar is the wrong trade. Everything the switcher needs — names, ids, which
+  // one is current — is already in the list. Pages that want usage fetch it themselves.
+  //
+  // Fetched server-side rather than in the client sidebar so the workspace name is right on
+  // first paint instead of flashing. The layout re-renders on `router.refresh()`, which is what
   // the switcher triggers after setting the cookie.
-  const [workspaces, current] = await Promise.all([
-    fetchWorkspaces(),
-    fetchCurrentWorkspace(),
-  ]);
+  const workspaces = await fetchWorkspaces();
 
   return (
     <div className="flex h-screen">
@@ -29,7 +31,6 @@ export default async function DashboardLayout({
         session={session}
         betterAuth={betterAuthEnabled()}
         workspaces={workspaces}
-        current={current}
       />
       <main className="flex-1 overflow-auto">{children}</main>
     </div>

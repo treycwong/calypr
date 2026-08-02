@@ -25,7 +25,7 @@ from datetime import UTC, datetime
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from calypr_api import entitlements
+from calypr_api import entitlements, threads
 
 log = logging.getLogger(__name__)
 
@@ -90,20 +90,35 @@ def measure_account(session: Session, account_id: uuid.UUID) -> int:
         text("SELECT count(*) FROM credit_ledger WHERE account_id = :acc"), params
     ).scalar_one()
 
-    # The big one, and the only part measured rather than estimated. `ix_run_thread_id` (0016)
-    # is what keeps this from being a sequential scan of `run` per account.
+    # The big one, and the only part measured rather than estimated.
+    #
+    # Two ways in, because thread ids changed shape. Threads minted since `threads.py` carry
+    # their workspace in the id, so a prefix match finds them with no join — and finds them even
+    # when metering failed to write a `run` row, which is how real bytes used to end up belonging
+    # to nobody. Older threads have no prefix and are still only reachable through `run`, so both
+    # are summed; the union keeps a thread from being counted twice. The join arm can go once the
+    # last pre-`threads.py` thread has aged out of the retention window.
+    prefixes = [
+        threads.workspace_prefix(row[0])
+        for row in session.execute(
+            text("SELECT id FROM workspace WHERE account_id = :acc"), params
+        ).all()
+    ]
     checkpoints = session.execute(
         text(
             """
             SELECT coalesce(sum(pg_column_size(b.blob)), 0)
               FROM checkpoint_blobs b
              WHERE b.thread_id IN (
+                   SELECT c.thread_id FROM checkpoints c
+                    WHERE c.thread_id LIKE ANY(:prefixes)
+                   UNION
                    SELECT r.thread_id FROM run r
                      JOIN workspace w ON w.id = r.workspace_id
                     WHERE w.account_id = :acc AND r.thread_id IS NOT NULL)
             """
         ),
-        params,
+        {**params, "prefixes": [f"{p}%" for p in prefixes]},
     ).scalar_one()
 
     return int(
@@ -138,17 +153,17 @@ def measure_all(session: Session) -> int:
     return len(ids)
 
 
-def _delete_threads(session: Session, threads: list[str]) -> int:
+def _delete_threads(session: Session, thread_ids: list[str]) -> int:
     """Drop every checkpoint row for these threads, children first."""
-    if not threads:
+    if not thread_ids:
         return 0
     deleted = 0
     # Order matters: `checkpoint_writes` and `checkpoint_blobs` reference the checkpoint rows,
     # and LangGraph owns these tables so there is no FK cascade to rely on.
     for table in ("checkpoint_writes", "checkpoint_blobs", "checkpoints"):
         deleted += session.execute(
-            text(f"DELETE FROM {table} WHERE thread_id = ANY(:threads)"),  # noqa: S608
-            {"threads": threads},
+            text(f"DELETE FROM {table} WHERE thread_id = ANY(:ids)"),  # noqa: S608
+            {"ids": thread_ids},
         ).rowcount
     return deleted
 
@@ -195,6 +210,13 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
     # Threads with no `run` row at all: anonymous playground and share traffic, which is never
     # attributed to an account. Without this they would accumulate forever, and they are exactly
     # the traffic nobody is paying for.
+    #
+    # `ws:`-prefixed threads are excluded even without a run row. They belong to a workspace by
+    # construction (`threads.py`), so a missing run row means metering failed rather than that
+    # nobody owns the conversation — and collecting a paying customer's thread after 7 days
+    # because of *our* metering failure is the wrong way to be wrong. They stay until the
+    # plan-TTL query above reaches them, or forever if their run row never lands; that is a
+    # bounded leak and the safe direction.
     orphans = [
         row[0]
         for row in session.execute(
@@ -202,6 +224,7 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
                 """
                 SELECT c.thread_id FROM checkpoints c
                  WHERE NOT EXISTS (SELECT 1 FROM run r WHERE r.thread_id = c.thread_id)
+                   AND c.thread_id NOT LIKE 'ws:%'
                  GROUP BY c.thread_id
                 HAVING max(c.checkpoint_id) < :floor
                  LIMIT :batch

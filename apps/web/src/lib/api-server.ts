@@ -1,7 +1,7 @@
 import "server-only";
 
 import { internalHeaders } from "@/lib/api-headers";
-import type { WorkspaceInfo, WorkspaceSummary } from "@/lib/api";
+import type { WorkspaceSummary } from "@/lib/api";
 
 // Server-component reads that hit the Python API directly.
 //
@@ -32,11 +32,4 @@ async function get<T>(path: string, fallback: T): Promise<T> {
 /** Every workspace on the signed-in user's account, for the sidebar switcher. */
 export function fetchWorkspaces(): Promise<WorkspaceSummary[]> {
   return get<WorkspaceSummary[]>("/workspaces", []);
-}
-
-/** The workspace the request resolved to — note this is the *resolved* one, which may differ
- * from what the cookie asked for if that cookie is stale or foreign. Rendering this rather than
- * the cookie's value is what makes the switcher self-correct. */
-export function fetchCurrentWorkspace(): Promise<WorkspaceInfo | null> {
-  return get<WorkspaceInfo | null>("/workspaces/current", null);
 }

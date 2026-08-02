@@ -153,6 +153,13 @@ def run_workspace(request: Request) -> uuid.UUID:
                 text("SELECT resolve_workspace(:uid, :ws)"),
                 {"uid": user_id, "ws": _claimed_workspace(request)},
             ).scalar_one()
+            # Commit for the same reason `_resolve_workspace_id` does — and this path is where
+            # skipping it actually cost something. `/runs` never writes through this session, so
+            # the find-or-create was rolled back on the way out and the id handed back named a
+            # workspace that did not exist. `RunRecorder.start` then failed its foreign key,
+            # logged "run metering disabled", and the run streamed **unmetered and undebited**.
+            # A new user's first runs were free, silently.
+            session.commit()
         return uuid.UUID(str(resolved))
     except Exception:
         return dev
