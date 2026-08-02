@@ -5,11 +5,15 @@
 
 ## ⏭️ NEXT — what's actually blocking
 
-**One thing stands between here and a paying customer: the live Stripe webhook endpoint has never
-received a single event** (§1). Its event list and signing secret are both unverified, and a
-mode-mismatched secret already silently swallowed a cancellation once — a customer who cancels
-against an endpoint we cannot verify keeps full Plus access indefinitely, with nothing logged
-beyond a 400.
+**The live payment loop is now proven end-to-end (2026-08-02):** a real `free → plus` through the
+Upgrade button on the live endpoint — `checkout.session.completed` mapped the customer and
+`invoice.paid` granted 2,000 credits, both delivered **200** — so **the live webhook signing
+secret is verified** (the long-standing §1 worry). Credits then debited on real AI usage.
+**Two gaps remain before this is fully closed** (see §1): the **cancellation path is still
+unproven live** (`customer.subscription.deleted` — do a real cancel → refund), and the prod logs
+show interleaved `POST /billing/webhook 400`s, likely a **duplicate/test webhook endpoint aimed
+at the prod URL** with a mismatched secret — audit Stripe → Developers → Webhooks (there should be
+exactly one live endpoint).
 
 §2 is closed: billing is enforced end-to-end and live. §3 is the money-safety work that should
 land before real charges, none of it blocking.
@@ -73,11 +77,28 @@ The code is merged and correct; nothing works until three values exist. See
       Residue: the workspace keeps its 2,000 test-granted credits until the next cycle, when
       `grant_monthly` tops *down* to the Free grant (delta is negative by design — grants replace,
       never stack). Harmless, but it explains a Free workspace sitting above 100 credits.
-- [ ] **The LIVE webhook endpoint has never received a single event.** `we_1TwE88Q4CLwWKY6VoKTNJdc2`
-      is unexercised: its event list and signing secret are both unverified. Given the test
-      endpoint was mismatched *and* the original live `whsec_` was orphaned, assume nothing here
-      — confirm `customer.subscription.{updated,deleted}` are subscribed and the secret matches
-      before the first real customer.
+- [x] **The LIVE webhook endpoint is verified (2026-08-02).** A real `free → plus` through the
+      Upgrade button drove `checkout.session.completed` (→ plus, customer mapped) and `invoice.paid`
+      (→ 2,000 credits) — **both delivered 200 on the live endpoint**, so the signing secret matches
+      and the events are subscribed. Founder workspace `914f15cf` is now `plus` on live customer
+      `cus_UzquujNm9DXuK2`.
+- [ ] **Prove the cancel path live.** `customer.subscription.deleted` has still never been delivered
+      live — the exact event a mismatch would silently swallow (a cancel that keeps Plus forever).
+      Cancel the founder's live sub through the portal, confirm the row flips `plus → free`, then
+      refund. Do this before onboarding a paying customer who might cancel.
+- [ ] **Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**
+      The 200s prove the live secret is right, so the 400s are deliveries whose signature doesn't
+      verify — almost certainly a **second (test-mode) endpoint pointed at the prod URL** with the
+      wrong secret. Stripe → Developers → Webhooks should list exactly one live endpoint at
+      `…up.railway.app/billing/webhook`; delete any stray one.
+- [x] **Two live-launch bugs found + fixed (2026-08-02).** (1) A **stale test-mode customer**
+      (`cus_Uw5V71aLHnaox9`) stuck on the founder workspace 502'd live checkout/portal (`No such
+      customer … exists in test mode`); cleared the field so checkout mints a fresh live customer.
+      Hardening still open: catch Stripe `resource_missing` in `create_checkout`/`create_portal` and
+      fall back to a fresh customer instead of 502. (2) `current_period_end` never populated —
+      Stripe API `2026-06-24.dahlia` **moved it off the Subscription onto its items**; fixed in
+      **PR #57** (`_period_end` reads item-level + closes an event-ordering race by mirroring the
+      cycle at checkout time).
 - [x] **LIVE (2026-07-23)** — live keys set on Railway and deployed; `/checkout` offers payment.
       Live webhook endpoint `we_1TwE88Q4CLwWKY6VoKTNJdc2` created (there was **none** — the
       `whsec_` originally supplied was orphaned, so a live payment would have charged the
@@ -92,7 +113,9 @@ The code is merged and correct; nothing works until three values exist. See
       the signing secret belongs where the DB is. Events: `checkout.session.completed`,
       `customer.subscription.{created,updated,deleted}`, `invoice.paid`, `invoice.payment_failed`.
       **TEST endpoint: confirmed done (2026-07-24)** — it delivered to Railway and verified.
-      **LIVE endpoint: still unconfirmed** — see the unchecked item above.
+      **LIVE endpoint: confirmed (2026-08-02)** — a real payment delivered `checkout.session.completed`
+      + `invoice.paid` 200 on the live endpoint. Remaining: prove the cancel path and audit for a
+      stray second endpoint (both tracked above).
 - [x] **Loop tested end-to-end through the actual button (2026-07-24)** — done on workspace
       `914f15cf…` ("Personal", `treycwong@gmail.com`) rather than `tracey@theflowops.com`, which
       satisfies the intent: a genuinely `free` workspace, paid via the real Upgrade button.
