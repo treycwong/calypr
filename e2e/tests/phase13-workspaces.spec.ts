@@ -19,9 +19,22 @@ async function signIn(page: import("@playwright/test").Page) {
   await expect(page.getByTestId("ws-switcher")).toBeVisible();
 }
 
+/** Open the switcher, retrying the click until the menu is actually up.
+ *
+ * The trigger is rendered by the server, so it is *visible* before React has hydrated and a
+ * click that lands in that window does nothing at all — the menu never opens and the next
+ * locator waits out the full timeout. Asserting the click had an effect, and repeating it if
+ * not, is the difference between a test that describes the UI and one that races it. */
+async function openSwitcher(page: import("@playwright/test").Page) {
+  await expect(async () => {
+    await page.getByTestId("ws-switcher").click();
+    await expect(page.getByTestId("ws-new")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
 test("the switcher lists the account's workspaces and marks the current one", async ({ page }) => {
   await signIn(page);
-  await page.getByTestId("ws-switcher").click();
+  await openSwitcher(page);
 
   // At least the current workspace, whatever it is called.
   const options = page.locator('[data-testid^="ws-option-"]');
@@ -51,7 +64,7 @@ test("creating a workspace posts the name and switches to it", async ({ page }) 
   });
 
   await signIn(page);
-  await page.getByTestId("ws-switcher").click();
+  await openSwitcher(page);
   await page.getByTestId("ws-new").click();
   await page.getByTestId("ws-new-name").fill("Side project");
   await page.getByTestId("ws-new-submit").click();
@@ -81,7 +94,7 @@ test("hitting the workspace cap is answered in place, not thrown", async ({ page
   });
 
   await signIn(page);
-  await page.getByTestId("ws-switcher").click();
+  await openSwitcher(page);
   await page.getByTestId("ws-new").click();
   await page.getByTestId("ws-new-name").fill("Second");
   await page.getByTestId("ws-new-submit").click();
