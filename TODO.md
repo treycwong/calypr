@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-07-25.
+> record — what shipped and why. Updated 2026-08-02.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -14,6 +14,11 @@ unproven live** (`customer.subscription.deleted` — do a real cancel → refund
 show interleaved `POST /billing/webhook 400`s, likely a **duplicate/test webhook endpoint aimed
 at the prod URL** with a mismatched secret — audit Stripe → Developers → Webhooks (there should be
 exactly one live endpoint).
+
+**Multiple workspaces shipped 2026-08-02** (PR #59, live and verified): Free 1 workspace /
+3 projects / 500 MB, Plus 3 / 20 / 5 GB, all pooled per account. It also closed two bugs that
+predate it — conversation threads were not bound to a tenant, and a new user's first runs streamed
+unmetered. Storage is displayed rather than enforced, on purpose. See the section below.
 
 §2 is closed: billing is enforced end-to-end and live. §3 is the money-safety work that should
 land before real charges, none of it blocking.
@@ -298,6 +303,13 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 - [ ] **Read-only code viewing** — the Code tab shows a 14-line preview to Free today, and the
       full file to `beta`/`plus`. Decide before Plus goes on sale whether *viewing* is free (it
       doubles as the "no lock-in" reassurance that sells the plan) or paid.
+- [ ] **Does storage ever become a hard cap?** It ships as a *displayed* figure (500 MB / 5 GB)
+      bounded by run-state retention, not a 402 — see the workspaces section for why a byte cap
+      isn't honestly enforceable yet. Two things would have to land first: per-project storage
+      breakdown, and a **"clear run history"** action, because today a user at 100% has no lever
+      (deleting a project doesn't free its runs' checkpoints). Live usage says there's no hurry —
+      the one Plus account is at **3.0 MB of 5 GB**, 0.06%. Retention plus the project cap may
+      simply be enough, and a byte cap on a $20 plan may be all support burden and no benefit.
 - [ ] **Acquisition has no plan.** Cancelling the OSS launch removed the roadmap's only
       top-of-funnel (Show HN). The blog is shipped, indexed and has two posts — making it a
       deliberate channel is the cheap replacement, but somebody has to decide that.
@@ -340,9 +352,32 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 - [ ] **Five config fields the engine never reads** (found by the 2c audit) — implement or
       delete: `agent.max_steps`, `agent.utility_criteria`, `input.mode`, `output.stream`,
       `tool.http_method`. The last is a real product gap: "call any JSON API" can't POST.
-- [ ] **`e2e/tests/phase-assistant-model.spec.ts:166` is environment-sensitive** — passes in CI
-      and on a machine with no `.env`, fails identically on unmodified `main` when real provider
-      keys are present (it asserts `.last()`, which becomes a real model answer). Pre-existing.
+- [ ] **`e2e/tests/phase-assistant-model.spec.ts` is unreliable, in two separate ways.**
+      (a) `:166` is environment-sensitive — passes in CI and on a machine with no `.env`, fails
+      identically on unmodified `main` when real provider keys are present (it asserts `.last()`,
+      which becomes a real model answer).
+      (b) **The whole spec flakes about once per full serial run, with a *different* test failing
+      each time** (`:38`, `:109`, `:121` all observed) and always passes in isolation. Confirmed
+      pre-existing on 2026-08-02 by stashing an unrelated branch and reproducing on the baseline;
+      CI's single retry usually masks it. Looks like a hydration race — the page is server-rendered
+      and therefore clickable before React attaches, so an early click is swallowed. The fix that
+      worked for the same problem in `phase13-workspaces.spec.ts` is to retry the click until it
+      demonstrably had an effect (`expect(async () => {...}).toPass()`), rather than assume it did.
+- [ ] **`calypr.co` (apex) does not resolve — only `www.calypr.co` works.** Found 2026-08-02.
+      `dig`, `curl` and Python's resolver all fail to get an address for the bare domain while
+      `example.com` resolves normally, so it is not a local/sandbox artifact. The domain sits on
+      third-party nameservers (`dns1/dns2.registrar-servers.com`) with a **CNAME at the apex**,
+      which is invalid per RFC and why resolvers reject it; `vercel domains inspect calypr.co`
+      flags the nameservers ✘. Anyone typing the bare domain gets a DNS failure. Fix is an A
+      record at the apex (Vercel's `76.76.21.21`) or moving the domain to Vercel nameservers.
+      Unrelated to any deploy — DNS is not affected by a code merge.
+- [x] **FIXED (2026-08-02) — the e2e suite ran differently on a developer machine than in CI.**
+      `e2e/playwright.config.ts` pinned `STRIPE_*` and `CALYPR_ASSISTANT_MODEL` against a
+      developer's repo-root `.env` but **not `CALYPR_INTERNAL_KEY`**, so a developer with a real
+      key got tenant scoping and the billing gates switched on: 21 specs failed locally and passed
+      in CI. Now pinned empty alongside the others. The general lesson is in that file's comment —
+      anything the API reads from `.env` has to be pinned in the harness or the suite is not the
+      same suite.
 - [ ] **Neon preview branches** — nothing auto-deletes a preview's branch when its PR closes, so
       the limit that broke Vercel Previews for weeks will be hit again. Check the Neon–Vercel
       integration for an auto-cleanup setting.
@@ -358,6 +393,102 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, Chroma provider,
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
+
+---
+
+## 🟢 Multiple workspaces per account — DONE (2026-08-02), merged to main (PR #59, `8f429b7`)
+
+**Live and verified in production.** Free gets 1 workspace / 3 projects / 500 MB; Plus gets
+3 / 20 / 5 GB, **pooled across the account**. Railway-style switcher in the sidebar, new
+**Templates** (placeholder) and **Usage** tabs, and the credits panel moved out of Settings →
+Workspace onto Usage, next to projects and storage.
+
+**Why it couldn't be UI-only.** `plan`, `stripe_customer_id` and `credit_balance_micro` lived on
+the `workspace` row, so three workspaces would have meant three subscriptions and 3× the monthly
+grant. Migration `0016` splits the tenant: an **account** pays, a **workspace** holds work. The
+RLS GUC stays workspace-shaped, so every domain table's policy was untouched — only
+`billing_account` and `credit_ledger` got a new predicate reaching up through
+`workspace.account_id`.
+
+**Account ids were reused from the workspace ids they replaced.** Load-bearing: in-flight Stripe
+checkout sessions carry `client_reference_id = <workspace id>`, so they still resolve. Do not
+change how account ids are assigned without draining checkout sessions first.
+
+**The advertised project cap is now real.** `/pricing` promised "3 projects" since launch and
+`PRICING-SPEC.md` §1 even specified the 402 — `create_agent` was a bare insert. Limits now live in
+one `entitlements.LIMITS` table instead of constants spread across four modules, which is how the
+gap survived.
+
+### Two bugs found in passing, both worse than the feature
+
+- **Threads were not bound to a tenant** (`dde932f`). `thread_id` was minted by the browser
+  (`Math.random`) and passed straight to the LangGraph checkpointer, which resumes state by that
+  id **with no check**. Verified end to end: two different accounts posting the same id landed in
+  one conversation, both parties' messages in the same state. Hard to hit — ~57 bits of a value
+  that is never shared — but the guess was the only thing in the way. Threads are now namespaced
+  server-side (`ws:<workspace_id>:<suffix>`); the caller's value is only a suffix. Share links
+  have no identity to bind to, so the server mints the suffix from `secrets` and returns it for
+  the client to echo. `share.py` already carried a comment saying visitors must not resume each
+  other's threads — the namespacing was there, the binding wasn't.
+- **Runs were streaming unmetered and undebited.** `run_workspace` resolved the tenant in its own
+  session and `/runs` never writes through it, so the find-or-create was rolled back,
+  `RunRecorder` hit a foreign-key violation, logged "run metering disabled", and the run streamed
+  free. **A new user's first runs cost nothing, silently.** Same root cause as the phantom-
+  workspace fix in `3182d74`, which only covered `_resolve_workspace_id`; `run_workspace` had its
+  own copy of the SQL. If a third resolver ever appears it needs the `commit()` too.
+
+### Storage is displayed, not enforced — deliberately
+
+The dominant consumer is LangGraph's checkpoint tables: created by `AsyncPostgresSaver.setup()`
+**outside Alembic**, no `workspace_id`, reachable only through `run.thread_id`. Blob uploads wrote
+no DB row at all before `0016` (the new `upload` table starts that record; earlier blobs are
+unrecoverable). What actually bounds storage is a **per-plan retention window on run state** —
+7 days Free, 30 Plus — swept nightly by `POST /internal/gc/checkpoints` via a Vercel cron
+(`apps/web/vercel.json` → `/api/cron/gc`, `CRON_SECRET` set 2026-08-02). The GB figure is measured
+on that same schedule and shown with its timestamp. **A byte-based 402 is deferred**, and needs a
+"clear run history" lever first: today a user at 100% has no way down, because deleting a project
+doesn't free its runs' checkpoints.
+
+First production sweep: **1,145 rows across 56 expired threads** (checkpoints 937 → 578, blobs
+589 → 366) with `run` rows untouched at 141 — history is kept, only state is reclaimed.
+
+### The deploy-blocker that no test could catch
+
+`0016` originally created a table called `account`. **Production already had one**: Better Auth
+owns `user`, `session`, `account` and `verification` in the same Neon database, manages them
+itself outside Alembic, and they are absent from any local database that has never run the web
+app's auth. `account` is its OAuth-link table (`providerId`, `accessToken`, `password`). The
+migration would have failed at Railway's `preDeployCommand` — fail-safe, but blocked.
+
+Caught by **reading production row counts before merging**, not by 314 pytest + 91 e2e, all of
+which were green against a database that didn't resemble production. Renamed to `billing_account`
+(`a48f6d7`), and the local dev database was rebuilt with all four Better Auth tables present so
+this class of collision is now catchable. Neon also keeps a *second* copy of those four in a
+`neon_auth` schema — schema-qualify anything that inspects `information_schema`.
+
+**Never name an Alembic table `user`, `session`, `account` or `verification`.**
+
+### Verified in production (2026-08-02)
+
+`alembic_version = 0016` · Better Auth's `account` intact with both rows · 3 workspaces → 3
+accounts, no orphans, no NULL ledger rows · account ids reused (Stripe continuity) ·
+**the Plus subscriber's plan, Stripe customer and 1,973,289 micro-credits all carried over** ·
+19 agents / 141 runs / 16 ledger rows present · internal GC endpoints 401 without a valid key ·
+**cross-account workspace claims rejected on live accounts** (A claiming B's workspace, and a
+random uuid, both fall back to A's own).
+
+### Deliberately not done
+
+- **Storage 402** — see above; needs the "clear run history" lever first.
+- **Moving projects between workspaces.** Pooling the project quota already makes this a pure
+  relocation with no cap check that can fail. When it lands: share links move with the agent
+  (a live URL scoped to it), run history does **not** (it belongs to the workspace that spent the
+  credits — which is why `credit_ledger.workspace_id` was kept as provenance).
+- **Per-workspace usage + private/public visibility.** The per-workspace breakdown is already
+  unlocked by that same provenance column. The visibility toggle has a trap: the share path
+  bypasses the tenant GUC via the `SECURITY DEFINER` functions `share_agent_name` /
+  `claim_share_run`, so the predicate must go **inside those functions** — gating link *creation*
+  in the router would leave links minted while public still resolving after a flip to private.
 
 ---
 
