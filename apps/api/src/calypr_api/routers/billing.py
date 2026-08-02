@@ -74,9 +74,9 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
         raise HTTPException(status_code=404, detail="workspace not found")
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
-    existing_customer = workspace.stripe_customer_id
-    try:
-        checkout = stripe.checkout.Session.create(
+
+    def _session(customer: str | None):
+        return stripe.checkout.Session.create(
             api_key=billing.secret_key(),
             mode="subscription",
             line_items=[{"price": billing.plus_price_id(), "quantity": 1}],
@@ -85,11 +85,33 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
             client_reference_id=str(t.workspace_id),
             # Reuse the customer if this workspace has paid before, so a re-subscribe doesn't
             # create a second customer for the same tenant (the mapping is unique).
-            customer=existing_customer or None,
-            customer_email=t.email if not existing_customer and t.email else None,
+            customer=customer or None,
+            customer_email=t.email if not customer and t.email else None,
             success_url=f"{origin}/dashboard/settings?upgraded=1",
             cancel_url=f"{origin}/pricing",
         )
+
+    existing_customer = workspace.stripe_customer_id
+    try:
+        checkout = _session(existing_customer)
+    except stripe.InvalidRequestError as exc:
+        # A stored customer that Stripe no longer knows (a test-mode customer under a live key,
+        # or one deleted in the dashboard) would wedge this workspace on every upgrade attempt.
+        # Forget it and retry once with a fresh customer so the user is never permanently stuck.
+        if not (existing_customer and _is_missing_customer(exc)):
+            log.exception("stripe checkout session creation failed")
+            raise HTTPException(status_code=502, detail="could not start checkout") from None
+        log.warning(
+            "stale stripe customer %s on workspace %s; clearing and retrying checkout",
+            existing_customer, t.workspace_id,
+        )
+        _forget_customer(workspace)
+        t.session.commit()
+        try:
+            checkout = _session(None)
+        except stripe.StripeError:
+            log.exception("stripe checkout retry with a fresh customer failed")
+            raise HTTPException(status_code=502, detail="could not start checkout") from None
     except stripe.StripeError:
         log.exception("stripe checkout session creation failed")
         raise HTTPException(status_code=502, detail="could not start checkout") from None
@@ -142,6 +164,22 @@ def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSessio
             customer=workspace.stripe_customer_id,
             return_url=f"{origin}/dashboard/settings?tab=billing",
         )
+    except stripe.InvalidRequestError as exc:
+        # The stored customer is gone (test customer under a live key, or deleted in Stripe).
+        # There's nothing to manage, so forget the dead mapping — the tab will fall back to the
+        # Upgrade CTA on its next load — and tell the client to re-subscribe rather than 502.
+        if not _is_missing_customer(exc):
+            log.exception("stripe billing portal session creation failed")
+            raise HTTPException(status_code=502, detail="could not open billing portal") from None
+        log.warning(
+            "stale stripe customer %s on workspace %s; clearing (portal)",
+            workspace.stripe_customer_id, t.workspace_id,
+        )
+        _forget_customer(workspace)
+        t.session.commit()
+        raise HTTPException(
+            status_code=409, detail="subscription is no longer valid — please re-subscribe"
+        ) from None
     except stripe.StripeError:
         log.exception("stripe billing portal session creation failed")
         raise HTTPException(status_code=502, detail="could not open billing portal") from None
@@ -204,6 +242,26 @@ def _mirror_cycle(workspace: Workspace, sub: object) -> None:
     workspace.stripe_subscription_id = _field(sub, "id")
     workspace.current_period_end = _period_end(sub)
     workspace.cancel_at_period_end = _bool(sub, "cancel_at_period_end")
+
+
+def _is_missing_customer(exc: stripe.StripeError) -> bool:
+    """True when Stripe rejected a request because the referenced `customer` doesn't exist under
+    the current key — the classic wedge where a workspace carries a *test-mode* customer id and a
+    *live* key is used (or the customer was deleted in Stripe). Matched on the `resource_missing`
+    code for the `customer` param, not the message text, so it survives copy changes."""
+    return (
+        getattr(exc, "code", None) == "resource_missing"
+        and getattr(exc, "param", None) == "customer"
+    )
+
+
+def _forget_customer(workspace: Workspace) -> None:
+    """Drop a workspace's now-invalid Stripe customer mapping and its stale cycle fields, so the
+    next checkout mints a fresh customer instead of failing on the dead one forever."""
+    workspace.stripe_customer_id = None
+    workspace.stripe_subscription_id = None
+    workspace.current_period_end = None
+    workspace.cancel_at_period_end = False
 
 
 def _apply(session: Session, event: stripe.Event) -> None:
