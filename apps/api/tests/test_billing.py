@@ -254,6 +254,31 @@ def test_reading_a_null_field_is_none():
     assert billing_router._field(_stripe_obj({"customer": None}), "customer") is None
 
 
+def _subscription(payload: dict):
+    return stripe.Subscription.construct_from({"id": "sub_x", **payload}, "sk_test")
+
+
+def test_period_end_reads_the_item_when_the_top_level_field_is_gone():
+    """The bug that shipped: Stripe moved `current_period_end` off the Subscription onto its
+    items (this account is on API `2026-06-24.dahlia`), so the old top-level read always resolved
+    to None and no subscriber ever got a renewal date. Pins the item-level path."""
+    sub = _subscription({"items": {"object": "list", "data": [{"current_period_end": 1788324068}]}})
+    dt = billing_router._period_end(sub)
+    assert dt is not None and int(dt.timestamp()) == 1788324068
+
+
+def test_period_end_falls_back_to_the_top_level_field():
+    """Older API versions still put it at the top level — keep reading it so a version pin or an
+    older event doesn't regress to None."""
+    sub = _subscription({"current_period_end": 1788324068})
+    assert int(billing_router._period_end(sub).timestamp()) == 1788324068
+
+
+def test_period_end_is_none_when_absent_everywhere():
+    assert billing_router._period_end(_subscription({})) is None
+    assert billing_router._period_end(_subscription({"items": {"data": []}})) is None
+
+
 # --- delivery semantics (database) ---------------------------------------------------------------
 
 
@@ -376,7 +401,8 @@ def test_a_subscription_update_mirrors_the_cycle_for_the_billing_tab(configured)
                     "id": "sub_test_cycle",
                     "customer": customer,
                     "status": "active",
-                    "current_period_end": period_end,
+                    # Item-level, matching the current Stripe API shape (see `_period_end`).
+                    "items": {"object": "list", "data": [{"current_period_end": period_end}]},
                     "cancel_at_period_end": True,
                 },
             )

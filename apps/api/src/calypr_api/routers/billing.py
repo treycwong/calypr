@@ -164,10 +164,9 @@ def _field(obj: object, name: str) -> str | None:
     return str(value) if value is not None else None
 
 
-def _epoch(obj: object, name: str) -> datetime | None:
-    """Read a Unix-timestamp field (Stripe sends period bounds as integer seconds) as an
-    aware UTC datetime, or None if absent."""
-    value = getattr(obj, name, None)
+def _epoch(value: object) -> datetime | None:
+    """Turn a Unix timestamp (Stripe sends period bounds as integer seconds) into an aware UTC
+    datetime, or None if absent."""
     if value is None:
         return None
     return datetime.fromtimestamp(int(value), tz=UTC)
@@ -176,6 +175,35 @@ def _epoch(obj: object, name: str) -> datetime | None:
 def _bool(obj: object, name: str) -> bool:
     """Read an optional boolean field off a Stripe object, defaulting to False when absent."""
     return bool(getattr(obj, name, False))
+
+
+def _period_end(sub: object) -> datetime | None:
+    """When the current paid period ends, off a Subscription object.
+
+    Stripe moved `current_period_end` off the Subscription and onto its items in recent API
+    versions (this account is on `2026-06-24.dahlia`, where the top-level field is gone). Read
+    the first item's value — a single-price subscription like Calypr Plus has one item and all
+    items share a period — and fall back to the top-level field for older API versions."""
+    top = getattr(sub, "current_period_end", None)
+    if top is not None:
+        return _epoch(top)
+    try:
+        # Subscript access, not `.items` — on a StripeObject `.items` is the dict method.
+        items = sub["items"].data
+    except (KeyError, AttributeError, TypeError):
+        return None
+    if not items:
+        return None
+    return _epoch(getattr(items[0], "current_period_end", None))
+
+
+def _mirror_cycle(workspace: Workspace, sub: object) -> None:
+    """Copy a Subscription's cycle fields onto the workspace row — the three columns the Billing
+    tab reads. Used from both the subscription-event branch and, to beat event-ordering races,
+    the checkout branch."""
+    workspace.stripe_subscription_id = _field(sub, "id")
+    workspace.current_period_end = _period_end(sub)
+    workspace.cancel_at_period_end = _bool(sub, "cancel_at_period_end")
 
 
 def _apply(session: Session, event: stripe.Event) -> None:
@@ -198,6 +226,18 @@ def _apply(session: Session, event: stripe.Event) -> None:
         if customer_id:
             workspace.stripe_customer_id = customer_id
         billing.set_plan(workspace, "plus")
+        # Populate the cycle fields at the authoritative "this workspace is now subscribed"
+        # moment. Stripe doesn't guarantee event ordering, so `customer.subscription.created`
+        # commonly arrives *before* this event maps the customer — and is then dropped as
+        # "unmapped", leaving the cycle blank forever (Stripe never redelivers it). Retrieving
+        # the subscription here closes that race. Best-effort: the plan + credits below matter
+        # more, and the cycle self-heals on the next `subscription.updated`.
+        if sub_id := _field(data, "subscription"):
+            try:
+                sub = stripe.Subscription.retrieve(sub_id, api_key=billing.secret_key())
+                _mirror_cycle(workspace, sub)
+            except stripe.StripeError:
+                log.warning("could not retrieve subscription %s for cycle mirror", sub_id)
         # Grant immediately: `invoice.paid` usually accompanies the first payment, but relying
         # on ordering would leave a new subscriber with a Plus plan and no credits if it lands
         # first or is delayed. `grant_monthly` is idempotent per cycle, so a double is a no-op.
@@ -233,9 +273,7 @@ def _apply(session: Session, event: stripe.Event) -> None:
             workspace.current_period_end = None
             workspace.cancel_at_period_end = False
         else:
-            workspace.stripe_subscription_id = _field(data, "id")
-            workspace.current_period_end = _epoch(data, "current_period_end")
-            workspace.cancel_at_period_end = _bool(data, "cancel_at_period_end")
+            _mirror_cycle(workspace, data)
         session.commit()
         if changed:
             log.info("workspace %s → %s (subscription %s)", workspace.id, plan, status)
