@@ -128,7 +128,7 @@ def test_one_tenant_cannot_resume_another_tenants_thread(monkeypatch):
                 text(
                     "SELECT r.thread_id, w.id FROM run r"
                     " JOIN workspace w ON w.id = r.workspace_id"
-                    " JOIN account a ON a.id = w.account_id"
+                    " JOIN billing_account a ON a.id = w.account_id"
                     " WHERE a.owner_user_id IN (:v, :a) AND r.thread_id LIKE :pat"
                 ),
                 {"v": victim, "a": attacker, "pat": f"%{shared_suffix}"},
@@ -148,7 +148,7 @@ def test_one_tenant_cannot_resume_another_tenants_thread(monkeypatch):
                     {"pat": f"%{shared_suffix}"},
                 )
             s.execute(
-                text("DELETE FROM account WHERE owner_user_id IN (:a, :b)"),
+                text("DELETE FROM billing_account WHERE owner_user_id IN (:a, :b)"),
                 {"a": victim, "b": attacker},
             )
             s.commit()
@@ -181,7 +181,7 @@ def test_a_run_is_metered_for_a_brand_new_user(monkeypatch):
             metered = s.execute(
                 text(
                     "SELECT count(*) FROM run r JOIN workspace w ON w.id = r.workspace_id"
-                    " JOIN account a ON a.id = w.account_id"
+                    " JOIN billing_account a ON a.id = w.account_id"
                     " WHERE a.owner_user_id = :u AND r.thread_id LIKE :pat"
                 ),
                 {"u": user, "pat": f"%{suffix}"},
@@ -194,5 +194,5 @@ def test_a_run_is_metered_for_a_brand_new_user(monkeypatch):
                     text(f"DELETE FROM {table} WHERE thread_id LIKE :pat"),  # noqa: S608
                     {"pat": f"%{suffix}"},
                 )
-            s.execute(text("DELETE FROM account WHERE owner_user_id = :u"), {"u": user})
+            s.execute(text("DELETE FROM billing_account WHERE owner_user_id = :u"), {"u": user})
             s.commit()

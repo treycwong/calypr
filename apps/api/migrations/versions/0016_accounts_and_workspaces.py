@@ -13,8 +13,16 @@ So the tenant splits in two. An **account** is who pays (plan, Stripe customer, 
 storage); a **workspace** is where work lives (name, model defaults, agents, runs). Quotas —
 projects, credits, storage — pool at the account. The RLS GUC stays *workspace*-shaped, which is
 what keeps this migration small: every domain table's policy is untouched, and only the two
-account-scoped tables (`account`, `credit_ledger`) get a new predicate that reaches up through
-`workspace.account_id`.
+account-scoped tables (`billing_account`, `credit_ledger`) get a new predicate that reaches up
+through `workspace.account_id`.
+
+**The table is `billing_account`, not `account`, and it has to stay that way.** Better Auth owns
+`user`, `session`, `account` and `verification` in this same database — it manages them itself,
+outside Alembic, so they are invisible to `alembic upgrade` and to any local database that has
+never run the web app's auth. `account` is Better Auth's OAuth-link table (`providerId`,
+`accessToken`, `refreshToken`, `password`). Creating our own `account` alongside it fails the
+deploy at `preDeployCommand` — and would be far worse if it somehow didn't. **Never name a table
+`user`, `session`, `account` or `verification` here.**
 
 **Account ids are reused from workspace ids, deliberately.** It makes the backfill correlation-
 free (no lookup table, no ordering), and — the reason that actually matters — Stripe checkout
@@ -58,7 +66,7 @@ _ACCOUNT_OF_CURRENT_WORKSPACE = """
 def upgrade() -> None:
     # --- account ---------------------------------------------------------------------------
     op.create_table(
-        "account",
+        "billing_account",
         sa.Column(
             "id",
             postgresql.UUID(as_uuid=True),
@@ -93,7 +101,7 @@ def upgrade() -> None:
     # One account per existing workspace, **keeping the id** (see the module docstring).
     op.execute(
         """
-        INSERT INTO account (id, owner_user_id, plan, stripe_customer_id,
+        INSERT INTO billing_account (id, owner_user_id, plan, stripe_customer_id,
                              stripe_subscription_id, current_period_end, cancel_at_period_end,
                              credit_balance_micro, grant_cycle_anchor, created_at)
         SELECT id, owner_user_id, plan, stripe_customer_id,
@@ -110,7 +118,8 @@ def upgrade() -> None:
     op.execute("UPDATE workspace SET account_id = id")
     op.alter_column("workspace", "account_id", nullable=False)
     op.create_foreign_key(
-        "workspace_account_id_fkey", "workspace", "account", ["account_id"], ["id"],
+        "workspace_account_id_fkey", "workspace", "billing_account",
+        ["account_id"], ["id"],
         ondelete="CASCADE",
     )
     # The switcher lists a user's workspaces oldest-first; the default workspace is the first row.
@@ -144,7 +153,8 @@ def upgrade() -> None:
     # ledger row still has its workspace, and every workspace now has an account.
     op.alter_column("credit_ledger", "account_id", nullable=False)
     op.create_foreign_key(
-        "credit_ledger_account_id_fkey", "credit_ledger", "account", ["account_id"], ["id"],
+        "credit_ledger_account_id_fkey", "credit_ledger", "billing_account",
+        ["account_id"], ["id"],
         ondelete="CASCADE",
     )
     op.alter_column("credit_ledger", "workspace_id", nullable=True)
@@ -174,10 +184,10 @@ def upgrade() -> None:
     )
 
     # --- account RLS --------------------------------------------------------------------------
-    op.execute("ALTER TABLE account ENABLE ROW LEVEL SECURITY")
+    op.execute("ALTER TABLE billing_account ENABLE ROW LEVEL SECURITY")
     op.execute(
         f"""
-        CREATE POLICY account_tenant_isolation ON account
+        CREATE POLICY account_tenant_isolation ON billing_account
         USING (id = {_ACCOUNT_OF_CURRENT_WORKSPACE})
         """
     )
@@ -227,7 +237,7 @@ def upgrade() -> None:
         AS $$
         DECLARE acc uuid;
         BEGIN
-            INSERT INTO account (owner_user_id) VALUES (p_user_id)
+            INSERT INTO billing_account (owner_user_id) VALUES (p_user_id)
             ON CONFLICT (owner_user_id) DO UPDATE SET owner_user_id = EXCLUDED.owner_user_id
             RETURNING id INTO acc;
             -- An account with no workspace has nowhere to put work; keep that unrepresentable.
@@ -306,7 +316,7 @@ def upgrade() -> None:
     # database where it doesn't yet.
     op.execute(
         f"""
-        INSERT INTO account (id) VALUES ('{DEV_WORKSPACE_ID}'::uuid)
+        INSERT INTO billing_account (id) VALUES ('{DEV_WORKSPACE_ID}'::uuid)
         ON CONFLICT (id) DO NOTHING
         """
     )
@@ -356,7 +366,7 @@ def downgrade() -> None:
     op.drop_constraint("credit_ledger_account_id_fkey", "credit_ledger", type_="foreignkey")
     op.drop_column("credit_ledger", "account_id")
 
-    op.execute("DROP POLICY IF EXISTS account_tenant_isolation ON account")
+    op.execute("DROP POLICY IF EXISTS account_tenant_isolation ON billing_account")
 
     # Put the billing columns back on workspace and copy the account's values down. A user with
     # several workspaces collapses to their first one — the rest lose their link, which is the
@@ -394,7 +404,7 @@ def downgrade() -> None:
             cancel_at_period_end = a.cancel_at_period_end,
             credit_balance_micro = a.credit_balance_micro,
             grant_cycle_anchor = a.grant_cycle_anchor
-        FROM account a
+        FROM billing_account a
         WHERE a.id = w.account_id
           AND w.id = (SELECT w2.id FROM workspace w2
                        WHERE w2.account_id = a.id ORDER BY w2.created_at, w2.id LIMIT 1)
@@ -408,7 +418,7 @@ def downgrade() -> None:
     op.drop_index("ix_workspace_account_created", table_name="workspace")
     op.drop_constraint("workspace_account_id_fkey", "workspace", type_="foreignkey")
     op.drop_column("workspace", "account_id")
-    op.drop_table("account")
+    op.drop_table("billing_account")
 
     # Restore the 0003 one-arg function.
     op.execute(

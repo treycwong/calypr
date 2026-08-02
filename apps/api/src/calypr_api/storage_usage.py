@@ -133,7 +133,7 @@ def measure_account(session: Session, account_id: uuid.UUID) -> int:
 
 def measure_all(session: Session) -> int:
     """Refresh `account.storage_bytes` for every account. Returns how many were measured."""
-    ids = [row[0] for row in session.execute(text("SELECT id FROM account")).all()]
+    ids = [row[0] for row in session.execute(text("SELECT id FROM billing_account")).all()]
     now = datetime.now(UTC)
     for account_id in ids:
         try:
@@ -145,7 +145,8 @@ def measure_all(session: Session) -> int:
             continue
         session.execute(
             text(
-                "UPDATE account SET storage_bytes = :b, storage_measured_at = :t WHERE id = :i"
+                "UPDATE billing_account SET storage_bytes = :b, storage_measured_at = :t"
+                " WHERE id = :i"
             ),
             {"b": total, "t": now, "i": str(account_id)},
         )
@@ -190,7 +191,7 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
                 SELECT DISTINCT r.thread_id
                   FROM run r
                   JOIN workspace w ON w.id = r.workspace_id
-                  JOIN account   a ON a.id = w.account_id
+                  JOIN billing_account   a ON a.id = w.account_id
                  WHERE r.thread_id IS NOT NULL
                    AND r.created_at < now() - (CASE {ttl_cases}
                                                ELSE interval '{free_ttl} days' END)

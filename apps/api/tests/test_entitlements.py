@@ -233,7 +233,7 @@ def test_promote_workspace_to_beta_and_stamp_the_invite(monkeypatch):
         ws_id = s.execute(text("SELECT id FROM workspace LIMIT 1")).scalar()
         original = s.execute(
             text(
-                "SELECT a.plan FROM account a JOIN workspace w ON w.account_id = a.id"
+                "SELECT a.plan FROM billing_account a JOIN workspace w ON w.account_id = a.id"
                 " WHERE w.id = :i"
             ),
             {"i": ws_id},

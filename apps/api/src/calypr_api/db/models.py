@@ -43,7 +43,7 @@ class Account(Base):
     minted before that migration still resolves. See the 0016 docstring before changing how ids
     are assigned."""
 
-    __tablename__ = "account"
+    __tablename__ = "billing_account"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
@@ -110,7 +110,7 @@ class Workspace(Base):
     clerk_org_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     account_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("account.id", ondelete="CASCADE"),
+        ForeignKey("billing_account.id", ondelete="CASCADE"),
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String, nullable=False)
@@ -377,7 +377,7 @@ class CreditLedger(Base):
     #: Whose balance this moves. The account, not the workspace — credits pool across an
     #: account's workspaces, so this is the column the balance is summed over.
     account_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("account.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True), ForeignKey("billing_account.id", ondelete="CASCADE"), nullable=False
     )
     #: **Provenance, not the balance key**: which workspace spent this. Nullable because a grant
     #: or a Stripe top-up belongs to the account and happened in no particular workspace. Kept

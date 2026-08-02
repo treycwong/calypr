@@ -37,7 +37,7 @@ WORKSPACE_HEADER = "x-calypr-workspace-id"
 #: A workspace's plan now lives on its account. Every gate that used to read `workspace.plan`
 #: reads through this join instead.
 _PLAN_FOR_WORKSPACE = (
-    "SELECT a.plan FROM account a JOIN workspace w ON w.account_id = a.id WHERE w.id = :id"
+    "SELECT a.plan FROM billing_account a JOIN workspace w ON w.account_id = a.id WHERE w.id = :id"
 )
 
 
