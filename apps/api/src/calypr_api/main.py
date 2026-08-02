@@ -23,14 +23,27 @@ from calypr_api.routers import (
     assist,
     billing,
     connectors,
+    internal,
     provider_keys,
     runs,
     share,
     uploads,
     waitlist,
+    workspaces,
 )
 
 log = logging.getLogger("calypr_api")
+
+# Uvicorn configures its own loggers and leaves the root at WARNING, so until now every
+# `log.info` in this package went nowhere — including "account upgraded to plus" and the
+# rejected-workspace-claim line that makes a cross-tenant probe visible. Set the level on our
+# own logger only; uvicorn's access and error logs keep their own configuration.
+logging.getLogger("calypr_api").setLevel(settings.log_level.upper())
+logging.getLogger("calypr_runtime").setLevel(settings.log_level.upper())
+if not logging.getLogger().handlers:
+    # Nothing has configured a handler (the plain `uvicorn …` in the Dockerfile doesn't), so
+    # without this the records are emitted and then dropped for want of anywhere to go.
+    logging.basicConfig(format="%(levelname)s:     %(name)s: %(message)s")
 
 
 @asynccontextmanager
@@ -111,6 +124,8 @@ def create_app() -> FastAPI:
     app.include_router(provider_keys.router)
     app.include_router(waitlist.router)
     app.include_router(billing.router)
+    app.include_router(workspaces.router)
+    app.include_router(internal.router)
     return app
 
 

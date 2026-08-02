@@ -56,6 +56,12 @@ export default defineConfig({
       // checkout specs would fail locally while passing in CI (or worse, the reverse).
       env: {
         CALYPR_ASSISTANT_MODEL: "fake",
+        // Pinned empty for the same reason as STRIPE_* below. With a key set, every request is
+        // tenant-scoped to the signed-in dev user's own account — which then accumulates
+        // projects across runs and trips the free plan's project cap, and leaves code export
+        // paywalled. CI has no key, so without this the suite a developer runs is not the suite
+        // CI runs: 21 specs failed locally and passed in CI.
+        CALYPR_INTERNAL_KEY: "",
         CALYPR_ADMIN_TOKEN: "e2e-admin-token",
         STRIPE_SECRET_KEY: "",
         STRIPE_WEBHOOK_SECRET: "",

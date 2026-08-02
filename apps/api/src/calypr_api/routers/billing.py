@@ -22,8 +22,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from calypr_api import billing, credits
-from calypr_api.db.models import StripeEvent, Workspace
+from calypr_api import accounts, billing, credits
+from calypr_api.db.models import Account, StripeEvent
 from calypr_api.db.session import SessionLocal
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
@@ -64,13 +64,13 @@ def billing_status() -> BillingStatus:
 def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSession:
     """Start a Stripe Checkout Session for Plus and hand back its URL.
 
-    `client_reference_id` carries the workspace id through Stripe and back on the completed
+    `client_reference_id` carries the **account** id through Stripe and back on the completed
     event — it is how the payment is attributed without trusting anything the browser says."""
     if not billing.is_configured() or not billing.plus_price_id():
         raise HTTPException(status_code=503, detail="billing is not configured")
 
-    workspace = t.session.get(Workspace, t.workspace_id)
-    if workspace is None:
+    account = accounts.account_for_workspace(t.session, t.workspace_id)
+    if account is None:
         raise HTTPException(status_code=404, detail="workspace not found")
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
@@ -80,32 +80,33 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
             api_key=billing.secret_key(),
             mode="subscription",
             line_items=[{"price": billing.plus_price_id(), "quantity": 1}],
-            # Carries the workspace through Stripe and back on the completed event — how the
-            # payment is attributed without trusting anything the browser said.
-            client_reference_id=str(t.workspace_id),
-            # Reuse the customer if this workspace has paid before, so a re-subscribe doesn't
-            # create a second customer for the same tenant (the mapping is unique).
+            # Carries the account through Stripe and back on the completed event — how the
+            # payment is attributed without trusting anything the browser said. The *account*,
+            # not the workspace: one subscription covers every workspace the account owns.
+            client_reference_id=str(account.id),
+            # Reuse the customer if this account has paid before, so a re-subscribe doesn't
+            # create a second customer for the same payer (the mapping is unique).
             customer=customer or None,
             customer_email=t.email if not customer and t.email else None,
             success_url=f"{origin}/dashboard/settings?upgraded=1",
             cancel_url=f"{origin}/pricing",
         )
 
-    existing_customer = workspace.stripe_customer_id
+    existing_customer = account.stripe_customer_id
     try:
         checkout = _session(existing_customer)
     except stripe.InvalidRequestError as exc:
         # A stored customer that Stripe no longer knows (a test-mode customer under a live key,
-        # or one deleted in the dashboard) would wedge this workspace on every upgrade attempt.
+        # or one deleted in the dashboard) would wedge this account on every upgrade attempt.
         # Forget it and retry once with a fresh customer so the user is never permanently stuck.
         if not (existing_customer and _is_missing_customer(exc)):
             log.exception("stripe checkout session creation failed")
             raise HTTPException(status_code=502, detail="could not start checkout") from None
         log.warning(
-            "stale stripe customer %s on workspace %s; clearing and retrying checkout",
-            existing_customer, t.workspace_id,
+            "stale stripe customer %s on account %s; clearing and retrying checkout",
+            existing_customer, account.id,
         )
-        _forget_customer(workspace)
+        _forget_customer(account)
         t.session.commit()
         try:
             checkout = _session(None)
@@ -118,8 +119,8 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
 
     posthog_client.capture(
         "checkout_started",
-        distinct_id=str(t.workspace_id),
-        properties={"workspace_id": str(t.workspace_id)},
+        distinct_id=str(account.id),
+        properties={"account_id": str(account.id), "workspace_id": str(t.workspace_id)},
     )
     return CheckoutSession(url=checkout.url or "")
 
@@ -129,39 +130,39 @@ def get_subscription(t: Tenant = Depends(tenant)) -> SubscriptionInfo:
     """The plan + cycle state the Billing tab renders. Reads mirrored columns only — no live
     Stripe call — so the tab paints instantly. `portal_available` gates the "Manage billing"
     button: it needs both a Stripe customer (something to manage) and billing switched on."""
-    workspace = t.session.get(Workspace, t.workspace_id)
-    if workspace is None:
+    account = accounts.account_for_workspace(t.session, t.workspace_id)
+    if account is None:
         raise HTTPException(status_code=404, detail="workspace not found")
     return SubscriptionInfo(
-        plan=workspace.plan,
-        current_period_end=workspace.current_period_end,
-        cancel_at_period_end=workspace.cancel_at_period_end,
-        portal_available=bool(workspace.stripe_customer_id) and billing.is_configured(),
+        plan=account.plan,
+        current_period_end=account.current_period_end,
+        cancel_at_period_end=account.cancel_at_period_end,
+        portal_available=bool(account.stripe_customer_id) and billing.is_configured(),
     )
 
 
 @router.post("/portal", response_model=PortalSession)
 def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSession:
-    """Open Stripe's hosted Customer Portal for this workspace and hand back its URL.
+    """Open Stripe's hosted Customer Portal for this account and hand back its URL.
 
     The portal is where cancel / plan change / payment-method / invoice-history live — none of
-    that UI is ours, and no card data ever reaches us. A workspace with no `stripe_customer_id`
+    that UI is ours, and no card data ever reaches us. An account with no `stripe_customer_id`
     has nothing to manage (it never subscribed), so this 400s rather than creating an empty
     portal session."""
     if not billing.is_configured():
         raise HTTPException(status_code=503, detail="billing is not configured")
 
-    workspace = t.session.get(Workspace, t.workspace_id)
-    if workspace is None:
+    account = accounts.account_for_workspace(t.session, t.workspace_id)
+    if account is None:
         raise HTTPException(status_code=404, detail="workspace not found")
-    if not workspace.stripe_customer_id:
+    if not account.stripe_customer_id:
         raise HTTPException(status_code=400, detail="no subscription to manage")
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
     try:
         portal = stripe.billing_portal.Session.create(
             api_key=billing.secret_key(),
-            customer=workspace.stripe_customer_id,
+            customer=account.stripe_customer_id,
             return_url=f"{origin}/dashboard/settings?tab=billing",
         )
     except stripe.InvalidRequestError as exc:
@@ -172,10 +173,10 @@ def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSessio
             log.exception("stripe billing portal session creation failed")
             raise HTTPException(status_code=502, detail="could not open billing portal") from None
         log.warning(
-            "stale stripe customer %s on workspace %s; clearing (portal)",
-            workspace.stripe_customer_id, t.workspace_id,
+            "stale stripe customer %s on account %s; clearing (portal)",
+            account.stripe_customer_id, account.id,
         )
-        _forget_customer(workspace)
+        _forget_customer(account)
         t.session.commit()
         raise HTTPException(
             status_code=409, detail="subscription is no longer valid — please re-subscribe"
@@ -186,8 +187,8 @@ def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSessio
 
     posthog_client.capture(
         "billing_portal_opened",
-        distinct_id=str(t.workspace_id),
-        properties={"workspace_id": str(t.workspace_id)},
+        distinct_id=str(account.id),
+        properties={"account_id": str(account.id), "workspace_id": str(t.workspace_id)},
     )
     return PortalSession(url=portal.url or "")
 
@@ -235,18 +236,18 @@ def _period_end(sub: object) -> datetime | None:
     return _epoch(getattr(items[0], "current_period_end", None))
 
 
-def _mirror_cycle(workspace: Workspace, sub: object) -> None:
-    """Copy a Subscription's cycle fields onto the workspace row — the three columns the Billing
+def _mirror_cycle(account: Account, sub: object) -> None:
+    """Copy a Subscription's cycle fields onto the account row — the three columns the Billing
     tab reads. Used from both the subscription-event branch and, to beat event-ordering races,
     the checkout branch."""
-    workspace.stripe_subscription_id = _field(sub, "id")
-    workspace.current_period_end = _period_end(sub)
-    workspace.cancel_at_period_end = _bool(sub, "cancel_at_period_end")
+    account.stripe_subscription_id = _field(sub, "id")
+    account.current_period_end = _period_end(sub)
+    account.cancel_at_period_end = _bool(sub, "cancel_at_period_end")
 
 
 def _is_missing_customer(exc: stripe.StripeError) -> bool:
     """True when Stripe rejected a request because the referenced `customer` doesn't exist under
-    the current key — the classic wedge where a workspace carries a *test-mode* customer id and a
+    the current key — the classic wedge where an account carries a *test-mode* customer id and a
     *live* key is used (or the customer was deleted in Stripe). Matched on the `resource_missing`
     code for the `customer` param, not the message text, so it survives copy changes."""
     return (
@@ -255,13 +256,13 @@ def _is_missing_customer(exc: stripe.StripeError) -> bool:
     )
 
 
-def _forget_customer(workspace: Workspace) -> None:
-    """Drop a workspace's now-invalid Stripe customer mapping and its stale cycle fields, so the
+def _forget_customer(account: Account) -> None:
+    """Drop an account's now-invalid Stripe customer mapping and its stale cycle fields, so the
     next checkout mints a fresh customer instead of failing on the dead one forever."""
-    workspace.stripe_customer_id = None
-    workspace.stripe_subscription_id = None
-    workspace.current_period_end = None
-    workspace.cancel_at_period_end = False
+    account.stripe_customer_id = None
+    account.stripe_subscription_id = None
+    account.current_period_end = None
+    account.cancel_at_period_end = False
 
 
 def _apply(session: Session, event: stripe.Event) -> None:
@@ -271,20 +272,24 @@ def _apply(session: Session, event: stripe.Event) -> None:
 
     if kind == "checkout.session.completed":
         # The one event that can *establish* the mapping: everything later refers to the
-        # customer, and this is where we learn which workspace that customer is.
-        workspace_id = _field(data, "client_reference_id")
+        # customer, and this is where we learn which account that customer is.
+        #
+        # `client_reference_id` is an account id. Sessions created before 0016 put a *workspace*
+        # id here — those still resolve, because that migration gave each account the id of the
+        # workspace it replaced. See its docstring before changing how account ids are assigned.
+        account_id = _field(data, "client_reference_id")
         customer_id = _field(data, "customer")
-        if not workspace_id:
+        if not account_id:
             log.warning("checkout.session.completed with no client_reference_id: %s", event.id)
             return
-        workspace = session.get(Workspace, workspace_id)
-        if workspace is None:
-            log.warning("checkout completed for unknown workspace %s", workspace_id)
+        account = session.get(Account, account_id)
+        if account is None:
+            log.warning("checkout completed for unknown account %s", account_id)
             return
         if customer_id:
-            workspace.stripe_customer_id = customer_id
-        billing.set_plan(workspace, "plus")
-        # Populate the cycle fields at the authoritative "this workspace is now subscribed"
+            account.stripe_customer_id = customer_id
+        billing.set_plan(account, "plus")
+        # Populate the cycle fields at the authoritative "this account is now subscribed"
         # moment. Stripe doesn't guarantee event ordering, so `customer.subscription.created`
         # commonly arrives *before* this event maps the customer — and is then dropped as
         # "unmapped", leaving the cycle blank forever (Stripe never redelivers it). Retrieving
@@ -293,26 +298,26 @@ def _apply(session: Session, event: stripe.Event) -> None:
         if sub_id := _field(data, "subscription"):
             try:
                 sub = stripe.Subscription.retrieve(sub_id, api_key=billing.secret_key())
-                _mirror_cycle(workspace, sub)
+                _mirror_cycle(account, sub)
             except stripe.StripeError:
                 log.warning("could not retrieve subscription %s for cycle mirror", sub_id)
         # Grant immediately: `invoice.paid` usually accompanies the first payment, but relying
         # on ordering would leave a new subscriber with a Plus plan and no credits if it lands
         # first or is delayed. `grant_monthly` is idempotent per cycle, so a double is a no-op.
-        credits.grant_monthly(session, workspace, ref_id=f"checkout:{event.id}")
+        credits.grant_monthly(session, account, ref_id=f"checkout:{event.id}")
         session.commit()
         posthog_client.capture(
             "subscription_activated",
-            distinct_id=str(workspace.id),
-            properties={"workspace_id": str(workspace.id)},
+            distinct_id=str(account.id),
+            properties={"account_id": str(account.id)},
         )
-        log.info("workspace %s upgraded to plus", workspace.id)
+        log.info("account %s upgraded to plus", account.id)
         return
 
     if kind.startswith("customer.subscription."):
         customer_id = _field(data, "customer")
-        workspace = billing.workspace_for_customer(session, customer_id)
-        if workspace is None:
+        account = billing.account_for_customer(session, customer_id)
+        if account is None:
             # Not an error worth retrying: a customer we have no mapping for (created in the
             # dashboard by hand, or belonging to another environment) will never map on retry.
             log.warning("subscription event for unmapped customer %s", customer_id)
@@ -320,58 +325,58 @@ def _apply(session: Session, event: stripe.Event) -> None:
         deleted = kind.endswith(".deleted")
         status = "canceled" if deleted else (_field(data, "status") or "")
         plan = billing.plan_for_status(status)
-        changed = bool(plan) and billing.set_plan(workspace, plan)
+        changed = bool(plan) and billing.set_plan(account, plan)
         # Mirror the cycle fields the Billing tab reads. On `.deleted` the subscription is over,
         # so clear them; otherwise reflect the current period end and whether a cancel is pending
         # for the end of it (both set from the portal). Always persisted — a `cancel_at_period_end`
         # flip arrives as `.updated` with the same entitling status, so the plan doesn't change
         # but the tab must still learn the subscription is winding down.
         if deleted:
-            workspace.stripe_subscription_id = None
-            workspace.current_period_end = None
-            workspace.cancel_at_period_end = False
+            account.stripe_subscription_id = None
+            account.current_period_end = None
+            account.cancel_at_period_end = False
         else:
-            _mirror_cycle(workspace, data)
+            _mirror_cycle(account, data)
         session.commit()
         if changed:
-            log.info("workspace %s → %s (subscription %s)", workspace.id, plan, status)
+            log.info("account %s → %s (subscription %s)", account.id, plan, status)
         return
 
     if kind == "invoice.payment_failed":
         # Deliberately does *not* downgrade. Stripe is still retrying the card; the subscription
         # is what says whether it's over, and that arrives as `customer.subscription.updated`.
         customer_id = _field(data, "customer")
-        workspace = billing.workspace_for_customer(session, customer_id)
+        account = billing.account_for_customer(session, customer_id)
         log.warning(
-            "invoice payment failed for customer %s (workspace %s)",
+            "invoice payment failed for customer %s (account %s)",
             customer_id,
-            workspace.id if workspace else "unknown",
+            account.id if account else "unknown",
         )
-        if workspace is not None:
+        if account is not None:
             posthog_client.capture(
                 "invoice_payment_failed",
-                distinct_id=str(workspace.id),
-                properties={"workspace_id": str(workspace.id)},
+                distinct_id=str(account.id),
+                properties={"account_id": str(account.id)},
             )
         return
 
     if kind == "invoice.paid":
         # Renewal — and the moment the month's credits are issued. Re-asserting the plan keeps a
-        # workspace from drifting out of entitlement while it is genuinely paying.
-        workspace = billing.workspace_for_customer(session, _field(data, "customer"))
-        if workspace is None:
+        # account from drifting out of entitlement while it is genuinely paying.
+        account = billing.account_for_customer(session, _field(data, "customer"))
+        if account is None:
             return
-        changed = billing.set_plan(workspace, "plus")
+        changed = billing.set_plan(account, "plus")
         # The invoice id is the grant's idempotency key: Stripe delivers at-least-once, and a
         # redelivery that granted again would be free credits every month, forever.
         granted = credits.grant_monthly(
-            session, workspace, ref_id=_field(data, "id") or event.id
+            session, account, ref_id=_field(data, "id") or event.id
         )
         if changed or granted:
             session.commit()
             log.info(
-                "workspace %s renewal (plan_changed=%s credits_granted=%s)",
-                workspace.id, changed, granted,
+                "account %s renewal (plan_changed=%s credits_granted=%s)",
+                account.id, changed, granted,
             )
         return
 

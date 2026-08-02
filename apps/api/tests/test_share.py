@@ -12,7 +12,7 @@ import uuid
 
 import pytest
 from calypr_api.constants import DEV_WORKSPACE_ID
-from calypr_api.db.models import Agent, ShareLink, Workspace
+from calypr_api.db.models import Account, Agent, ShareLink, Workspace
 from calypr_api.db.session import SessionLocal, engine, set_tenant
 from calypr_api.main import app
 from calypr_compiler.golden import input_agent_output
@@ -77,7 +77,10 @@ def foreign_workspace_agent():
     local database accumulated one row per invocation indefinitely — 120 of them before anyone
     looked. The agent cascades with the workspace."""
     with SessionLocal() as s:
-        ws = Workspace(name="Other")
+        account = Account(plan="free")
+        s.add(account)
+        s.flush()
+        ws = Workspace(account_id=account.id, name="Other")
         s.add(ws)
         s.commit()
         s.refresh(ws)

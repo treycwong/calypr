@@ -9,12 +9,18 @@ export default async function SettingsPage({
   const session = await getSession();
   if (!session) return null; // the dashboard layout already redirects unauthenticated users
 
-  // Land on the Billing tab when returning from Stripe Checkout (`?upgraded=1`) or the Customer
-  // Portal (`?tab=billing`). Resolved server-side so the client renders the right tab on first
-  // paint — no post-mount switch, no hydration mismatch.
+  // Land on the right tab when arriving with one named: `?upgraded=1` returning from Stripe
+  // Checkout, `?tab=billing` from the Customer Portal, `?tab=workspace` from the sidebar's
+  // workspace switcher. Resolved server-side so the client renders the right tab on first paint
+  // — no post-mount switch, no hydration mismatch.
   const params = await searchParams;
+  const requested = typeof params.tab === "string" ? params.tab : "";
   const initialTab =
-    params.tab === "billing" || params.upgraded !== undefined ? "billing" : "account";
+    params.upgraded !== undefined
+      ? "billing"
+      : ["billing", "workspace", "account"].includes(requested)
+        ? requested
+        : "account";
 
   return (
     <SettingsView

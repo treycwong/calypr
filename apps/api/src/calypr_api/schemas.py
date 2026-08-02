@@ -181,10 +181,48 @@ class CreditUsage(BaseModel):
     used: int = 0
 
 
+class PlanLimits(BaseModel):
+    """What this plan allows, mirrored from `entitlements.LIMITS` so the client can render
+    "3 of 20" without hard-coding the 20 and drifting from what the API enforces."""
+
+    projects: int = 0
+    workspaces: int = 0
+    monthly_credits: int = 0
+    storage_bytes: int = 0
+
+
+class AccountUsage(BaseModel):
+    """What this account has used against `PlanLimits`. Pooled across its workspaces.
+
+    `storage_measured_at` is None until the nightly job has run — the UI says "not measured yet"
+    rather than showing a confident 0 B, because storage is measured on a schedule, not live."""
+
+    projects: int = 0
+    workspaces: int = 0
+    storage_bytes: int = 0
+    storage_measured_at: datetime | None = None
+
+
+class WorkspaceSummary(BaseModel):
+    """One row in the workspace switcher."""
+
+    id: str
+    name: str
+    created_at: datetime | None = None
+    is_current: bool = False
+
+
+class WorkspaceCreate(BaseModel):
+    name: str
+
+
 class WorkspaceInfo(BaseModel):
     id: str
     name: str
-    # Entitlement tier (`free|beta|plus`) — what the client gates optional features on.
+    # The account this workspace belongs to — who pays for it. Several workspaces can share one.
+    account_id: str = ""
+    # Entitlement tier (`free|beta|plus`) — what the client gates optional features on. Lives on
+    # the account, so it is the same across every workspace the user owns.
     plan: str = "free"
     # The signed-in user's email as the API sees it (the address the beta invite list is matched
     # against). Returned so the UI can say "you're signed in as X" when a feature is locked —
@@ -197,6 +235,9 @@ class WorkspaceInfo(BaseModel):
     default_model: str = ""
     # This cycle's credits. Enforcement without a display is a limit nobody can plan around.
     credits: CreditUsage = CreditUsage()
+    # The same reasoning applied to capacity: the caps and what's been used against them.
+    limits: PlanLimits = PlanLimits()
+    usage: AccountUsage = AccountUsage()
 
 
 class WorkspaceUpdate(BaseModel):

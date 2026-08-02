@@ -11,7 +11,12 @@ export type RunEvent =
   // surface this — the output is not from the model the user selected.
   | { type: "notice"; message: string }
   // `code` is a stable hint for the UI; "provider_key_rejected" gets a Fix it action.
-  | { type: "error"; message: string; code?: string };
+  | { type: "error"; message: string; code?: string }
+  // Share links only, and always first. Anonymous visitors all share one public token, so the
+  // conversation id is the only thing separating two strangers — which makes it a credential.
+  // The server therefore mints it rather than trusting one from the browser, and the client
+  // echoes this value back to continue the conversation.
+  | { type: "thread"; thread_id: string };
 
 /** POST a JSON body to a same-origin SSE proxy and yield parsed `data:` events until the
  * stream ends (`[DONE]`). Shared by `runAgent` and `assistAgent`. */
@@ -71,7 +76,8 @@ export async function* runAgent(
 export async function* runShare(
   token: string,
   message: string,
-  threadId: string,
+  /** Omitted on the first turn — the server mints it and returns it as a `thread` event. */
+  threadId: string | undefined,
   images: string[] = [],
 ): AsyncGenerator<RunEvent> {
   yield* streamSSE<RunEvent>(
@@ -307,6 +313,38 @@ export type WorkspaceInfo = {
   default_model?: string;
   /** This cycle's credit allowance and what's left, in whole credits. */
   credits?: { allowance: number; remaining: number; used: number };
+  /** What the plan allows. Served by the API so the UI can render "3 of 20" without hard-coding
+   * the 20 and drifting from what is actually enforced. */
+  limits?: PlanLimits;
+  /** What's been used against those caps, pooled across the account's workspaces. */
+  usage?: AccountUsage;
+};
+
+/** Plan caps. `storage_bytes` is displayed, not enforced — see `storage_usage.py` for why. */
+export type PlanLimits = {
+  projects: number;
+  workspaces: number;
+  monthly_credits: number;
+  storage_bytes: number;
+};
+
+/** Usage against `PlanLimits`, pooled per account.
+ *
+ * `storage_measured_at` is null until the nightly job has run: storage is measured on a
+ * schedule, so the UI says when rather than implying the number is live. */
+export type AccountUsage = {
+  projects: number;
+  workspaces: number;
+  storage_bytes: number;
+  storage_measured_at?: string | null;
+};
+
+/** One row in the workspace switcher. */
+export type WorkspaceSummary = {
+  id: string;
+  name: string;
+  created_at?: string | null;
+  is_current: boolean;
 };
 
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
@@ -431,6 +469,73 @@ export async function renameWorkspace(name: string): Promise<WorkspaceInfo> {
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error(`rename failed (${res.status})`);
+  return res.json();
+}
+
+/** Every workspace on this account — the switcher's list. */
+export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
+  const res = await fetch("/api/workspaces", { cache: "no-store" });
+  if (!res.ok) throw new Error(`workspaces failed (${res.status})`);
+  return res.json();
+}
+
+/** Raised when a plan cap refuses an action, carrying the API's message so the UI can show
+ * what the user actually ran out of rather than a generic failure. */
+export class CapReachedError extends Error {
+  constructor(
+    readonly reason: string,
+    message: string,
+    readonly limit?: number,
+  ) {
+    super(message);
+    this.name = "CapReachedError";
+  }
+}
+
+/** Create a workspace. Throws `CapReachedError` when the plan's workspace cap is reached. */
+export async function createWorkspace(name: string): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/workspaces", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (res.status === 402) {
+    const detail = (await res.json().catch(() => ({}))).detail ?? {};
+    throw new CapReachedError(
+      detail.reason ?? "workspace_cap",
+      detail.message ?? "You've reached your plan's workspace limit.",
+      detail.limit,
+    );
+  }
+  if (!res.ok) throw new Error(`create workspace failed (${res.status})`);
+  return res.json();
+}
+
+/** Delete a workspace and everything in it. The API refuses the last one. */
+export async function deleteWorkspace(id: string): Promise<void> {
+  const res = await fetch(`/api/workspaces/${id}`, { method: "DELETE" });
+  if (!res.ok && res.status !== 204) {
+    const detail = (await res.json().catch(() => ({}))).detail;
+    throw new Error(typeof detail === "string" ? detail : `delete failed (${res.status})`);
+  }
+}
+
+/** Remember which workspace is open. A cookie the API validates — see `workspace/switch`.
+ * Pass no id to clear it (sign-out). Callers should `router.refresh()` afterwards: the dashboard
+ * shell is a server component that reads this cookie. */
+export async function switchWorkspace(id?: string): Promise<void> {
+  const res = await fetch("/api/workspace/switch", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspace_id: id ?? "" }),
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`switch failed (${res.status})`);
+}
+
+/** Credits, projects, workspaces and storage against the caps — the Usage tab. */
+export async function getUsage(): Promise<WorkspaceInfo> {
+  const res = await fetch("/api/usage", { cache: "no-store" });
+  if (!res.ok) throw new Error(`usage failed (${res.status})`);
   return res.json();
 }
 

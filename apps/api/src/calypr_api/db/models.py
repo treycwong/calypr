@@ -30,47 +30,37 @@ from sqlalchemy.orm import Mapped, mapped_column
 from calypr_api.db.base import Base
 
 
-class Workspace(Base):
-    """A tenant. Maps 1:1 to a Clerk organization (org = tenant)."""
+class Account(Base):
+    """Who pays. One per signed-in user, owning one or more workspaces (0016_accounts).
 
-    __tablename__ = "workspace"
+    The split with `Workspace` is **who pays vs. where work lives**. Everything that must not
+    multiply when a user creates a second workspace lives here: the plan, the Stripe customer and
+    subscription, the credit balance, the storage figure. Quotas — projects, credits, storage —
+    are therefore pooled across an account's workspaces by construction rather than by remembering
+    to sum them.
+
+    Account ids were seeded from the workspace ids they replaced, so a Stripe checkout session
+    minted before that migration still resolves. See the 0016 docstring before changing how ids
+    are assigned."""
+
+    __tablename__ = "billing_account"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    clerk_org_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
-    # A user's personal workspace (= Better Auth user.id); NULL for the shared dev workspace.
+    # = Better Auth user.id; NULL for the shared dev account. No FK — the `user` table belongs to
+    # Better Auth, not Alembic (the reasoning 0003 set out and 0016 kept).
     owner_user_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
     # Entitlement tier: `free | beta | plus`. Read through `calypr_api.entitlements` rather than
-    # compared inline, so gating rules live in one place. Billing (Stripe, credits) lands later —
-    # this column is only what feature gating reads.
+    # compared inline, so gating rules live in one place.
     plan: Mapped[str] = mapped_column(String, nullable=False, server_default="free")
-    # Which model the AI assistant drafts graphs with, chosen in Settings → Workspace. Empty
-    # string = inherit `CALYPR_ASSISTANT_MODEL` (the server default); validated on write against
-    # `calypr_api.assistant_models.ASSISTANT_MODELS`.
-    assistant_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
-    # The model this workspace's LLM *nodes* run on when they don't name one themselves
-    # (node configs ship `model: ""`). Empty = `PLATFORM_DEFAULT_MODEL` (gpt-4o-mini).
-    # Same allow-list as `assistant_model`; resolved into runs and codegen by
-    # `calypr_api.workspace_model.apply_default_model`.
-    default_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
-    # The Stripe customer this workspace bills as. Subscription events name a customer, not
-    # a workspace, so this is what maps a payment back to whose plan should change. Unique:
-    # two workspaces on one customer would make that mapping ambiguous.
+    # The Stripe customer this account bills as. Subscription events name a customer, not an
+    # account, so this is what maps a payment back to whose plan should change. Unique: two
+    # accounts on one customer would make that mapping ambiguous.
     stripe_customer_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
-    # Cached credit balance in micro-credits (1 credit = 1,000 micro). The `credit_ledger` is
-    # the truth; this is kept in the same transaction so the hot path reads one column instead
-    # of summing every row. `credits.recompute_balance` repairs drift in the ledger's favour.
-    credit_balance_micro: Mapped[int] = mapped_column(
-        BigInteger, nullable=False, server_default="0"
-    )
-    # The month whose grant has been issued — makes "already granted this cycle?" a comparison
-    # rather than a scan.
-    grant_cycle_anchor: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
     # --- Subscription cycle (for the Billing tab) --------------------------------------------
     # Mirrored from Stripe's `customer.subscription.*` events so the Billing tab can show the
-    # renewal/cancel date without a live Stripe call on every page load. NULL for a workspace
+    # renewal/cancel date without a live Stripe call on every page load. NULL for an account
     # that has never subscribed (Free, or `beta`). `current_period_end` is when the current paid
     # period ends — the renewal date, or the cutoff date once `cancel_at_period_end` is set.
     stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -80,6 +70,59 @@ class Workspace(Base):
     cancel_at_period_end: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
     )
+    # Cached credit balance in micro-credits (1 credit = 1,000 micro). The `credit_ledger` is
+    # the truth; this is kept in the same transaction so the hot path reads one column instead
+    # of summing every row. `credits.recompute_balance` repairs drift in the ledger's favour.
+    credit_balance_micro: Mapped[int] = mapped_column(
+        BigInteger, nullable=False, server_default="0"
+    )
+    # The month whose grant has been issued — makes "already granted this cycle?" a comparison
+    # rather than a scan.
+    grant_cycle_anchor: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    # Bytes this account is using, as of `storage_measured_at`. Written by the nightly job in
+    # `storage_usage.py` — never on the hot path, because measuring it means summing
+    # `pg_column_size` over every graph and checkpoint blob. NULL `storage_measured_at` means
+    # never measured, which the UI reports honestly rather than showing a confident 0 B.
+    storage_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    storage_measured_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Workspace(Base):
+    """Where work lives: a named container for agents, runs and connectors.
+
+    The unit the RLS GUC (`calypr.workspace_id`) scopes to, and the unit a request resolves to —
+    so every domain table below stays workspace-scoped and their policies were untouched by the
+    account split. What a workspace no longer owns is anything to do with money; that moved to
+    `Account` in 0016 so three workspaces don't mean three subscriptions.
+
+    `clerk_org_id` is vestigial — Clerk was never wired up, Better Auth is what runs."""
+
+    __tablename__ = "workspace"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    clerk_org_id: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("billing_account.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    # Which model the AI assistant drafts graphs with, chosen in Settings → Workspace. Empty
+    # string = inherit `CALYPR_ASSISTANT_MODEL` (the server default); validated on write against
+    # `calypr_api.assistant_models.ASSISTANT_MODELS`.
+    assistant_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
+    # The model this workspace's LLM *nodes* run on when they don't name one themselves
+    # (node configs ship `model: ""`). Empty = `PLATFORM_DEFAULT_MODEL` (gpt-4o-mini).
+    # Same allow-list as `assistant_model`; resolved into runs and codegen by
+    # `calypr_api.workspace_model.apply_default_model`.
+    default_model: Mapped[str] = mapped_column(String, nullable=False, server_default="")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -323,7 +366,7 @@ class CreditLedger(Base):
     just a counter is what makes "why is my balance this?" answerable, which matters the first
     time a customer disputes a charge.
 
-    `ref_id` is what makes a grant idempotent: unique per workspace for `kind='grant'`, so a
+    `ref_id` is what makes a grant idempotent: unique per account for `kind='grant'`, so a
     redelivered `invoice.paid` cannot grant twice."""
 
     __tablename__ = "credit_ledger"
@@ -331,8 +374,17 @@ class CreditLedger(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
     )
-    workspace_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workspace.id", ondelete="CASCADE"), nullable=False
+    #: Whose balance this moves. The account, not the workspace — credits pool across an
+    #: account's workspaces, so this is the column the balance is summed over.
+    account_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("billing_account.id", ondelete="CASCADE"), nullable=False
+    )
+    #: **Provenance, not the balance key**: which workspace spent this. Nullable because a grant
+    #: or a Stripe top-up belongs to the account and happened in no particular workspace. Kept
+    #: (rather than dropped in 0016) so a per-workspace usage breakdown stays possible without
+    #: another migration.
+    workspace_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspace.id", ondelete="CASCADE"), nullable=True
     )
     #: Signed micro-credits: + grant/top-up, − debit.
     delta_micro: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -340,6 +392,33 @@ class CreditLedger(Base):
     source: Mapped[str | None] = mapped_column(String, nullable=True)  # run|assist|share|stripe
     ref_id: Mapped[str | None] = mapped_column(String, nullable=True)
     model: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Upload(Base):
+    """A file a workspace pushed to Vercel Blob.
+
+    The bytes live in Blob, not here; this row exists so they are *attributable*. Before 0016 an
+    upload wrote no database row at all, which meant no per-account storage figure could include
+    them and nothing could ever reclaim an orphaned object. This table starts that record — blobs
+    written before it remain unaccounted for, and there is no way to recover them."""
+
+    __tablename__ = "upload"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    blob_url: Mapped[str] = mapped_column(String, nullable=False)
+    pathname: Mapped[str] = mapped_column(String, nullable=False)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    content_type: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

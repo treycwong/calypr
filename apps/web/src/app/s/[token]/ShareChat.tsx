@@ -23,8 +23,11 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
-  const newThread = () => `share-${Math.random().toString(36).slice(2)}`;
-  const [threadId] = useState(newThread);
+  // Not minted here. On a public share link the conversation id is the only thing separating
+  // two anonymous visitors, so the server mints it (`secrets`, 128 bits) and sends it back as
+  // the first event; we hold it and echo it to continue. A browser-chosen `Math.random` value
+  // was guessable enough that naming someone else's id resumed their conversation.
+  const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const attach = useAttachment(
@@ -56,7 +59,8 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
     let errored = false;
     try {
       for await (const ev of runShare(token, text, threadId, images)) {
-        if (ev.type === "token") apply(ev.text);
+        if (ev.type === "thread") setThreadId(ev.thread_id);
+        else if (ev.type === "token") apply(ev.text);
         else if (ev.type === "error") {
           errored = true;
           apply(`⚠️ ${ev.message}`);

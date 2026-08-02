@@ -69,6 +69,7 @@ pytest_db = pytest.mark.skipif(not _db_available(), reason="Postgres not availab
 
 @pytest_db
 def test_fake_run_writes_run_and_usage_rows():
+    from calypr_api import threads
     from calypr_api.db.models import Run, RunUsage
     from sqlalchemy import select
 
@@ -79,7 +80,11 @@ def test_fake_run_writes_run_and_usage_rows():
 
     with SessionLocal() as s:
         set_tenant(s, DEV_WORKSPACE_ID)
-        run = s.execute(select(Run).where(Run.thread_id == thread)).scalar_one()
+        # The stored thread id is namespaced under the resolved workspace — the request body
+        # no longer decides which conversation is loaded (see `threads.py`), so the suffix the
+        # client sent is only the tail of it.
+        stored = threads.workspace_thread(DEV_WORKSPACE_ID, thread)
+        run = s.execute(select(Run).where(Run.thread_id == stored)).scalar_one()
         assert run.status == "completed"
         assert run.source == "playground"
         assert run.finished_at is not None

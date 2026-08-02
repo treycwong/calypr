@@ -11,7 +11,7 @@ import uuid
 import pytest
 from calypr_api import deps, entitlements
 from calypr_api.config import settings
-from calypr_api.db.models import Waitlist, Workspace
+from calypr_api.db.models import Account, Waitlist
 from calypr_api.db.session import SessionLocal, engine
 from calypr_api.main import app
 from calypr_codegen import generate_python
@@ -148,45 +148,34 @@ def test_invite_stamps_existing_signups_and_adds_new_ones(monkeypatch):
 
 
 @requires_db
-def test_invited_email_auto_grants_beta_on_sign_in(monkeypatch):
+def test_invited_email_auto_grants_beta_on_sign_in(monkeypatch, tenant_factory):
     # The point of the invite list: stamp an address, they sign in, beta switches on by itself.
     monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
     email = f"partner.{uuid.uuid4().hex[:8]}@example.com"
     client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
 
+    account_id = tenant_factory(entitlements.FREE).account_id
     with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        original, ws.plan = ws.plan, entitlements.FREE
-        s.commit()
-
-        assert entitlements.grant_beta_if_invited(s, ws, email) is True
-        assert ws.plan == entitlements.BETA
+        acct = s.get(Account, account_id)
+        assert entitlements.grant_beta_if_invited(s, acct, email) is True
+        assert acct.plan == entitlements.BETA
         # Idempotent: a second sign-in changes nothing.
-        assert entitlements.grant_beta_if_invited(s, ws, email) is False
-
-        ws.plan = original
+        assert entitlements.grant_beta_if_invited(s, acct, email) is False
         s.commit()
 
 
 @requires_db
-def test_joining_the_waitlist_is_not_enough_to_get_beta():
+def test_joining_the_waitlist_is_not_enough_to_get_beta(tenant_factory):
     # The distinction that makes this a *closed* beta: on the list ≠ invited.
     email = f"pending.{uuid.uuid4().hex[:8]}@example.com"
     client.post("/waitlist", json={"email": email})
 
+    account_id = tenant_factory(entitlements.FREE).account_id
     with SessionLocal() as s:
         assert entitlements.is_invited(s, email) is False
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        original, ws.plan = ws.plan, entitlements.FREE
-        s.commit()
-        assert entitlements.grant_beta_if_invited(s, ws, email) is False
-        assert ws.plan == entitlements.FREE
-        ws.plan = original
-        s.commit()
+        acct = s.get(Account, account_id)
+        assert entitlements.grant_beta_if_invited(s, acct, email) is False
+        assert acct.plan == entitlements.FREE
 
 
 @requires_db
@@ -198,22 +187,17 @@ def test_a_stranger_never_gets_beta():
 
 
 @requires_db
-def test_auto_grant_never_downgrades_or_touches_plus(monkeypatch):
+def test_auto_grant_never_downgrades_or_touches_plus(monkeypatch, tenant_factory):
     # One-way and only from `free`, so the manual admin route stays authoritative.
     monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
     email = f"plusser.{uuid.uuid4().hex[:8]}@example.com"
     client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
 
+    account_id = tenant_factory(entitlements.PLUS).account_id
     with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        original, ws.plan = ws.plan, entitlements.PLUS
-        s.commit()
-        assert entitlements.grant_beta_if_invited(s, ws, email) is False
-        assert ws.plan == entitlements.PLUS, "a plus workspace must not be downgraded to beta"
-        ws.plan = original
-        s.commit()
+        acct = s.get(Account, account_id)
+        assert entitlements.grant_beta_if_invited(s, acct, email) is False
+        assert acct.plan == entitlements.PLUS, "a plus account must not be downgraded to beta"
 
 
 # --- admin routes fail closed ----------------------------------------------------------------
@@ -248,7 +232,11 @@ def test_promote_workspace_to_beta_and_stamp_the_invite(monkeypatch):
     with SessionLocal() as s:
         ws_id = s.execute(text("SELECT id FROM workspace LIMIT 1")).scalar()
         original = s.execute(
-            text("SELECT plan FROM workspace WHERE id = :i"), {"i": ws_id}
+            text(
+                "SELECT a.plan FROM billing_account a JOIN workspace w ON w.account_id = a.id"
+                " WHERE w.id = :i"
+            ),
+            {"i": ws_id},
         ).scalar()
     if ws_id is None:
         pytest.skip("no workspace rows to promote")
@@ -320,44 +308,24 @@ def test_parse_is_open_when_no_internal_key_is_set(monkeypatch):
 
 
 @requires_db
-def test_parse_402s_for_a_workspace_that_has_not_paid(monkeypatch):
+def test_parse_402s_for_a_workspace_that_has_not_paid(monkeypatch, tenant_factory):
     monkeypatch.setattr(settings, "internal_key", "internal-test-key")
-    with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        ws_id, original, ws.plan = ws.id, ws.plan, entitlements.FREE
-        s.commit()
+    ws_id = tenant_factory(entitlements.FREE).workspace_id
     monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
-    try:
-        r = client.post("/parse", json=_parse_body())
-        assert r.status_code == 402
-        assert r.json()["detail"]["feature"] == "code_export"
-    finally:
-        with SessionLocal() as s:
-            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
-            s.commit()
+    r = client.post("/parse", json=_parse_body())
+    assert r.status_code == 402
+    assert r.json()["detail"]["feature"] == "code_export"
 
 
 @requires_db
 @pytest.mark.parametrize("plan", [entitlements.BETA, entitlements.PLUS])
-def test_parse_serves_an_entitled_workspace(monkeypatch, plan: str):
+def test_parse_serves_an_entitled_workspace(monkeypatch, plan: str, tenant_factory):
     monkeypatch.setattr(settings, "internal_key", "internal-test-key")
-    with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        ws_id, original, ws.plan = ws.id, ws.plan, plan
-        s.commit()
+    ws_id = tenant_factory(plan).workspace_id
     monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
-    try:
-        r = client.post("/parse", json=_parse_body())
-        assert r.status_code == 200
-        assert r.json()["graph"]["nodes"], "an entitled caller still gets a parsed graph"
-    finally:
-        with SessionLocal() as s:
-            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
-            s.commit()
+    r = client.post("/parse", json=_parse_body())
+    assert r.status_code == 200
+    assert r.json()["graph"]["nodes"], "an entitled caller still gets a parsed graph"
 
 
 # --- the code preview on /codegen -------------------------------------------------------------
@@ -388,39 +356,31 @@ def test_codegen_returns_the_whole_file_when_no_internal_key_is_set(monkeypatch)
         (entitlements.BETA, False),
     ],
 )
-def test_codegen_serves_the_file_only_to_an_entitled_plan(monkeypatch, plan, expect_truncated):
+def test_codegen_serves_the_file_only_to_an_entitled_plan(
+    monkeypatch, plan, expect_truncated, tenant_factory
+):
     """Both outcomes through the same code path, so the truncation is demonstrably driven by
     the plan column — not by an unresolvable user, which is a different reason to get a
     preview and would make a free-only test pass for the wrong reason."""
     monkeypatch.setattr(settings, "internal_key", "internal-test-key")
-    with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        ws_id, original, ws.plan = ws.id, ws.plan, plan
-        s.commit()
+    ws_id = tenant_factory(plan).workspace_id
     monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
-    try:
-        r = client.post(
-            "/codegen",
-            json=_graph(),
-            headers={"x-calypr-internal-key": "internal-test-key", "x-calypr-user-id": "u"},
-        )
-        body = r.json()
-        assert r.status_code == 200, "opening the Code tab must never error"
-        assert body["truncated"] is expect_truncated
-        if expect_truncated:
-            # The preview is real, readable code — that's what makes it worth upgrading for —
-            # but it must stop before the part being sold.
-            assert "import" in body["code"]
-            assert "def build_graph" not in body["code"]
-            assert body["total_lines"] > body["code"].count("\n")
-        else:
-            assert "def build_graph" in body["code"]
-    finally:
-        with SessionLocal() as s:
-            s.query(Workspace).filter(Workspace.id == ws_id).update({"plan": original})
-            s.commit()
+    r = client.post(
+        "/codegen",
+        json=_graph(),
+        headers={"x-calypr-internal-key": "internal-test-key", "x-calypr-user-id": "u"},
+    )
+    body = r.json()
+    assert r.status_code == 200, "opening the Code tab must never error"
+    assert body["truncated"] is expect_truncated
+    if expect_truncated:
+        # The preview is real, readable code — that's what makes it worth upgrading for —
+        # but it must stop before the part being sold.
+        assert "import" in body["code"]
+        assert "def build_graph" not in body["code"]
+        assert body["total_lines"] > body["code"].count("\n")
+    else:
+        assert "def build_graph" in body["code"]
 
 
 def test_codegen_previews_for_a_signed_out_caller(monkeypatch):
@@ -444,7 +404,7 @@ def test_codegen_previews_when_the_internal_key_is_wrong(monkeypatch):
 
 
 @requires_db
-def test_a_demotion_sticks_after_the_invite_has_been_redeemed(monkeypatch):
+def test_a_demotion_sticks_after_the_invite_has_been_redeemed(monkeypatch, tenant_factory):
     """The scenario that matters when the beta ends: demote someone to `free`, and they must
     *stay* free through their next sign-in.
 
@@ -454,56 +414,42 @@ def test_a_demotion_sticks_after_the_invite_has_been_redeemed(monkeypatch):
     email = f"trial.{uuid.uuid4().hex[:8]}@example.com"
     client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
 
+    account_id = tenant_factory(entitlements.FREE).account_id
     with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        original, ws.plan = ws.plan, entitlements.FREE
+        acct = s.get(Account, account_id)
+        # Day 1: they sign in and the invite is redeemed.
+        assert entitlements.grant_beta_if_invited(s, acct, email) is True
+        assert acct.plan == entitlements.BETA
         s.commit()
-        try:
-            # Day 1: they sign in and the invite is redeemed.
-            assert entitlements.grant_beta_if_invited(s, ws, email) is True
-            assert ws.plan == entitlements.BETA
-            s.commit()
 
-            # Day 14: the trial ends and we put them back on free.
-            ws.plan = entitlements.FREE
-            s.commit()
+        # Day 14: the trial ends and we put them back on free.
+        acct.plan = entitlements.FREE
+        s.commit()
 
-            # Day 15: they sign in again. The invite is spent, so nothing happens.
-            assert entitlements.grant_beta_if_invited(s, ws, email) is False
-            assert ws.plan == entitlements.FREE, "a demotion must survive the next sign-in"
-        finally:
-            ws.plan = original
-            s.commit()
+        # Day 15: they sign in again. The invite is spent, so nothing happens.
+        assert entitlements.grant_beta_if_invited(s, acct, email) is False
+        assert acct.plan == entitlements.FREE, "a demotion must survive the next sign-in"
 
 
 @requires_db
-def test_re_inviting_someone_lets_them_back_in(monkeypatch):
+def test_re_inviting_someone_lets_them_back_in(monkeypatch, tenant_factory):
     """The deliberate way back: stamp a fresh invite and the key works again. Demoting is
-    reversible without touching workspace ids by hand."""
+    reversible without touching account ids by hand."""
     monkeypatch.setenv("CALYPR_ADMIN_TOKEN", ADMIN_TOKEN)
     email = f"return.{uuid.uuid4().hex[:8]}@example.com"
     client.post("/admin/invite", json={"emails": [email]}, headers={"x-admin-token": ADMIN_TOKEN})
 
+    account_id = tenant_factory(entitlements.FREE).account_id
     with SessionLocal() as s:
-        ws = s.query(Workspace).first()
-        if ws is None:
-            pytest.skip("no workspace rows")
-        original, ws.plan = ws.plan, entitlements.FREE
+        acct = s.get(Account, account_id)
+        assert entitlements.grant_beta_if_invited(s, acct, email) is True
+        acct.plan = entitlements.FREE
         s.commit()
-        try:
-            assert entitlements.grant_beta_if_invited(s, ws, email) is True
-            ws.plan = entitlements.FREE
-            s.commit()
-            assert entitlements.grant_beta_if_invited(s, ws, email) is False
+        assert entitlements.grant_beta_if_invited(s, acct, email) is False
 
-            # Clearing the redemption is what "invite them again" means.
-            row = s.scalar(select(Waitlist).where(Waitlist.email == email))
-            row.granted_at = None
-            s.commit()
-            assert entitlements.grant_beta_if_invited(s, ws, email) is True
-            assert ws.plan == entitlements.BETA
-        finally:
-            ws.plan = original
-            s.commit()
+        # Clearing the redemption is what "invite them again" means.
+        row = s.scalar(select(Waitlist).where(Waitlist.email == email))
+        row.granted_at = None
+        s.commit()
+        assert entitlements.grant_beta_if_invited(s, acct, email) is True
+        assert acct.plan == entitlements.BETA

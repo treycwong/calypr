@@ -14,8 +14,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from calypr_api import entitlements
-from calypr_api.db.models import Waitlist, Workspace
+from calypr_api import accounts, entitlements
+from calypr_api.db.models import Waitlist
 from calypr_api.db.session import get_session
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
@@ -114,7 +114,12 @@ def set_workspace_plan(
     _: None = Depends(require_admin),
     session: Session = Depends(get_session),
 ) -> dict[str, str]:
-    """Move a workspace between tiers — how a design partner gets into the beta.
+    """Move a workspace's **account** between tiers — how a design partner gets into the beta.
+
+    Still addressed by workspace id: that's the id an operator has to hand (it's what the logs
+    and PostHog show), and since 0016 the plan lives one hop up on the account. The tier applies
+    to every workspace that account owns, which is the intended behaviour — a plan is a person's,
+    not a folder's.
 
     Deliberately an operator endpoint with no UI: the closed beta is ~10–25 partners, so a
     curl is the right amount of machinery. Stamps `waitlist.invited_at` when the owner's email
@@ -123,11 +128,11 @@ def set_workspace_plan(
         raise HTTPException(
             status_code=422, detail=f"plan must be one of {list(entitlements.PLANS)}"
         )
-    ws = session.get(Workspace, workspace_id)
-    if ws is None:
+    account = accounts.account_for_workspace(session, workspace_id)
+    if account is None:
         raise HTTPException(status_code=404, detail="workspace not found")
 
-    ws.plan = body.plan
+    account.plan = body.plan
     if body.email:
         entry = session.scalar(select(Waitlist).where(Waitlist.email == _normalize(body.email)))
         if entry is not None and entry.invited_at is None:
@@ -139,4 +144,4 @@ def set_workspace_plan(
         distinct_id=str(workspace_id),
         properties={"plan": body.plan},
     )
-    return {"id": str(ws.id), "plan": ws.plan}
+    return {"id": str(workspace_id), "plan": account.plan}

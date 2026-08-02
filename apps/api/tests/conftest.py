@@ -6,8 +6,57 @@ also set while the tests run. That is fine for most settings and actively wrong 
 
 from __future__ import annotations
 
+import uuid
+from dataclasses import dataclass
+
 import pytest
 from calypr_api.config import settings
+from calypr_api.db.models import Account, Workspace
+from calypr_api.db.session import SessionLocal
+
+
+@dataclass(frozen=True)
+class Tenant:
+    """An account and one of its workspaces.
+
+    Since 0016 the two are different things — the account pays (plan, credits, Stripe) and the
+    workspace holds the work — so a test that wants "a Plus tenant" needs both. Handing back
+    both ids keeps tests from having to re-derive one from the other and from accidentally
+    depending on the migration-era coincidence that they were once equal."""
+
+    account_id: uuid.UUID
+    workspace_id: uuid.UUID
+
+
+@pytest.fixture
+def tenant_factory():
+    """Throwaway account + workspace pairs, removed afterwards (everything cascades)."""
+    made: list[uuid.UUID] = []
+
+    def make(plan: str = "free", *, workspaces: int = 1, name: str | None = None) -> Tenant:
+        label = name or f"test-{uuid.uuid4().hex[:8]}"
+        with SessionLocal() as s:
+            account = Account(plan=plan)
+            s.add(account)
+            s.flush()
+            first: Workspace | None = None
+            for i in range(workspaces):
+                ws = Workspace(
+                    account_id=account.id, name=label if i == 0 else f"{label}-{i}"
+                )
+                s.add(ws)
+                s.flush()
+                first = first or ws
+            s.commit()
+            made.append(account.id)
+            assert first is not None
+            return Tenant(account_id=account.id, workspace_id=first.id)
+
+    yield make
+
+    with SessionLocal() as s:
+        s.query(Account).filter(Account.id.in_(made)).delete(synchronize_session=False)
+        s.commit()
 
 
 @pytest.fixture(autouse=True)
