@@ -153,6 +153,26 @@ class CheckoutSession(BaseModel):
     url: str
 
 
+class PortalSession(BaseModel):
+    """Where to send the browser to manage an existing subscription — Stripe's hosted Customer
+    Portal handles cancel / plan change / payment method / invoices, so none of that UI lives
+    here. The client redirects to this URL."""
+
+    url: str
+
+
+class SubscriptionInfo(BaseModel):
+    """What the Billing tab renders without a live Stripe call: the plan, when the current paid
+    period ends (the renewal date, or the cutoff once a cancel is pending), and whether the
+    "Manage billing" button can open the portal (true only once a workspace has a Stripe
+    customer). All mirrored from the subscription webhook."""
+
+    plan: str = "free"
+    current_period_end: datetime | None = None
+    cancel_at_period_end: bool = False
+    portal_available: bool = False
+
+
 class CreditUsage(BaseModel):
     """This cycle's credit allowance and what's left of it, in whole credits."""
 

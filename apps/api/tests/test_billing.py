@@ -343,3 +343,73 @@ def test_a_checkout_without_a_workspace_reference_is_ignored(configured):
     # Nothing to attribute the payment to; must not raise, must not guess.
     body, headers = _signed(_event("checkout.session.completed", {"customer": "cus_x"}))
     assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+
+
+# --- the subscription cycle mirror (database) ----------------------------------------------------
+
+
+@requires_db
+def test_a_subscription_update_mirrors_the_cycle_for_the_billing_tab(configured):
+    """The Billing tab reads mirrored columns, not Stripe. A `customer.subscription.updated` with
+    a pending cancellation must land `current_period_end` + `cancel_at_period_end` + the
+    subscription id on the row — even though the plan is unchanged (an `active` sub set to cancel
+    at period end still entitles Plus until then) — and a later `.deleted` must clear them."""
+    customer = f"cus_{uuid.uuid4().hex[:12]}"
+    period_end = int(time.time()) + 30 * 86400
+    with SessionLocal() as s:
+        ws = s.query(Workspace).filter(Workspace.owner_user_id.is_(None)).first()
+        if ws is None:
+            pytest.skip("no workspace rows")
+        ws_id = ws.id
+        saved = (ws.plan, ws.stripe_customer_id, ws.stripe_subscription_id,
+                 ws.current_period_end, ws.cancel_at_period_end)
+        ws.plan, ws.stripe_customer_id = entitlements.PLUS, customer
+        ws.stripe_subscription_id, ws.current_period_end = None, None
+        ws.cancel_at_period_end = False
+        s.commit()
+
+    try:
+        body, headers = _signed(
+            _event(
+                "customer.subscription.updated",
+                {
+                    "id": "sub_test_cycle",
+                    "customer": customer,
+                    "status": "active",
+                    "current_period_end": period_end,
+                    "cancel_at_period_end": True,
+                },
+            )
+        )
+        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+
+        with SessionLocal() as s:
+            ws = s.get(Workspace, ws_id)
+            assert ws.plan == entitlements.PLUS, "cancel-at-period-end still entitles Plus"
+            assert ws.stripe_subscription_id == "sub_test_cycle"
+            assert ws.cancel_at_period_end is True
+            assert ws.current_period_end is not None
+            assert int(ws.current_period_end.timestamp()) == period_end
+
+        # The subscription actually ending clears the mirror.
+        body, headers = _signed(
+            _event("customer.subscription.deleted", {"customer": customer, "status": "canceled"})
+        )
+        assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+        with SessionLocal() as s:
+            ws = s.get(Workspace, ws_id)
+            assert ws.stripe_subscription_id is None
+            assert ws.current_period_end is None
+            assert ws.cancel_at_period_end is False
+    finally:
+        with SessionLocal() as s:
+            s.query(Workspace).filter(Workspace.id == ws_id).update(
+                {
+                    "plan": saved[0],
+                    "stripe_customer_id": saved[1],
+                    "stripe_subscription_id": saved[2],
+                    "current_period_end": saved[3],
+                    "cancel_at_period_end": saved[4],
+                }
+            )
+            s.commit()

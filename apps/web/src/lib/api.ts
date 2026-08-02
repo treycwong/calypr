@@ -377,6 +377,35 @@ export async function startCheckout(): Promise<string | null> {
   return (await res.json()).url as string;
 }
 
+/** What the Billing tab renders: the plan, when the current paid period ends (renewal date, or
+ * cutoff once a cancel is pending), and whether "Manage billing" can open the Stripe portal. */
+export type SubscriptionInfo = {
+  plan: string;
+  /** ISO 8601, or null for a workspace that has never subscribed. */
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  /** True only once there's a Stripe customer to manage and billing is switched on. */
+  portal_available: boolean;
+};
+
+/** The workspace's subscription state for the Billing tab. Reads mirrored columns server-side,
+ * so it never blocks on Stripe. */
+export async function getSubscription(): Promise<SubscriptionInfo> {
+  const res = await fetch("/api/billing/subscription", { cache: "no-store" });
+  if (!res.ok) throw new Error(`subscription failed (${res.status})`);
+  return res.json();
+}
+
+/** Open Stripe's hosted Customer Portal (cancel / plan change / payment method / invoices) and
+ * return where to send the browser. `null` means billing isn't switched on (503); the caller
+ * shouldn't have offered the button in that case, but degrades quietly if it did. */
+export async function startBillingPortal(): Promise<string | null> {
+  const res = await fetch("/api/billing/portal", { method: "POST" });
+  if (res.status === 503) return null;
+  if (!res.ok) throw new Error(`billing portal failed (${res.status})`);
+  return (await res.json()).url as string;
+}
+
 /** Landing-page waitlist signup. Idempotent server-side, so a double submit is harmless. */
 export async function joinWaitlist(email: string, source = "landing"): Promise<void> {
   const res = await fetch("/api/waitlist", {

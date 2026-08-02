@@ -15,6 +15,7 @@ request, so it is written defensively:
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 
 import stripe
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -26,7 +27,12 @@ from calypr_api.db.models import StripeEvent, Workspace
 from calypr_api.db.session import SessionLocal
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
-from calypr_api.schemas import BillingStatus, CheckoutSession
+from calypr_api.schemas import (
+    BillingStatus,
+    CheckoutSession,
+    PortalSession,
+    SubscriptionInfo,
+)
 
 log = logging.getLogger(__name__)
 
@@ -96,6 +102,58 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
     return CheckoutSession(url=checkout.url or "")
 
 
+@router.get("/subscription", response_model=SubscriptionInfo)
+def get_subscription(t: Tenant = Depends(tenant)) -> SubscriptionInfo:
+    """The plan + cycle state the Billing tab renders. Reads mirrored columns only — no live
+    Stripe call — so the tab paints instantly. `portal_available` gates the "Manage billing"
+    button: it needs both a Stripe customer (something to manage) and billing switched on."""
+    workspace = t.session.get(Workspace, t.workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    return SubscriptionInfo(
+        plan=workspace.plan,
+        current_period_end=workspace.current_period_end,
+        cancel_at_period_end=workspace.cancel_at_period_end,
+        portal_available=bool(workspace.stripe_customer_id) and billing.is_configured(),
+    )
+
+
+@router.post("/portal", response_model=PortalSession)
+def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSession:
+    """Open Stripe's hosted Customer Portal for this workspace and hand back its URL.
+
+    The portal is where cancel / plan change / payment-method / invoice-history live — none of
+    that UI is ours, and no card data ever reaches us. A workspace with no `stripe_customer_id`
+    has nothing to manage (it never subscribed), so this 400s rather than creating an empty
+    portal session."""
+    if not billing.is_configured():
+        raise HTTPException(status_code=503, detail="billing is not configured")
+
+    workspace = t.session.get(Workspace, t.workspace_id)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="workspace not found")
+    if not workspace.stripe_customer_id:
+        raise HTTPException(status_code=400, detail="no subscription to manage")
+
+    origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
+    try:
+        portal = stripe.billing_portal.Session.create(
+            api_key=billing.secret_key(),
+            customer=workspace.stripe_customer_id,
+            return_url=f"{origin}/dashboard/settings?tab=billing",
+        )
+    except stripe.StripeError:
+        log.exception("stripe billing portal session creation failed")
+        raise HTTPException(status_code=502, detail="could not open billing portal") from None
+
+    posthog_client.capture(
+        "billing_portal_opened",
+        distinct_id=str(t.workspace_id),
+        properties={"workspace_id": str(t.workspace_id)},
+    )
+    return PortalSession(url=portal.url or "")
+
+
 def _field(obj: object, name: str) -> str | None:
     """Read an optional field off a Stripe object.
 
@@ -104,6 +162,20 @@ def _field(obj: object, name: str) -> str | None:
     with no `client_reference_id`, say) needs this rather than dict access."""
     value = getattr(obj, name, None)
     return str(value) if value is not None else None
+
+
+def _epoch(obj: object, name: str) -> datetime | None:
+    """Read a Unix-timestamp field (Stripe sends period bounds as integer seconds) as an
+    aware UTC datetime, or None if absent."""
+    value = getattr(obj, name, None)
+    if value is None:
+        return None
+    return datetime.fromtimestamp(int(value), tz=UTC)
+
+
+def _bool(obj: object, name: str) -> bool:
+    """Read an optional boolean field off a Stripe object, defaulting to False when absent."""
+    return bool(getattr(obj, name, False))
 
 
 def _apply(session: Session, event: stripe.Event) -> None:
@@ -147,10 +219,25 @@ def _apply(session: Session, event: stripe.Event) -> None:
             # dashboard by hand, or belonging to another environment) will never map on retry.
             log.warning("subscription event for unmapped customer %s", customer_id)
             return
-        status = "canceled" if kind.endswith(".deleted") else (_field(data, "status") or "")
+        deleted = kind.endswith(".deleted")
+        status = "canceled" if deleted else (_field(data, "status") or "")
         plan = billing.plan_for_status(status)
-        if plan and billing.set_plan(workspace, plan):
-            session.commit()
+        changed = bool(plan) and billing.set_plan(workspace, plan)
+        # Mirror the cycle fields the Billing tab reads. On `.deleted` the subscription is over,
+        # so clear them; otherwise reflect the current period end and whether a cancel is pending
+        # for the end of it (both set from the portal). Always persisted — a `cancel_at_period_end`
+        # flip arrives as `.updated` with the same entitling status, so the plan doesn't change
+        # but the tab must still learn the subscription is winding down.
+        if deleted:
+            workspace.stripe_subscription_id = None
+            workspace.current_period_end = None
+            workspace.cancel_at_period_end = False
+        else:
+            workspace.stripe_subscription_id = _field(data, "id")
+            workspace.current_period_end = _epoch(data, "current_period_end")
+            workspace.cancel_at_period_end = _bool(data, "cancel_at_period_end")
+        session.commit()
+        if changed:
             log.info("workspace %s → %s (subscription %s)", workspace.id, plan, status)
         return
 
