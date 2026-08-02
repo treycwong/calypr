@@ -15,8 +15,15 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 export async function GET(req: Request) {
+  // Fails **closed**, including when the secret is unset. This route holds the internal key and
+  // spends it on a delete plus a full-table scan, so an unconfigured deployment must not leave
+  // that publicly triggerable — "no secret configured" has to mean "off", not "open". Vercel
+  // attaches `Authorization: Bearer $CRON_SECRET` to cron invocations once the var is set.
   const secret = process.env.CRON_SECRET;
-  if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
+  if (!secret) {
+    return Response.json({ error: "cron is not configured" }, { status: 503 });
+  }
+  if (req.headers.get("authorization") !== `Bearer ${secret}`) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
 
