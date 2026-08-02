@@ -6,13 +6,14 @@ import Link from "next/link";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   type AssistantModelOption,
   deleteProviderKey,
+  getSubscription,
   getWorkspace,
   listAssistantModels,
   type LLMProvider,
@@ -21,11 +22,23 @@ import {
   setAssistantModel,
   setDefaultModel as setDefaultModelApi,
   setProviderKey,
+  startBillingPortal,
+  type SubscriptionInfo,
 } from "@/lib/api";
 import { useProviderKeys } from "@/lib/use-provider-keys";
 
 /** What each tier means in the one place a user goes looking. `beta` keeps code export because
  * we don't take a shipped feature back off the cohort already using it. */
+/** "August 24, 2026" from an ISO string. Empty for null so callers can guard on it. */
+function formatDate(iso: string | null): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
 const PLAN_COPY: Record<string, { label: string; blurb: string }> = {
   free: {
     label: "Free",
@@ -45,10 +58,12 @@ export function SettingsView({
   name,
   email,
   image,
+  initialTab = "account",
 }: {
   name: string;
   email: string;
   image: string | null;
+  initialTab?: string;
 }) {
   const initials = (name || email || "U").slice(0, 2).toUpperCase();
   const [wsName, setWsName] = useState("");
@@ -73,6 +88,12 @@ export function SettingsView({
   const [providers, setProviders] = useState<LLMProvider[]>([]);
   // Per-provider status line, so saving an OpenAI key doesn't flash a message on the Kimi row.
   const [keyMsg, setKeyMsg] = useState<Record<string, string>>({});
+  // Subscription state for the Billing tab (plan + cycle date + portal availability).
+  const [subscription, setSubscription] = useState<SubscriptionInfo | null>(null);
+  const [portalMsg, setPortalMsg] = useState("");
+  // Controlled so a return from Checkout/Portal (`?tab=billing` / `?upgraded=1`) lands here —
+  // the initial tab is resolved server-side and passed in.
+  const [tab, setTab] = useState(initialTab);
 
   const setMsg = (provider: string, text: string) =>
     setKeyMsg((prev) => ({ ...prev, [provider]: text }));
@@ -93,7 +114,24 @@ export function SettingsView({
     listLLMProviders()
       .then(setProviders)
       .catch(() => setProviders([]));
+    getSubscription()
+      .then(setSubscription)
+      .catch(() => setSubscription(null));
   }, []);
+
+  async function openPortal() {
+    setPortalMsg("Opening…");
+    try {
+      const url = await startBillingPortal();
+      if (url) {
+        window.location.href = url; // hand off to Stripe's hosted portal
+      } else {
+        setPortalMsg("Billing isn't available right now.");
+      }
+    } catch {
+      setPortalMsg("Couldn't open billing. Try again.");
+    }
+  }
 
   async function saveModel(value: string) {
     const previous = model;
@@ -165,10 +203,13 @@ export function SettingsView({
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-8">
       <h1 className="text-xl font-semibold">Settings</h1>
-      <Tabs defaultValue="account" className="mt-6">
+      <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>
           <TabsTrigger value="account" data-testid="tab-account">
             Account
+          </TabsTrigger>
+          <TabsTrigger value="billing" data-testid="tab-billing">
+            Billing
           </TabsTrigger>
           <TabsTrigger value="workspace" data-testid="tab-workspace">
             Workspace
@@ -214,6 +255,86 @@ export function SettingsView({
             </div>
             <p className="mt-3 text-xs text-muted-foreground">
               Your account details come from your sign-in provider (GitHub).
+            </p>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="billing" className="mt-4">
+          <div className="rounded-lg border border-border p-5" data-testid="billing-card">
+            <div className="flex items-center justify-between gap-4">
+              <h2 className="text-sm font-medium">Plan</h2>
+              <Badge
+                variant={plan === "free" ? "outline" : "default"}
+                data-testid="billing-plan"
+              >
+                {PLAN_COPY[plan]?.label ?? plan}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {PLAN_COPY[plan]?.blurb ?? "Your workspace tier."}
+            </p>
+
+            {/* Cycle line: only meaningful once there's a subscription with a period end. */}
+            {subscription?.current_period_end ? (
+              <p className="mt-3 text-sm" data-testid="billing-cycle">
+                {subscription.cancel_at_period_end ? (
+                  <>
+                    Your plan is set to cancel on{" "}
+                    <span className="font-medium">
+                      {formatDate(subscription.current_period_end)}
+                    </span>
+                    . You&rsquo;ll keep Plus until then.
+                  </>
+                ) : (
+                  <>
+                    Renews on{" "}
+                    <span className="font-medium">
+                      {formatDate(subscription.current_period_end)}
+                    </span>
+                    .
+                  </>
+                )}
+              </p>
+            ) : null}
+
+            <Separator className="my-4" />
+
+            <div className="flex flex-wrap items-center gap-3">
+              {subscription?.portal_available ? (
+                // Everything mutating (cancel, switch plan, update card, invoices) lives in
+                // Stripe's hosted portal — we never see card data.
+                <Button
+                  size="sm"
+                  onClick={openPortal}
+                  data-testid="billing-manage"
+                >
+                  Manage billing
+                </Button>
+              ) : plan === "free" ? (
+                <Link
+                  href="/pricing"
+                  className={buttonVariants({ size: "sm" })}
+                  data-testid="billing-upgrade"
+                >
+                  Upgrade to Plus
+                </Link>
+              ) : null}
+              {portalMsg ? (
+                <span className="text-xs text-muted-foreground">{portalMsg}</span>
+              ) : null}
+            </div>
+
+            <p className="mt-4 text-xs text-muted-foreground">
+              Manage billing opens Stripe&rsquo;s secure portal to cancel, change plan, update
+              your payment method, or download invoices. Your credit usage is under{" "}
+              <button
+                type="button"
+                className="underline underline-offset-4"
+                onClick={() => setTab("workspace")}
+              >
+                Workspace
+              </button>
+              .
             </p>
           </div>
         </TabsContent>

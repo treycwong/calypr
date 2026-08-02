@@ -14,6 +14,7 @@ from typing import Any
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -67,6 +68,18 @@ class Workspace(Base):
     # The month whose grant has been issued — makes "already granted this cycle?" a comparison
     # rather than a scan.
     grant_cycle_anchor: Mapped[dt_date | None] = mapped_column(Date, nullable=True)
+    # --- Subscription cycle (for the Billing tab) --------------------------------------------
+    # Mirrored from Stripe's `customer.subscription.*` events so the Billing tab can show the
+    # renewal/cancel date without a live Stripe call on every page load. NULL for a workspace
+    # that has never subscribed (Free, or `beta`). `current_period_end` is when the current paid
+    # period ends — the renewal date, or the cutoff date once `cancel_at_period_end` is set.
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    current_period_end: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    cancel_at_period_end: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
