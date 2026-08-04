@@ -1,48 +1,16 @@
 import { expect, type Page, test } from "@playwright/test";
 
-/** Switch to the Workspace tab, retrying until the panel is actually up.
- *
- * The tab trigger is server-rendered, so it is visible and clickable before React hydrates —
- * a click in that window is swallowed, the panel never switches, and the assertion that follows
- * fails on a component that is perfectly correct. Same race, and same fix, as `openSwitcher` in
- * `phase13-workspaces.spec.ts`. */
-async function openWorkspaceTab(page: Page) {
-  await expect(async () => {
-    await page.getByTestId("tab-workspace").click();
-    await expect(page.getByTestId("ws-name")).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-}
-
-/** Add a node to the canvas, retrying until it actually lands.
- *
- * The same race one layer down. `.react-flow__controls` being visible says the canvas
- * *rendered*, not that React has attached to the toolbar, so a click in that gap is swallowed
- * and the node never appears — surfacing as `node-input` not found, which reads like a broken
- * toolbar rather than a timing problem.
- *
- * **Idempotent on purpose.** A plain retry would add a second node whenever the first click was
- * merely slow rather than lost, quietly changing the graph under test. Clicking only when the
- * node is absent, and asserting exactly one, makes a repeat safe. */
-async function addNode(page: Page, kind: string) {
-  await expect(async () => {
-    if ((await page.getByTestId(`node-${kind}`).count()) === 0) {
-      await page.getByTestId(`add-${kind}`).click();
-    }
-    await expect(page.getByTestId(`node-${kind}`)).toHaveCount(1, { timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-}
-
+import { addNode, signInAt, waitForHydration } from "./helpers";
 
 // Dashboard → Settings → Workspace exposes the AI assistant's default model. The options come
 // from the API's allow-list, and frontier models (kimi-k3) are disabled until the workspace has
 // that provider's own key on file — the picker must never offer a value /assist would refuse.
 
 test("the Workspace tab exposes the assistant model picker", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/settings");
   await expect(page).toHaveURL(/\/dashboard\/settings/);
 
-  await openWorkspaceTab(page);
+  await page.getByTestId("tab-workspace").click();
 
   const picker = page.getByTestId("ws-assistant-model");
   await expect(picker).toBeVisible();
@@ -70,9 +38,8 @@ async function withProviderKeys(page: Page, onFile: string[]) {
 
 test("kimi-k3 is offered but disabled without a Moonshot key", async ({ page }) => {
   await withProviderKeys(page, []);
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   const frontier = page
     .getByTestId("ws-assistant-model")
@@ -85,9 +52,8 @@ test("kimi-k3 is offered but disabled without a Moonshot key", async ({ page }) 
 
 test("kimi-k3 becomes selectable once a Moonshot key is on file", async ({ page }) => {
   await withProviderKeys(page, ["moonshot"]);
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   const frontier = page
     .getByTestId("ws-assistant-model")
@@ -98,9 +64,8 @@ test("kimi-k3 becomes selectable once a Moonshot key is on file", async ({ page 
 
 test("the provider list offers a live Kimi key and Coming Soon rows", async ({ page }) => {
   await withProviderKeys(page, []);
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   // Moonshot is wired, so its input is live and Save waits for input.
   const kimi = page.getByTestId("ws-key-moonshot");
@@ -125,9 +90,8 @@ test("the provider list offers a live Kimi key and Coming Soon rows", async ({ p
 });
 
 test("the headline model for each provider is named", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   for (const model of [
     "kimi-k3",
@@ -141,9 +105,8 @@ test("the headline model for each provider is named", async ({ page }) => {
 
 test("a stored key shows as on-file and is never echoed back", async ({ page }) => {
   await withProviderKeys(page, [MOONSHOT_ON_FILE]);
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   await expect(page.getByTestId("ws-key-moonshot-onfile")).toBeVisible();
   await expect(page.getByTestId("ws-key-moonshot-remove")).toBeVisible();
@@ -157,9 +120,8 @@ test("a Coming Soon provider never shows key controls, even with a key on file",
   // Even if a key were somehow on file for an unwired provider, the row must not imply it is
   // usable — nothing in the model factory would read it.
   await withProviderKeys(page, ["google"]);
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   await expect(page.getByTestId("ws-key-google-onfile")).toHaveCount(0);
   await expect(page.getByTestId("ws-key-google-remove")).toHaveCount(0);
@@ -167,8 +129,7 @@ test("a Coming Soon provider never shows key controls, even with a key on file",
 });
 
 test("Moonshot is no longer offered in the canvas API-keys panel", async ({ page }) => {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await page.getByTestId("tab-connectors").click();
 
   // Moved to Dashboard → Settings → Workspace, so there is exactly one place to manage it.
@@ -179,16 +140,16 @@ test("Moonshot is no longer offered in the canvas API-keys panel", async ({ page
 });
 
 test("choosing a non-frontier model persists across a reload", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   const picker = page.getByTestId("ws-assistant-model");
   await picker.selectOption("gpt-4o-mini");
   await expect(page.getByText("Saved ✓")).toBeVisible();
 
   await page.reload();
-  await openWorkspaceTab(page);
+  await waitForHydration(page); // a reload is a fresh hydration, same as a navigation
+  await page.getByTestId("tab-workspace").click();
   await expect(page.getByTestId("ws-assistant-model")).toHaveValue("gpt-4o-mini");
 
   // Leave the workspace on the server default so other specs are unaffected.
@@ -207,8 +168,7 @@ test("a run on an unkeyed frontier model falls back and says so", async ({ page 
     await route.continue({ postData: JSON.stringify(body) });
   });
 
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
   await addNode(page, "input");
@@ -241,8 +201,7 @@ test("a rejected provider key shows a Fix it link into Settings", async ({ page 
     });
   });
 
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
   await addNode(page, "input");
   await addNode(page, "agent");
@@ -267,8 +226,7 @@ test("an ordinary run error shows no Fix it link", async ({ page }) => {
     });
   });
 
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
   await addNode(page, "input");
   await addNode(page, "agent");

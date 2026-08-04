@@ -1,14 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 4 gate: the agent ladder + conditional control flow reach the canvas and project to
 // ownable Python. A Reflection agent emits its critique→revise loop, and an If-Else router
 // emits `add_conditional_edges`. Viewing code needs no API key and no database.
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  // Wait until React Flow has mounted client-side so the palette handlers are wired.
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }
 

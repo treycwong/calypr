@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // MCP node gate: an MCP server's tools reach the canvas through the existing Tool seam. The
 // MCP ReAct framework projects to a `MultiServerMCPClient` over the canonical `ToolNode` +
 // `tools_condition` loop, reading its URL/token from the environment (secrets never emitted);
@@ -7,8 +9,7 @@ import { expect, type Page, test } from "@playwright/test";
 // key, no database, and no live MCP server — the live run is covered by the node unit test.
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }

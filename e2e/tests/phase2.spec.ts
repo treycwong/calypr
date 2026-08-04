@@ -1,15 +1,15 @@
 import { expect, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 2 gate (CLAUDE-PLAN.md §11): build Input → Agent → Output on the canvas,
 // configure the Agent, open the playground, send a message, and assert a streamed
 // assistant reply renders. Uses the deterministic "fake" model (the Agent default),
 // so the gate needs no API key and no database.
 test("build an agent on the canvas and chat with it", async ({ page }) => {
   // Dev sign-in, then land on the canvas.
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  // Wait until React Flow has mounted client-side (palette handlers wired).
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
   // Build the chain — adding a block links it after the previous one. Gate each add on
