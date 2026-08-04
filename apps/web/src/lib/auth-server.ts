@@ -17,6 +17,19 @@ export const auth = betterAuth({
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
     },
   },
+  session: {
+    // Better Auth gates its "sensitive" operations on session *freshness*, and `deleteUser` is
+    // one of them: without this it throws `SESSION_EXPIRED` unless the session was created
+    // within `freshAge` (default 24h) **or** the request carries a password. Our users sign in
+    // with GitHub, so they have no `credential` account and the password branch is unreachable —
+    // meaning anyone who signed in more than a day ago could never complete a deletion.
+    //
+    // Setting it to 0 buys back nothing an attacker didn't already have: a stolen session can
+    // call our own `DELETE /api/account`, which is the request that actually destroys the data
+    // and has no freshness check of its own. The friction that matters is the typed
+    // confirmation in the dialog, not this.
+    freshAge: 0,
+  },
   user: {
     // Opt-in, required for `authClient.deleteUser()`. It removes the Better Auth identity —
     // the `user`/`session`/`account` rows — and clears the session cookie, which is the one

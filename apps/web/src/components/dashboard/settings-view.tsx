@@ -694,7 +694,16 @@ function DangerCard({ manageable, plan }: { manageable: boolean; plan: string })
       // only cookie the dev session has. Calling Better Auth anyway would hit its catch-all
       // with no secret configured and reject on the server for nothing.
       if (result.mode === "live") {
-        await authClient.deleteUser();
+        // Better Auth's client returns `{data, error}` and **does not throw**, so this has to
+        // be checked explicitly — a bare `await` here silently treats a refusal as success.
+        const { error } = await authClient.deleteUser();
+        if (error) {
+          // It can still refuse (a session past `freshAge`, a transient failure). Our data is
+          // already soft-deleted at this point and the account 401s everywhere, so the only
+          // thing that matters now is not leaving a *valid session cookie* behind — being
+          // signed in to an account that no longer works is the worst of both outcomes.
+          await authClient.signOut().catch(() => {});
+        }
       }
     } catch (e) {
       setBusy(false);
