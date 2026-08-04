@@ -394,6 +394,17 @@ class ProviderKeyInfo(BaseModel):
     has_key: bool
 
 
+class AccountDeleted(BaseModel):
+    """The answer to `DELETE /account`.
+
+    `mode` distinguishes a real deletion from the dev-mode no-op the web proxy synthesizes when
+    the API returns 501, so the client can be honest about which one happened rather than showing
+    the same confirmation for both."""
+
+    deleted: bool
+    mode: Literal["live", "dev"] = "live"
+
+
 class ProviderKeySet(BaseModel):
     """Set/replace a provider's BYO key. Write-only — never echoed back."""
 

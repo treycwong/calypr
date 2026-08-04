@@ -245,15 +245,10 @@ def _mirror_cycle(account: Account, sub: object) -> None:
     account.cancel_at_period_end = _bool(sub, "cancel_at_period_end")
 
 
-def _is_missing_customer(exc: stripe.StripeError) -> bool:
-    """True when Stripe rejected a request because the referenced `customer` doesn't exist under
-    the current key — the classic wedge where an account carries a *test-mode* customer id and a
-    *live* key is used (or the customer was deleted in Stripe). Matched on the `resource_missing`
-    code for the `customer` param, not the message text, so it survives copy changes."""
-    return (
-        getattr(exc, "code", None) == "resource_missing"
-        and getattr(exc, "param", None) == "customer"
-    )
+#: Moved to `billing.py` so the account-deletion path shares one judgement of "is this the
+#: recoverable Stripe error?" with checkout and the portal. Kept as a module-level alias because
+#: both call sites below read naturally with the short name.
+_is_missing_customer = billing.is_missing_customer
 
 
 def _forget_customer(account: Account) -> None:

@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     # Platform-wide loss firewall (PRICING-SPEC §9): if the sum of this month's `run.cost_usd`
     # reaches this many USD, new runs/assists are refused with an SSE error. 0/unset ⇒ disabled.
     platform_spend_cap_usd: float = 0.0
+    # How long a deleted account sits marked-but-intact before `purge.py` destroys it. This is
+    # the **only** recovery window there is, and it is operator-only — the user can't self-serve
+    # a restore, because the sign-in they would use is part of what was deleted. Lives on
+    # Railway (the API), not Vercel.
+    purge_grace_days: int = 7
 
     # Connector credential vault (MCP-NODE-PLAN §5). Master secret for Fernet envelope
     # encryption; any string works. Unset → an insecure dev key in non-prod, fail-closed in prod.

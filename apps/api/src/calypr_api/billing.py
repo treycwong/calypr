@@ -12,6 +12,7 @@ from __future__ import annotations
 import logging
 import os
 
+import stripe
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -87,4 +88,52 @@ def set_plan(account: Account, plan: str) -> bool:
     if account.plan == plan:
         return False
     account.plan = plan
+    return True
+
+
+def is_missing_resource(exc: stripe.StripeError) -> bool:
+    """True when Stripe rejected a request because the thing it names doesn't exist under the
+    current key. Matched on the `resource_missing` code rather than the message text, so it
+    survives Stripe's copy changes."""
+    return getattr(exc, "code", None) == "resource_missing"
+
+
+def is_missing_customer(exc: stripe.StripeError) -> bool:
+    """`is_missing_resource`, narrowed to the *customer* param — the classic wedge where an
+    account carries a **test-mode** customer id and a **live** key is used (or the customer was
+    deleted in the dashboard).
+
+    Lives here rather than in the router because the deletion path needs the same judgement and
+    two copies of "is this the recoverable Stripe error?" would drift — the copy that drifted
+    would be the one deciding whether it is safe to delete someone's account."""
+    return is_missing_resource(exc) and getattr(exc, "param", None) == "customer"
+
+
+def cancel_subscription(account: Account) -> bool:
+    """End this account's subscription **immediately**. True if something was cancelled.
+
+    Immediate, not `cancel_at_period_end`: an account that no longer exists must not carry a live
+    subscription for another three weeks. That does forfeit the paid remainder unprorated, which
+    is a real cost to the user — so the delete dialog has to say so before they confirm.
+
+    Raises `stripe.StripeError` if the cancellation genuinely failed. The caller **must** treat
+    that as fatal and change nothing: an account deleted while its subscription keeps charging is
+    the one outcome we can't let through, and since nothing has been written yet, a retry is free.
+
+    A subscription Stripe says is already gone counts as success — the goal is "not billing", and
+    it isn't. We deliberately do **not** delete the Stripe *customer*: invoices and tax records
+    have to survive the account that generated them.
+    """
+    sub_id = account.stripe_subscription_id
+    if not sub_id:
+        return False  # free, beta, or already cancelled — nothing to do
+    try:
+        stripe.Subscription.cancel(sub_id, api_key=secret_key())
+    except stripe.StripeError as exc:
+        if not is_missing_resource(exc):
+            raise
+        log.warning(
+            "subscription %s already gone at Stripe for account %s; treating as cancelled",
+            sub_id, account.id,
+        )
     return True

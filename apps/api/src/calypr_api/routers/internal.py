@@ -13,7 +13,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from calypr_api import storage_usage
+from calypr_api import purge, storage_usage
 from calypr_api.config import settings
 from calypr_api.db.session import SessionLocal
 
@@ -51,4 +51,20 @@ def gc_checkpoints(request: Request) -> dict[str, int]:
     with SessionLocal() as session:
         result = storage_usage.gc_checkpoints(session)
     log.info("checkpoint gc: %s threads, %s rows", result["threads"], result["rows"])
+    return result
+
+
+@router.post("/gc/purge-accounts")
+def purge_accounts(request: Request) -> dict[str, int]:
+    """Destroy the accounts whose grace window has expired. **Irreversible.**
+
+    Behind the same fail-closed key as the rest: an unconfigured deployment 503s rather than
+    exposing this, which matters more here than anywhere else in the file."""
+    _require_internal_key(request)
+    with SessionLocal() as session:
+        result = purge.purge_accounts(session)
+    log.info(
+        "account purge: %s purged, %s failed, %s considered",
+        result["purged"], result["failed"], result["considered"],
+    )
     return result

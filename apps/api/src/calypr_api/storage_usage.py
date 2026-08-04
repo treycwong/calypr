@@ -154,8 +154,13 @@ def measure_all(session: Session) -> int:
     return len(ids)
 
 
-def _delete_threads(session: Session, thread_ids: list[str]) -> int:
-    """Drop every checkpoint row for these threads, children first."""
+def delete_threads(session: Session, thread_ids: list[str]) -> int:
+    """Drop every checkpoint row for these threads, children first. Caller commits.
+
+    Public because account deletion needs it too (`purge.py`). The children-first ordering below
+    is the kind of knowledge that must exist in exactly one place — a second copy that got the
+    order wrong would fail on a foreign key, or worse, leave orphaned rows in tables nothing
+    else prunes."""
     if not thread_ids:
         return 0
     deleted = 0
@@ -167,6 +172,10 @@ def _delete_threads(session: Session, thread_ids: list[str]) -> int:
             {"ids": thread_ids},
         ).rowcount
     return deleted
+
+
+#: The pre-rename name, kept so nothing in-flight breaks on the move.
+_delete_threads = delete_threads
 
 
 def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[str, int]:
@@ -206,7 +215,7 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
             {"batch": batch},
         ).all()
     ]
-    rows = _delete_threads(session, expired)
+    rows = delete_threads(session, expired)
 
     # Threads with no `run` row at all: anonymous playground and share traffic, which is never
     # attributed to an account. Without this they would accumulate forever, and they are exactly
@@ -236,7 +245,7 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
             {"floor": _uuid6_floor(ORPHAN_THREAD_TTL_DAYS), "batch": batch},
         ).all()
     ]
-    rows += _delete_threads(session, orphans)
+    rows += delete_threads(session, orphans)
 
     session.commit()
     return {"threads": len(expired) + len(orphans), "rows": rows}
