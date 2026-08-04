@@ -6,10 +6,15 @@ allowed, whatever the balance says. Only when some node would land on our keys d
 balance matter, and that question belongs to `credits.check_can_run`.
 
 Both plans work the same way: spend the monthly grant on platform models, and when it runs out
-either bring your own key or wait for the reset. Nothing here gates on the plan. An earlier
-version refused Free any platform run at all (BYO-key only, per an older reading of
-`PRICING-SPEC` §1); that was reversed before it ever shipped, because it made a new Free user's
-very first Run an error message.
+either bring your own key or wait for the reset. **The plan never decides which models you may
+run.** An earlier version refused Free any platform run at all (BYO-key only, per an older
+reading of `PRICING-SPEC` §1); that was reversed before it ever shipped, because it made a new
+Free user's very first Run an error message.
+
+The plan does decide *where* you may run, which is a different question and is checked first: a
+workspace beyond the plan's cap after a downgrade is read-only, so no run starts in it at all
+(`locking.py`). That gate is about capacity the account no longer has, not about models — and
+unlike the credit gate, waiting for the monthly reset does nothing for it.
 
 Graph-shaped, so it can't be a FastAPI dependency — the graph arrives in the request body.
 Callers run it off the event loop (it touches the DB) and stream the `(code, message)` back
@@ -23,11 +28,12 @@ import uuid
 
 from calypr_dsl import GraphSpec
 
-from calypr_api import credits
+from calypr_api import credits, locking
 from calypr_api.config import settings
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal
+from calypr_api.errors import WORKSPACE_LOCKED
 from calypr_api.model_access import platform_key_models, runs_on_own_key
 from calypr_api.provider_keys import byok_providers
 
@@ -55,6 +61,13 @@ def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[s
         return None
     if str(workspace_id) == DEV_WORKSPACE_ID:
         return None
+
+    # Capacity before credits. A workspace the plan no longer covers is read-only, and saying
+    # "you're out of credits" to someone whose real problem is a lapsed subscription sends them
+    # to wait for a monthly reset that will not help.
+    if locked := locking.locked_run_message(workspace_id):
+        return (WORKSPACE_LOCKED, locked)
+
     try:
         with SessionLocal() as session:
             workspace = session.get(Workspace, workspace_id)

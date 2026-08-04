@@ -17,6 +17,10 @@ _GENERIC = "Something went wrong running this agent. Check its settings and try 
 #: the copy can change without breaking the client.
 PROVIDER_KEY_REJECTED = "provider_key_rejected"
 
+#: This workspace is beyond the plan's cap and is read-only until the account is back under it.
+#: Distinct from `credits` — waiting for the monthly reset fixes that one and does nothing here.
+WORKSPACE_LOCKED = "workspace_locked"
+
 _KEY_REJECTED = (
     "Your {provider} API key was rejected. Check the key saved for this workspace — "
     "it may be revoked, expired, or missing a billing plan."

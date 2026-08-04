@@ -103,6 +103,9 @@ class AgentSummary(BaseModel):
     id: str
     name: str
     updated_at: datetime
+    #: Beyond the plan's project cap after a downgrade — readable and deletable, but read-only.
+    #: Decided by the API (`locking.py`), never re-derived in the browser.
+    locked: bool = False
 
 
 class AgentDetail(BaseModel):
@@ -210,6 +213,9 @@ class WorkspaceSummary(BaseModel):
     name: str
     created_at: datetime | None = None
     is_current: bool = False
+    #: Beyond the plan's workspace cap after a downgrade — still selectable and readable, but
+    #: nothing new goes into it. See `locking.py`.
+    locked: bool = False
 
 
 class WorkspaceList(BaseModel):

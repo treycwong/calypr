@@ -17,7 +17,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete, select, text
 
-from calypr_api import accounts, credits, entitlements
+from calypr_api import accounts, credits, entitlements, locking
 from calypr_api.assistant_models import is_allowed
 from calypr_api.config import settings
 from calypr_api.constants import DEV_WORKSPACE_ID
@@ -111,12 +111,14 @@ def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> WorkspaceL
         text("SELECT id, name, created_at FROM list_account_workspaces(:uid)"),
         {"uid": user_id},
     ).all()
+    locked = locking.locked_ids_for_request(t)
     summaries = [
         WorkspaceSummary(
             id=str(row.id),
             name=row.name,
             created_at=row.created_at,
             is_current=row.id == t.workspace_id,
+            locked=row.id in locked.workspaces,
         )
         for row in rows
     ]
@@ -246,6 +248,9 @@ def update_workspace(body: WorkspaceUpdate, t: Tenant = Depends(tenant)) -> Work
 
     All three fields are still the *workspace's* — a user with several workspaces can point each
     at a different default model. Only money moved to the account."""
+    # Read-only past the plan's cap. Renaming or repointing a model is new configuration, so it
+    # belongs behind the same lock as editing a project inside it.
+    locking.require_unlocked_workspace(t)
     ws = t.session.get(Workspace, t.workspace_id)
     if ws is None:
         raise HTTPException(status_code=404, detail="workspace not found")

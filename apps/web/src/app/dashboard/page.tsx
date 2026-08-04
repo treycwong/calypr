@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Plus } from "lucide-react";
+import { Lock, MoreHorizontal, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -22,7 +22,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { type AgentSummary, deleteAgent, listAgents, updateAgent } from "@/lib/api";
+import {
+  type AgentSummary,
+  deleteAgent,
+  listAgents,
+  listWorkspaces,
+  updateAgent,
+  type WorkspaceList,
+} from "@/lib/api";
+import { LockedBanner } from "@/components/dashboard/locked-banner";
 
 function relativeTime(iso: string): string {
   const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
@@ -43,6 +51,9 @@ export default function ProjectsPage() {
   const [renaming, setRenaming] = useState<AgentSummary | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [deleting, setDeleting] = useState<AgentSummary | null>(null);
+  // Only this page needs it, so it isn't paid for on every dashboard route: the switcher's list
+  // carries `locked` and the plan, which is everything the banner has to say.
+  const [ws, setWs] = useState<WorkspaceList | null>(null);
 
   const load = () =>
     listAgents()
@@ -50,6 +61,9 @@ export default function ProjectsPage() {
       .catch(() => setAgents([]));
   useEffect(() => {
     load();
+    listWorkspaces()
+      .then(setWs)
+      .catch(() => setWs(null));
   }, []);
 
   const filtered = (agents ?? []).filter((a) =>
@@ -92,6 +106,13 @@ export default function ProjectsPage() {
       </header>
 
       <div className="mt-6">
+        {/* Counts the *whole* account, not the filtered view — a search that hides every locked
+            project must not make the banner claim there are none. */}
+        <LockedBanner
+          workspaces={(ws?.workspaces ?? []).filter((w) => w.locked).length}
+          projects={(agents ?? []).filter((a) => a.locked).length}
+          plan={ws?.plan ?? "free"}
+        />
         {agents === null ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : filtered.length === 0 ? (
@@ -122,9 +143,23 @@ export default function ProjectsPage() {
                 key={a.id}
                 className="group relative rounded-lg border border-border bg-card p-4 transition hover:border-foreground/20"
                 data-testid="project-card"
+                data-locked={a.locked ? "true" : "false"}
               >
+                {/* Locked projects still open. You can read them, copy out of them, and delete
+                    them — locking takes back capacity, not access. */}
                 <Link href={`/canvas?agent=${a.id}`} className="block">
-                  <div className="truncate pr-6 text-sm font-medium">{a.name}</div>
+                  <div className="flex items-center gap-1.5 pr-6">
+                    <span className="truncate text-sm font-medium">{a.name}</span>
+                    {a.locked ? (
+                      <span
+                        className="flex shrink-0 items-center gap-1 rounded border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                        title="Read-only — over your plan's project limit"
+                      >
+                        <Lock className="h-2.5 w-2.5" />
+                        Read-only
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="mt-1 text-xs text-muted-foreground">
                     Edited {relativeTime(a.updated_at)}
                   </div>
@@ -146,6 +181,7 @@ export default function ProjectsPage() {
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         data-testid="project-rename"
+                        disabled={a.locked}
                         onClick={() => {
                           setRenameValue(a.name);
                           setRenaming(a);

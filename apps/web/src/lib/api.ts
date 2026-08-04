@@ -198,7 +198,13 @@ export async function getAgent(id: string): Promise<AgentDetail> {
 }
 
 /** A saved agent in the dashboard list (no graph). */
-export type AgentSummary = { id: string; name: string; updated_at: string };
+export type AgentSummary = {
+  id: string;
+  name: string;
+  updated_at: string;
+  /** Beyond the plan's project cap, or inside a locked workspace. Read-only either way. */
+  locked?: boolean;
+};
 
 /** The current user's saved agents ("projects"), most-recently-edited first. */
 export async function listAgents(): Promise<AgentSummary[]> {
@@ -345,6 +351,8 @@ export type WorkspaceSummary = {
   name: string;
   created_at?: string | null;
   is_current: boolean;
+  /** Beyond the plan's cap after a downgrade: readable and deletable, but read-only. */
+  locked?: boolean;
 };
 
 /** The switcher's payload. `can_create` is decided by the API from `entitlements.LIMITS` — the
