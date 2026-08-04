@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import UTC, datetime
 
 import stripe
 from sqlalchemy import select
@@ -81,13 +82,20 @@ def set_plan(account: Account, plan: str) -> bool:
     `beta` is never overwritten by a *downgrade*: the beta cohort was granted access by hand and
     doesn't have a subscription, so a stray `customer.subscription.deleted` for a customer that
     somehow maps to them must not take it away. An upgrade to `plus` is allowed from any tier —
-    they paid."""
+    they paid.
+
+    Stamps `plan_changed_at` on a real change, and **only** on a real change. That timestamp opens
+    the grace window in `entitlements.retention_days`, so re-stamping it on a no-op would let a
+    redelivered webhook — or a `cancel_at_period_end` flip, which arrives as an update with the
+    same entitling status — quietly extend someone's retention forever. The early returns above
+    are what keep that honest."""
     if plan == entitlements.FREE and account.plan == entitlements.BETA:
         log.info("ignoring downgrade of a beta account %s", account.id)
         return False
     if account.plan == plan:
         return False
     account.plan = plan
+    account.plan_changed_at = datetime.now(UTC)
     return True
 
 
