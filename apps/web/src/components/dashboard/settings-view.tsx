@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
@@ -33,6 +33,7 @@ import {
   setDefaultModel as setDefaultModelApi,
   setProviderKey,
   startBillingPortal,
+  uploadImage,
   type SubscriptionInfo,
 } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
@@ -73,6 +74,8 @@ export function SettingsView({
   const [profileName, setProfileName] = useState(name);
   const [profileImage, setProfileImage] = useState(image ?? "");
   const [profileMsg, setProfileMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
   const initials = (profileName || email || "U").slice(0, 2).toUpperCase();
   const [wsName, setWsName] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
@@ -189,6 +192,30 @@ export function SettingsView({
     }
   }
 
+  async function uploadAvatar(file: File) {
+    setUploading(true);
+    setProfileMsg("Uploading…");
+    try {
+      // Reuses `/api/uploads` rather than adding an avatar-specific endpoint: it already does
+      // the content-type allowlist, the magic-byte sniff and the 5MB streaming cap, and — the
+      // part that matters here — it records an `upload` row against the workspace, so an
+      // avatar is attributable storage and gets collected when the account is deleted. A
+      // bespoke endpoint would have had to re-earn all four.
+      const url = await uploadImage(file);
+      // Fills the field rather than saving: the avatar above previews it immediately, and the
+      // change isn't committed until Save, so a mis-picked file can just be replaced.
+      setProfileImage(url);
+      setProfileMsg("Uploaded — press Save to apply");
+    } catch (e) {
+      // The API's own message is worth showing: "only PNG, JPEG, WebP, or GIF images are
+      // accepted" and "image exceeds the 5MB limit" both tell the user what to do next, which
+      // a generic failure line would not.
+      setProfileMsg(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   async function saveProfile() {
     setProfileMsg("Saving…");
     // One call for both fields: they're edited together and a partial save is a confusing
@@ -272,12 +299,49 @@ export function SettingsView({
               />
             </div>
 
-            <label htmlFor="account-image" className="mt-4 block text-sm font-medium">
-              Avatar URL
-            </label>
+            <div className="mt-4 text-sm font-medium">Avatar</div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              A link to an image. Leave it empty to use your initials.
+              Upload an image, or paste a link to one. Leave it empty to use your initials.
             </p>
+            <div className="mt-2 flex items-center gap-2">
+              {/* The file input is hidden and driven by a Button so it matches every other
+                  control on this page — a bare `input[type=file]` renders as the browser's
+                  chrome and is the one thing here that would look borrowed.
+
+                  The **Button** is the user-facing gate, so it carries `disabled`; the input
+                  itself doesn't, because it is unreachable except through that button. That
+                  also leaves the wiring drivable by `setInputFiles` in e2e, which otherwise
+                  couldn't cover it at all — the whole suite runs on the dev path, where
+                  `manageable` is false. */}
+              <input
+                ref={fileRef}
+                type="file"
+                accept={ACCEPTED_IMAGE_TYPES}
+                className="hidden"
+                data-testid="account-image-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // Reset first: picking the *same* file twice fires no change event
+                  // otherwise, so a failed upload couldn't be retried by reselecting it.
+                  e.target.value = "";
+                  if (file) uploadAvatar(file);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!manageable || uploading}
+                onClick={() => fileRef.current?.click()}
+                data-testid="account-image-upload"
+              >
+                {uploading ? "Uploading…" : "Upload image"}
+              </Button>
+              <span className="text-xs text-muted-foreground">PNG, JPEG, WebP or GIF, up to 5MB.</span>
+            </div>
+
+            <label htmlFor="account-image" className="mt-3 block text-xs text-muted-foreground">
+              Or paste an image URL
+            </label>
             <div className="mt-2 flex items-center gap-2">
               <Input
                 id="account-image"
@@ -592,6 +656,10 @@ export function SettingsView({
 /** The exact phrase the confirm button waits for. Compared `.trim().toLowerCase()`, so the
  *  friction is deliberate but not pedantic about capitalisation or a trailing space. */
 const CONFIRM_PHRASE = "delete my account";
+
+/** Kept in step with the API's `_ALLOWED` map in `routers/uploads.py` — it is the enforcement,
+ *  this is only the file picker's filter. */
+const ACCEPTED_IMAGE_TYPES = "image/png,image/jpeg,image/webp,image/gif";
 
 /**
  * Delete Account.

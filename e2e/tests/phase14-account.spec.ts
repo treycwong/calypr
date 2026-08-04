@@ -29,6 +29,22 @@ async function openDeleteDialog(page: Page) {
   }).toPass({ timeout: 15_000 });
 }
 
+/** Pick a file, retrying until React is actually listening.
+ *
+ * The same hydration race, in its quietest form: the card is server-rendered, so it is visible —
+ * and `setInputFiles` succeeds — before `onChange` is bound. The file lands in the input and
+ * nothing happens, so the assertion that follows fails on a component that is perfectly correct.
+ * Re-picking works because the handler clears `input.value` itself, which makes reselecting the
+ * same file fire a fresh change event. */
+async function pickAvatar(page: Page, file: { name: string; buffer: Buffer }, settled: () => Promise<void>) {
+  await expect(async () => {
+    await page
+      .getByTestId("account-image-file")
+      .setInputFiles({ name: file.name, mimeType: "image/png", buffer: file.buffer });
+    await settled();
+  }).toPass({ timeout: 15_000 });
+}
+
 test("the Account tab shows the three cards", async ({ page }) => {
   await openAccountTab(page);
 
@@ -47,7 +63,66 @@ test("dev mode disables the profile fields and says why", async ({ page }) => {
   await expect(page.getByTestId("account-name")).toBeDisabled();
   await expect(page.getByTestId("account-image")).toBeDisabled();
   await expect(page.getByTestId("account-save")).toBeDisabled();
+  // Upload is gated the same way — there is nowhere to save the result, so offering it would
+  // be the same "appears to work, reverts on reload" trap the text fields avoid.
+  await expect(page.getByTestId("account-image-upload")).toBeDisabled();
   await expect(page.getByTestId("account-dev-notice")).toBeVisible();
+});
+
+test("uploading an avatar fills the URL field and previews it", async ({ page }) => {
+  // Two caveats, both deliberate. The upload is **stubbed** — the real endpoint needs a Vercel
+  // Blob token — so this covers the wiring (file POSTed as a raw body with its own
+  // content-type; returned url lands in the field and the preview), not the storage round-trip.
+  // And it drives the hidden input directly, because the visible button is disabled on the dev
+  // path this suite runs on. So this asserts the code path is correct, not that a *user in dev*
+  // can reach it — the test above asserts they can't.
+  const uploaded = "https://store.public.blob.vercel-storage.com/av.png";
+  // A real 1×1 PNG, so the magic-byte sniff the API does would pass on the unstubbed path too.
+  const png = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+    "base64",
+  );
+
+  let postedType: string | null = null;
+  await page.route("**/api/uploads", async (route) => {
+    postedType = route.request().headers()["content-type"] ?? null;
+    return route.fulfill({ json: { url: uploaded } });
+  });
+  // Serve the uploaded url too. `AvatarImage` only mounts an `<img>` once the source actually
+  // loads, so without this the preview assertion below would be testing the network, not the
+  // component — and would fail for the wrong reason.
+  await page.route(uploaded, (route) =>
+    route.fulfill({ contentType: "image/png", body: png }),
+  );
+
+  await openAccountTab(page);
+
+  await pickAvatar(page, { name: "me.png", buffer: png }, () =>
+    expect(page.getByTestId("account-image")).toHaveValue(uploaded, { timeout: 1_000 }),
+  );
+  expect(postedType).toBe("image/png");
+  // The avatar previews the uploaded url immediately, before Save — that is the point of
+  // holding it in local state rather than re-reading the server's value.
+  await expect(page.getByTestId("account-info-card").locator("img")).toHaveAttribute(
+    "src",
+    uploaded,
+  );
+});
+
+test("a rejected upload shows the API's own reason", async ({ page }) => {
+  // "only PNG, JPEG, WebP, or GIF images are accepted" tells the user what to do next; a
+  // generic "upload failed" does not.
+  await page.route("**/api/uploads", (route) =>
+    route.fulfill({ status: 415, json: { detail: "only PNG, JPEG, WebP, or GIF images are accepted" } }),
+  );
+
+  await openAccountTab(page);
+  await pickAvatar(page, { name: "x.png", buffer: Buffer.from("nope") }, () =>
+    expect(page.getByTestId("account-saved")).toContainText(
+      "only PNG, JPEG, WebP, or GIF images are accepted",
+      { timeout: 1_000 },
+    ),
+  );
 });
 
 test("email is shown as text, with no input to edit it", async ({ page }) => {
