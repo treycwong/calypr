@@ -82,3 +82,12 @@ def new_share_suffix() -> str:
 def workspace_prefix(workspace_id: uuid.UUID | str) -> str:
     """The `LIKE` prefix matching every thread belonging to this workspace."""
     return f"{WORKSPACE_PREFIX}:{workspace_id}:"
+
+
+def share_prefix(token: str) -> str:
+    """The `LIKE` prefix matching every thread belonging to this share link.
+
+    The sibling of `workspace_prefix`, and account deletion is what needs it: a share link's
+    conversations hang off the *token*, not off any workspace, so deleting an account has to
+    name them separately or they survive as unreachable checkpoint rows."""
+    return f"{SHARE_PREFIX}:{token}:"

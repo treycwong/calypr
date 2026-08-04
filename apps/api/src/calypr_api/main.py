@@ -19,6 +19,7 @@ from calypr_api.config import settings
 from calypr_api.db.session import engine
 from calypr_api.middleware import PostHogMiddleware
 from calypr_api.routers import (
+    account,
     agents,
     assist,
     billing,
@@ -125,6 +126,7 @@ def create_app() -> FastAPI:
     app.include_router(waitlist.router)
     app.include_router(billing.router)
     app.include_router(workspaces.router)
+    app.include_router(account.router)
     app.include_router(internal.router)
     return app
 

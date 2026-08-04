@@ -21,6 +21,7 @@ from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, Request
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session
 
 from calypr_api import entitlements
@@ -33,6 +34,20 @@ log = logging.getLogger(__name__)
 #: The workspace the browser is asking for. A *claim*, validated in SQL against the caller's
 #: account — see the module docstring.
 WORKSPACE_HEADER = "x-calypr-workspace-id"
+
+#: Raised by `resolve_account` when the account has been soft-deleted (migration 0017).
+_DELETED_ACCOUNT_SQLSTATE = "CY001"
+
+
+def is_account_deleted(exc: BaseException) -> bool:
+    """Whether this exception is `resolve_account` refusing a soft-deleted account.
+
+    Matched on **SQLSTATE**, never on the message. The message is a human string that carries a
+    user id and is free to be reworded, translated by a driver, or wrapped; the code is part of
+    the function's contract with this module. Matching text here would turn a copy-edit in a
+    migration into a silent authentication bypass."""
+    orig = getattr(exc, "orig", None)
+    return getattr(orig, "sqlstate", None) == _DELETED_ACCOUNT_SQLSTATE
 
 #: A workspace's plan now lives on its account. Every gate that used to read `workspace.plan`
 #: reads through this join instead.
@@ -83,9 +98,22 @@ def _resolve_workspace_id(request: Request, session: Session) -> uuid.UUID:
     if not user_id:
         raise HTTPException(status_code=401, detail="missing user")
     claimed = _claimed_workspace(request)
-    resolved = session.execute(
-        text("SELECT resolve_workspace(:uid, :ws)"), {"uid": user_id, "ws": claimed}
-    ).scalar_one()
+    try:
+        resolved = session.execute(
+            text("SELECT resolve_workspace(:uid, :ws)"), {"uid": user_id, "ws": claimed}
+        ).scalar_one()
+    except DBAPIError as exc:
+        if not is_account_deleted(exc):
+            raise
+        # The RAISE aborted the transaction, so this session can't run another statement until
+        # it's rolled back. Without this the 401 is followed by an InFailedSqlTransaction on the
+        # way out (FastAPI's dependency teardown commits or closes), turning a clean 401 into a
+        # 500 — the failure mode that makes a deleted account look like a broken server.
+        session.rollback()
+        # 401, not 403: the account genuinely no longer exists, so this is "we don't know who
+        # you are" rather than "you may not". It also matches what these routes already return
+        # for a bad internal key or a missing user, so the web layer needs no new branch.
+        raise HTTPException(status_code=401, detail="account deleted") from exc
     # Commit the find-or-create immediately. It is a side effect that has to outlive the request,
     # and most requests are reads that never commit — so without this a brand-new user's account
     # and workspace were rolled back on the way out and rebuilt, with fresh ids, on every single
@@ -161,6 +189,15 @@ def run_workspace(request: Request) -> uuid.UUID:
             # A new user's first runs were free, silently.
             session.commit()
         return uuid.UUID(str(resolved))
+    except DBAPIError as exc:
+        # **Checked before the blanket fallback below, and it must stay that way.** Falling back
+        # to the shared dev workspace here would let a deleted account keep streaming runs —
+        # metered against, and debited from, the dev account. "Always stream" is the right
+        # default for an anonymous visitor or a DB hiccup; it is exactly the wrong one for a
+        # caller we have positively identified as deleted.
+        if is_account_deleted(exc):
+            raise HTTPException(status_code=401, detail="account deleted") from exc
+        return dev
     except Exception:
         return dev
 

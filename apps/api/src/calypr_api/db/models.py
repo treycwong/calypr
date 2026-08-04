@@ -21,10 +21,11 @@ from sqlalchemy import (
     Integer,
     Numeric,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from calypr_api.db.base import Base
@@ -90,6 +91,11 @@ class Account(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Set by `DELETE /account`; the row itself is removed later by the purge job (0017). While
+    # this is non-NULL the account still exists in every table, but `resolve_account` refuses to
+    # return it, so no request can reach it — see `deps.is_account_deleted`. The grace window
+    # between the two is the only recovery path there is.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class Workspace(Base):
@@ -422,3 +428,58 @@ class Upload(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class AccountPurge(Base):
+    """What still has to be destroyed after an account was deleted, and how far along we are.
+
+    Written by `DELETE /account` and drained by `purge.py` (0017). It exists because the purge
+    crosses stores that share no transaction — Vercel Blob and LangGraph's checkpoint tables sit
+    outside our own — so *both* inline orderings lose a crash: delete the blobs first and the
+    `upload` rows point at nothing; delete the database first and the urls are gone forever while
+    the objects keep billing.
+
+    **`account_id` has no foreign key on purpose.** The purge's last step deletes the
+    `billing_account` row, and this record has to outlive it as the audit trail. A dangling id
+    here is the design.
+
+    There is deliberately **no email column** — see the 0017 docstring.
+    """
+
+    __tablename__ = "account_purge"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    account_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), unique=True, nullable=False)
+    owner_user_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    # Prefixes rather than expanded thread ids, so the row is the same size for an account with
+    # three conversations and one with three hundred thousand.
+    thread_prefixes: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    # Threads from before `threads.py` namespaced them: no prefix to match, reachable only
+    # through `run.thread_id`, so they have to be enumerated.
+    legacy_thread_ids: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    # Drained chunk by chunk as deletes succeed, which is what makes a crashed purge resumable
+    # instead of re-issuing deletes for objects already gone.
+    blob_urls: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    # Chunks Vercel refused. Parked rather than retried forever: a blob failure must never block
+    # the database purge, but it must not disappear silently either.
+    blob_urls_failed: Mapped[list[str]] = mapped_column(
+        ARRAY(Text), nullable=False, server_default="{}"
+    )
+    stripe_customer_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_subscription_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    stripe_cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    requested_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    purged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
