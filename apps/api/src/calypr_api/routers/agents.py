@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from calypr_api import locking
 from calypr_api.assistant_models import (
     AssistantModelOption,
     assistant_model_options,
@@ -189,7 +190,18 @@ def list_agents(t: Tenant = Depends(tenant)) -> list[AgentSummary]:
         .scalars()
         .all()
     )
-    return [AgentSummary(id=str(a.id), name=a.name, updated_at=a.updated_at) for a in rows]
+    # One query for the whole list rather than a check per row — the dashboard renders this on
+    # every visit, and the answer is the same for all of them.
+    locked = locking.locked_ids_for_request(t)
+    return [
+        AgentSummary(
+            id=str(a.id),
+            name=a.name,
+            updated_at=a.updated_at,
+            locked=a.id in locked.agents or t.workspace_id in locked.workspaces,
+        )
+        for a in rows
+    ]
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])
@@ -201,6 +213,9 @@ def get_agent(agent_id: str, t: Tenant = Depends(tenant)) -> AgentDetail:
 @router.put("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])
 def update_agent(agent_id: str, body: AgentUpdate, t: Tenant = Depends(tenant)) -> AgentDetail:
     a = _get_owned(t.session, t.workspace_id, agent_id)
+    # Read-only if the account is over its plan's cap (after a downgrade). Checked *after*
+    # `_get_owned` so a project that isn't yours still 404s rather than telling you it's locked.
+    locking.require_unlocked_agent(t, a.id)
     changed: list[str] = []
     if body.name is not None:
         a.name = body.name
@@ -247,6 +262,8 @@ def _share_info(s: ShareLink) -> ShareInfo:
 @router.post("/agents/{agent_id}/share", response_model=ShareInfo, tags=["share"])
 def create_share(agent_id: str, body: ShareCreate, t: Tenant = Depends(tenant)) -> ShareInfo:
     _get_owned(t.session, t.workspace_id, agent_id)  # 404s if not the tenant's agent
+    # A share link is new work published from this project, so it follows the same lock.
+    locking.require_unlocked_agent(t, agent_id)
     cap = body.run_cap if body.run_cap is not None else DEFAULT_SHARE_RUN_CAP
     link = ShareLink(
         token=secrets.token_urlsafe(16),  # 128-bit, unguessable

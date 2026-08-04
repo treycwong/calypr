@@ -137,12 +137,22 @@ export function Sidebar({
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-52">
             {workspaces.map((ws) => (
+              // A locked workspace stays selectable: you can still open it, read it, and delete
+              // it — that's the point of locking rather than hiding. The badge says why nothing
+              // in it will save.
               <DropdownMenuItem
                 key={ws.id}
                 data-testid={`ws-option-${ws.id}`}
+                data-locked={ws.locked ? "true" : "false"}
                 onClick={() => selectWorkspace(ws.id)}
               >
                 <span className="min-w-0 flex-1 truncate">{ws.name}</span>
+                {ws.locked ? (
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <Lock className="h-3 w-3" />
+                    Read-only
+                  </span>
+                ) : null}
                 {ws.id === current?.id ? <Check className="h-3.5 w-3.5" /> : null}
               </DropdownMenuItem>
             ))}
