@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Settings + connectors gate: the Settings sidebar tab opens the panel where MCP/OAuth
 // connectors are managed (Connected Accounts + MCP Servers), and an MCP Tool node exposes a
 // "Connector" dropdown that references those saved connectors. This asserts the DB-independent
@@ -7,8 +9,7 @@ import { expect, type Page, test } from "@playwright/test";
 // database is wired, so it stays deterministic in CI.
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }

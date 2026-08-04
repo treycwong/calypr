@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Settings → Account: profile, integrations, and Delete Account.
 //
 // These run in **dev mode**, like the whole suite. That shapes what is worth asserting: there is
@@ -12,37 +14,8 @@ import { expect, type Page, test } from "@playwright/test";
 // dialog that destroys an account when you decline is the failure nobody recovers from.
 
 async function openAccountTab(page: Page) {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/settings");
   await expect(page.getByTestId("account-info-card")).toBeVisible();
-}
-
-/** Open the delete dialog, retrying until it is actually up.
- *
- * Same hydration race as `phase13-workspaces.spec.ts`: the button is server-rendered and
- * clickable before React attaches, so a click landing in that window does nothing and the next
- * locator waits out its full timeout. */
-async function openDeleteDialog(page: Page) {
-  await expect(async () => {
-    await page.getByTestId("account-delete-open").click();
-    await expect(page.getByTestId("account-delete-input")).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-}
-
-/** Pick a file, retrying until React is actually listening.
- *
- * The same hydration race, in its quietest form: the card is server-rendered, so it is visible —
- * and `setInputFiles` succeeds — before `onChange` is bound. The file lands in the input and
- * nothing happens, so the assertion that follows fails on a component that is perfectly correct.
- * Re-picking works because the handler clears `input.value` itself, which makes reselecting the
- * same file fire a fresh change event. */
-async function pickAvatar(page: Page, file: { name: string; buffer: Buffer }, settled: () => Promise<void>) {
-  await expect(async () => {
-    await page
-      .getByTestId("account-image-file")
-      .setInputFiles({ name: file.name, mimeType: "image/png", buffer: file.buffer });
-    await settled();
-  }).toPass({ timeout: 15_000 });
 }
 
 test("the Account tab shows the three cards", async ({ page }) => {
@@ -97,9 +70,10 @@ test("uploading an avatar fills the URL field and previews it", async ({ page })
 
   await openAccountTab(page);
 
-  await pickAvatar(page, { name: "me.png", buffer: png }, () =>
-    expect(page.getByTestId("account-image")).toHaveValue(uploaded, { timeout: 1_000 }),
-  );
+  await page
+    .getByTestId("account-image-file")
+    .setInputFiles({ name: "me.png", mimeType: "image/png", buffer: png });
+  await expect(page.getByTestId("account-image")).toHaveValue(uploaded);
   expect(postedType).toBe("image/png");
   // The avatar previews the uploaded url immediately, before Save — that is the point of
   // holding it in local state rather than re-reading the server's value.
@@ -117,11 +91,11 @@ test("a rejected upload shows the API's own reason", async ({ page }) => {
   );
 
   await openAccountTab(page);
-  await pickAvatar(page, { name: "x.png", buffer: Buffer.from("nope") }, () =>
-    expect(page.getByTestId("account-saved")).toContainText(
-      "only PNG, JPEG, WebP, or GIF images are accepted",
-      { timeout: 1_000 },
-    ),
+  await page
+    .getByTestId("account-image-file")
+    .setInputFiles({ name: "x.png", mimeType: "image/png", buffer: Buffer.from("nope") });
+  await expect(page.getByTestId("account-saved")).toContainText(
+    "only PNG, JPEG, WebP, or GIF images are accepted",
   );
 });
 
@@ -148,7 +122,7 @@ test("the GitHub integration reports its connected state", async ({ page }) => {
 
 test("the confirm button stays disabled until the exact phrase is typed", async ({ page }) => {
   await openAccountTab(page);
-  await openDeleteDialog(page);
+  await page.getByTestId("account-delete-open").click();
 
   const confirm = page.getByTestId("account-delete-confirm");
   await expect(confirm).toBeDisabled();
@@ -168,7 +142,7 @@ test("Cancel closes the dialog and leaves you signed in", async ({ page }) => {
   // **The important negative test.** Everything else here can be wrong and merely annoy; this
   // being wrong destroys an account for someone who said no.
   await openAccountTab(page);
-  await openDeleteDialog(page);
+  await page.getByTestId("account-delete-open").click();
 
   await page.getByTestId("account-delete-input").fill("delete my account");
   await expect(page.getByTestId("account-delete-confirm")).toBeEnabled();
@@ -187,7 +161,7 @@ test("Cancel closes the dialog and leaves you signed in", async ({ page }) => {
 
 test("confirming signs you out and the dashboard no longer lets you in", async ({ page }) => {
   await openAccountTab(page);
-  await openDeleteDialog(page);
+  await page.getByTestId("account-delete-open").click();
 
   await page.getByTestId("account-delete-input").fill("delete my account");
   await page.getByTestId("account-delete-confirm").click();

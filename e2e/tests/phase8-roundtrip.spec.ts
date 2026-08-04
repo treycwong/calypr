@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 import { API_URL } from "../playwright.config";
 
 // Phase 8 gate (MVP-EXECUTION-PLAN Week 8): the reverse round-trip reaches the user. Open a
@@ -18,8 +20,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }

@@ -1,5 +1,7 @@
 import { expect, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 9 gate (AI-ASSISTANT-SPEC.md §10): open the canvas, ask the AI assistant for a RAG
 // chatbot. The proposed graph previews live on the canvas (wired Input → Retriever → Agent →
 // Output) with Apply/Discard controls; Apply commits it. Then "Try it" streams a reply, the
@@ -7,8 +9,7 @@ import { expect, test } from "@playwright/test";
 // Keyless: the assistant's fake path maps "rag" → the RAG template and forces the fake model,
 // so the gate needs no API key and no database.
 test("prompt the assistant to build a RAG chatbot, approve, then undo", async ({ page }) => {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
