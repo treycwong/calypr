@@ -84,9 +84,43 @@ At this point nothing has changed for any user. If something looks wrong, revert
 
 ---
 
+## Step 1b — test the whole backend *before* merging #61
+
+**Do this before shipping the button.** #60 already exposes `DELETE /api/account`; only the UI is
+missing. So the entire risky half — Stripe cancellation, the purge record, the soft-delete, the
+non-resurrection guard — can be exercised while no user can reach it, which is a strictly better
+place to discover a problem than after the button is live.
+
+Sign in to calypr.co with a **throwaway GitHub account**. Create a project or two so there is
+something to destroy. Then, in the browser console:
+
+```javascript
+await fetch('/api/account', { method: 'DELETE' }).then(async r => ({ status: r.status, body: await r.json() }))
+```
+
+Expect `{status: 200, body: {deleted: true, mode: "live"}}`.
+
+A **500** here is the case this step exists to catch — most likely `account_purge` missing because
+the migration didn't land. Note that by then Stripe has *already* been cancelled (it runs first),
+so on a paid account that leaves a cancelled subscription on a live account. Re-check step 1
+before going further.
+
+Verify with the same SQL as step 2 below, then reload calypr.co as the throwaway: you should be
+bounced out, because the account no longer resolves.
+
+> A **free** throwaway exercises everything except the Stripe branch — `cancel_subscription`
+> returns early with no subscription to cancel. Stripe is step 4.
+
+---
+
 ## Step 2 — merge #61, then delete a throwaway account
 
-Merge #61. Sign in with a **throwaway GitHub account**.
+Merge #61. Sign in with a **throwaway GitHub account** — a *second* one if you used the first in
+step 1b, or the same one after forcing its purge (step 3), which also demonstrates the
+returning-user property.
+
+Everything below is UI-only and therefore untestable before this point — including
+`authClient.deleteUser()`, the `freshAge` path nothing in CI touches.
 
 **2a. Non-destructive first** (Settings → Account):
 
