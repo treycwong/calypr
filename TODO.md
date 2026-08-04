@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-02.
+> record — what shipped and why. Updated 2026-08-04.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -19,6 +19,16 @@ exactly one live endpoint).
 3 projects / 500 MB, Plus 3 / 20 / 5 GB, all pooled per account. It also closed two bugs that
 predate it — conversation threads were not bound to a tenant, and a new user's first runs streamed
 unmetered. Storage is displayed rather than enforced, on purpose. See the section below.
+
+**Account deletion and the downgrade path shipped 2026-08-04** (PRs #60–#63, #65, #66 — all live): a real
+Delete Account, and a lapsed Plus subscription that no longer destroys run state or claws back
+credits, with over-cap workspaces/projects locked read-only rather than deleted. See the section
+below. **Four things it left open**, none blocking: a real Stripe cancellation and a real blob
+delete are still unverified by hand (`ACCOUNT-DELETION-RUNBOOK.md`); image-node and share-page
+uploads still write no `upload` row so those blobs survive deletion; the Usage tab renders `3 of 1`
+as an ordinary meter when over-limit; and **Vercel preview deployments have been failing all day
+while production is fine** — proven environmental with a control branch, but worth a look at the
+dashboard.
 
 §2 is closed: billing is enforced end-to-end and live. §3 is the money-safety work that should
 land before real charges, none of it blocking.
@@ -393,6 +403,118 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, Chroma provider,
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
+
+---
+
+## 🟢 Account deletion + the downgrade path — DONE (2026-08-04), merged to main
+
+Six PRs, all live: **#60** (`75fb5f7`) delete backend · **#61** (`56a4796`) Settings → Account ·
+**#62** (`5826cbd`) Save/workspace polish · **#63** (`12fb927`) downgrade safety ·
+**#65** (`688e5e3`) e2e hydration · **#66** (`f1dd26d`) capacity locking.
+
+Two neighbouring paths that were never designed, only inherited: **deleting** an account, and
+what happens when a Plus subscription **lapses**. Both had the same shape of bug — data destroyed
+as a side effect of a billing state change, with no warning and no undo.
+
+### Delete an account (#60, #61) — migration `0017`
+
+Settings → Account was read-only. It now has three cards: editable profile (name + avatar,
+uploadable via the existing `/uploads` endpoint), GitHub integration state, and Delete Account
+behind a typed `delete my account`.
+
+**Three things did not exist before this.** There was **no Stripe cancellation code anywhere in
+`apps/api`** — deleting an account would have kept charging the card. `calypr_storage` exported
+only `put_blob`, so every object orphaned permanently. And `resolve_account` is find-or-create,
+committed on *every* request, so a database-only delete was silently undone by the next page load.
+
+The shape: the request cancels Stripe **first** and 502s without touching anything if that fails
+(an account deleted while its card keeps charging is the one outcome we can't ship), records what
+must die in `account_purge`, and marks `deleted_at`. It **cascades nothing**. A nightly job does
+the crossing, because Vercel Blob and LangGraph's checkpoint tables share no transaction with
+Postgres — and both inline orderings lose a crash.
+
+The resurrection guard lives **inside** the upsert (`WHERE deleted_at IS NULL` on `DO UPDATE`).
+A check in front of the INSERT loses the race against a concurrent soft-delete; the upsert takes
+the row lock before evaluating its predicate. It RAISEs SQLSTATE `CY001` rather than returning
+NULL, because every caller reads a uuid as "proceed" and would fail **open**.
+
+### What happens when Plus lapses (#63, #66) — migration `0018`
+
+**Cancelling does not downgrade immediately, and that was already correct** — Stripe sets
+`cancel_at_period_end`, the subscription stays `active`, and the account keeps Plus until the
+period ends. Do not "fix" this again.
+
+What happened *after* the drop was the problem. Three findings, in severity order:
+
+1. **Run state was destroyed the same night.** `gc_checkpoints` derives its TTL from the plan
+   *at collection time* and had no idea when that plan became true, so the instant a subscription
+   lapsed everything 7–30 days old was already expired. `0018` adds `plan_changed_at` and a
+   7-day grace window. Stamped **only on a real change**, or a redelivered webhook would extend
+   retention forever.
+2. **Credits were clawed back.** `grant_monthly` wrote `delta = target - current`
+   unconditionally, so a downgraded account with 1,500 credits got a **negative ledger row
+   labelled `grant`**. It now only ever tops up.
+3. **Capacity was never reclaimed.** Caps were create-time only, so a lapsed account kept 3
+   workspaces and 20 projects and could work in all of them forever — one month of Plus bought
+   the capacity permanently. `locking.py` now makes the newest-over-cap read-only, derived from
+   plan + `created_at` rank with nothing stored.
+
+**The governing rule, in both halves: take back capacity, never data.** Locked rows stay
+readable, exportable and **deletable** — deleting down to the cap is one of the two ways out, so
+a lock that blocked it would be a trap with no exit.
+
+### Three bugs found in passing, none in the feature being built
+
+- **`authClient.deleteUser()` would have failed for almost every real user.** Better Auth gates it
+  on session freshness (default 24h) unless a password is supplied — and GitHub OAuth users have
+  no `credential` account, so that branch is unreachable. The client returns `{data, error}` and
+  **does not throw**, so the failure was silent: account soft-deleted, session cookie left intact,
+  user redirected while still holding it. Fixed with `session: { freshAge: 0 }` **and** an
+  explicit error check. Invisible to 100/100 e2e, because nothing in dev or CI calls Better Auth.
+- **The e2e suite raced hydration everywhere** (#65). Nearly every page is `"use client"` but
+  still server-renders, so buttons ship in the HTML — visible, enabled, with testids — before
+  `onClick` exists. Three spec files carried comments claiming `.react-flow__controls` guarded
+  against this; it never did. The app now sets `<html data-hydrated>`. Four retry helpers deleted,
+  ~50 more never written.
+- **`GET /workspaces` now answers `{workspaces, plan, can_create}`.** Free caps at 1 workspace and
+  every account already has "Personal", so "New workspace" could *never* succeed there — it
+  collected a name and then refused it. Now a locked row linking to `/pricing`. `can_create` is
+  decided by the API from `entitlements.LIMITS`, not re-derived in TypeScript where it would drift.
+
+### Two testing lessons worth keeping
+
+- **Mutation testing repeatedly caught weak tests.** A "delete is always allowed" test sent the
+  delete from the *unlocked* workspace and passed even with `DELETE` gated. A credit clamp turned
+  out never to be load-bearing (a guard below it did the work) and was removed rather than left as
+  a second expression no test could pin.
+- **Green locally, red in CI.** LangGraph's `checkpoints` tables are created by
+  `AsyncPostgresSaver.setup()`, not Alembic, and only ever existed as a side effect of whichever
+  test module entered the app lifespan first — alphabetically. A new module sorting before it
+  found nothing. Now a session fixture in `conftest.py`; **verify DB tests against a scratch
+  database, not a primed dev one.**
+
+### Verified in production (2026-08-04)
+
+`alembic_version = 0018` · Better Auth's `account` intact · account deletion exercised end to end
+on a throwaway GitHub account, including `authClient.deleteUser()` · avatar upload and profile
+save confirmed · locking exercised against a real over-cap account (correct 2 of 5 projects
+locked, oldest kept; rename 402s; deleting one takes the count 2 → 1).
+
+### Still open
+
+- **Never manually verified:** a real **Stripe cancellation** through the delete path (prod keys
+  are live — prefer a 100%-off coupon on a throwaway), and a real **blob delete** confirmed by the
+  URL actually 404-ing. The test account is still inside its 7-day purge window; see
+  `ACCOUNT-DELETION-RUNBOOK.md`.
+- **Blobs we cannot delete.** `_assets.py` (image-node output) writes no `upload` row, and
+  share-page uploads pass `workspace_id=None`, so those objects survive account deletion
+  permanently and are unattributable. A real gap in a "delete my account" promise. The danger copy
+  says "uploads", not "all your files", on purpose.
+- **Usage tab renders `3 of 1`** as an ordinary meter when over-limit — honest, not styled as one.
+- **Vercel *preview* deployments have been failing all day** (`Resource provisioning failed`,
+  duration `?`) while **production deploys fine**. Proven environmental with a control branch: an
+  empty commit off `main` fails identically. `build-test` is the real gate.
+- **Never downgrade past `0017` in production** once anything has been deleted.
 
 ---
 
