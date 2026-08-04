@@ -1,5 +1,26 @@
+import { headers } from "next/headers";
+
 import { SettingsView } from "@/components/dashboard/settings-view";
-import { getSession } from "@/lib/auth";
+import { betterAuthEnabled, getSession } from "@/lib/auth";
+
+/**
+ * Which social providers this user has linked.
+ *
+ * Resolved here rather than from the browser so the Integrations card renders correctly on
+ * first paint — a client round-trip would flash "not connected" at someone who is, which reads
+ * as an error rather than a loading state. Returns `[]` in dev (no Better Auth) and on failure:
+ * "we couldn't tell" and "not connected" look the same, and the card is read-only either way.
+ */
+async function linkedProviders(): Promise<string[]> {
+  if (!betterAuthEnabled()) return [];
+  try {
+    const { auth } = await import("@/lib/auth-server");
+    const accounts = await auth.api.listUserAccounts({ headers: await headers() });
+    return (accounts ?? []).map((a: { providerId: string }) => a.providerId);
+  } catch {
+    return [];
+  }
+}
 
 export default async function SettingsPage({
   searchParams,
@@ -28,6 +49,11 @@ export default async function SettingsPage({
       email={session.email}
       image={session.image}
       initialTab={initialTab}
+      // Whether a profile edit can actually persist. The dev path synthesizes its session from
+      // a cookie and has **no profile store at all**, so saving there would appear to work and
+      // silently revert on reload — worse than a disabled field that explains itself.
+      manageable={betterAuthEnabled()}
+      providers={await linkedProviders()}
     />
   );
 }

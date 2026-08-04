@@ -609,3 +609,24 @@ export async function parseCode(code: string): Promise<ParseResult> {
   if (!res.ok) throw new Error(`parse failed (${res.status})`);
   return (await res.json()) as ParseResult;
 }
+
+export type AccountDeleted = { deleted: boolean; mode: "live" | "dev" };
+
+/**
+ * Delete the whole account — every workspace, the subscription, the login.
+ *
+ * The error message is surfaced verbatim rather than flattened to a status code, because the
+ * one a user can actually hit is the Stripe 502: *nothing* was deleted and retrying is the
+ * right move, which a bare "delete failed (502)" would not tell them.
+ */
+export async function deleteAccount(): Promise<AccountDeleted> {
+  const res = await fetch("/api/account", { method: "DELETE" });
+  if (!res.ok) {
+    const detail = await res
+      .json()
+      .then((b) => (typeof b?.detail === "string" ? b.detail : ""))
+      .catch(() => "");
+    throw new Error(detail || `Couldn't delete your account (${res.status}). Please try again.`);
+  }
+  return (await res.json()) as AccountDeleted;
+}

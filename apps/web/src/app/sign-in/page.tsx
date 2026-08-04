@@ -4,7 +4,7 @@ import { GithubSignIn } from "@/components/auth/github-sign-in";
 import { Button } from "@/components/ui/button";
 import { betterAuthEnabled } from "@/lib/auth";
 
-type Props = { searchParams: Promise<{ next?: string }> };
+type Props = { searchParams: Promise<{ next?: string; deleted?: string }> };
 
 function Frame({ children }: { children: React.ReactNode }) {
   return (
@@ -31,12 +31,22 @@ function Frame({ children }: { children: React.ReactNode }) {
 }
 
 export default async function SignInPage({ searchParams }: Props) {
-  const { next } = await searchParams;
+  const { next, deleted } = await searchParams;
   const enabled = betterAuthEnabled();
   const devAction = `/api/auth/dev${next ? `?next=${encodeURIComponent(next)}` : ""}`;
 
   return (
     <Frame>
+      {/* The only confirmation a deleted account ever gets: by this point there is no session
+          to show a message in, and no address we're willing to keep in order to email one. */}
+      {deleted !== undefined ? (
+        <div
+          className="mb-4 w-full rounded-lg border border-border bg-card/40 p-4 text-sm backdrop-blur"
+          data-testid="account-deleted-notice"
+        >
+          Your account has been deleted. Signing in again will start a new one.
+        </div>
+      ) : null}
       <div className="w-full rounded-xl border border-border bg-card/40 p-6 backdrop-blur">
         <h1 className="text-lg font-medium tracking-tight">Sign in to Calypr</h1>
         <p className="mt-1 text-sm text-muted-foreground">
