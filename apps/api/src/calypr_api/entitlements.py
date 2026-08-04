@@ -22,7 +22,7 @@ capacity limits below, per `PRICING-SPEC.md` §1.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -91,9 +91,42 @@ LIMITS: dict[str, Limits] = {
 }
 
 
+#: How long after a plan change the *previous*, more generous checkpoint retention stays in
+#: force. Seven days: long enough to notice a subscription lapsed, export anything that matters,
+#: or re-subscribe; short enough that it isn't a way to keep paid retention for free.
+DOWNGRADE_GRACE_DAYS = 7
+
+#: The most generous retention any plan buys. What the grace window falls back to.
+MAX_CHECKPOINT_TTL_DAYS = max(lim.checkpoint_ttl_days for lim in LIMITS.values())
+
+
 def limits(plan: str | None) -> Limits:
     """What this plan allows. An unknown or missing plan gets Free — fail to the smallest set."""
     return LIMITS.get(plan or FREE, LIMITS[FREE])
+
+
+def retention_days(plan: str | None, plan_changed_at: datetime | None) -> int:
+    """How long this account's run state survives **right now**.
+
+    Normally the plan's own `checkpoint_ttl_days`. Within `DOWNGRADE_GRACE_DAYS` of a plan change
+    it is the most generous window any plan buys instead.
+
+    **Why this exists.** Retention is evaluated at collection time, so without it the instant a
+    subscription lapsed every checkpoint between the paid TTL (30 days) and the free one (7) was
+    already expired, and that night's GC deleted it. A billing event silently destroying a week's
+    work, with no warning and no undo, is the single most damaging thing in the downgrade path.
+
+    **Why the maximum rather than the actual previous plan.** We don't store the previous plan,
+    and adding a column to hold it buys precision we'd only spend erring *downward* — deleting
+    sooner. For an irreversible delete the safe direction is to keep too much for a few days, so
+    a change *into* a more generous plan harmlessly gets the same treatment.
+    """
+    ttl = limits(plan).checkpoint_ttl_days
+    if plan_changed_at is None:
+        return ttl
+    if datetime.now(UTC) - plan_changed_at < timedelta(days=DOWNGRADE_GRACE_DAYS):
+        return max(ttl, MAX_CHECKPOINT_TTL_DAYS)
+    return ttl
 
 
 def is_valid_plan(plan: str) -> bool:

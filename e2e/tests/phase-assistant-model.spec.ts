@@ -6,10 +6,29 @@ import { expect, type Page, test } from "@playwright/test";
  * a click in that window is swallowed, the panel never switches, and the assertion that follows
  * fails on a component that is perfectly correct. Same race, and same fix, as `openSwitcher` in
  * `phase13-workspaces.spec.ts`. */
-async function openWorkspaceTab(page: import("@playwright/test").Page) {
+async function openWorkspaceTab(page: Page) {
   await expect(async () => {
     await page.getByTestId("tab-workspace").click();
     await expect(page.getByTestId("ws-name")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
+/** Add a node to the canvas, retrying until it actually lands.
+ *
+ * The same race one layer down. `.react-flow__controls` being visible says the canvas
+ * *rendered*, not that React has attached to the toolbar, so a click in that gap is swallowed
+ * and the node never appears — surfacing as `node-input` not found, which reads like a broken
+ * toolbar rather than a timing problem.
+ *
+ * **Idempotent on purpose.** A plain retry would add a second node whenever the first click was
+ * merely slow rather than lost, quietly changing the graph under test. Clicking only when the
+ * node is absent, and asserting exactly one, makes a repeat safe. */
+async function addNode(page: Page, kind: string) {
+  await expect(async () => {
+    if ((await page.getByTestId(`node-${kind}`).count()) === 0) {
+      await page.getByTestId(`add-${kind}`).click();
+    }
+    await expect(page.getByTestId(`node-${kind}`)).toHaveCount(1, { timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
 }
 
@@ -192,12 +211,9 @@ test("a run on an unkeyed frontier model falls back and says so", async ({ page 
   await page.getByTestId("dev-sign-in").click();
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  await addNode(page, "input");
+  await addNode(page, "agent");
+  await addNode(page, "output");
 
   await page.getByTestId("toggle-playground").click();
   await page.getByTestId("chat-input").fill("hello");
@@ -228,10 +244,8 @@ test("a rejected provider key shows a Fix it link into Settings", async ({ page 
   await page.goto("/canvas");
   await page.getByTestId("dev-sign-in").click();
   await expect(page.locator(".react-flow__controls")).toBeVisible();
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
+  await addNode(page, "input");
+  await addNode(page, "agent");
 
   await page.getByTestId("toggle-playground").click();
   await page.getByTestId("chat-input").fill("hello");
@@ -256,10 +270,8 @@ test("an ordinary run error shows no Fix it link", async ({ page }) => {
   await page.goto("/canvas");
   await page.getByTestId("dev-sign-in").click();
   await expect(page.locator(".react-flow__controls")).toBeVisible();
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
+  await addNode(page, "input");
+  await addNode(page, "agent");
 
   await page.getByTestId("toggle-playground").click();
   await page.getByTestId("chat-input").fill("hello");

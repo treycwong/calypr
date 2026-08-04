@@ -55,6 +55,14 @@ class Account(Base):
     # Entitlement tier: `free | beta | plus`. Read through `calypr_api.entitlements` rather than
     # compared inline, so gating rules live in one place.
     plan: Mapped[str] = mapped_column(String, nullable=False, server_default="free")
+    # When `plan` last actually changed (0018). NULL = never, or not since the column existed.
+    # Written only by `billing.set_plan`, and only on a real change, so a redelivered webhook
+    # can't extend the window it opens: `entitlements.retention_days` keeps the *longer*
+    # checkpoint TTL alive for a grace period after a downgrade, which is the only thing standing
+    # between a lapsed subscription and run state being collected that same night.
+    plan_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     # The Stripe customer this account bills as. Subscription events name a customer, not an
     # account, so this is what maps a payment back to whose plan should change. Unique: two
     # accounts on one customer would make that mapping ambiguous.

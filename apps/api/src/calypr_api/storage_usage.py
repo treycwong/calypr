@@ -186,7 +186,20 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
     forever in tables nothing else prunes.
 
     Idempotent and batched, so a partial run is safe to simply re-run."""
-    ttl_cases = " ".join(
+    # **The grace arm comes first, and the order matters** — a CASE stops at its first match, so
+    # putting the plan arms first would make the grace unreachable.
+    #
+    # An account whose plan changed within the window keeps the most generous retention any plan
+    # buys, regardless of what it changed *to*. Without this, a lapsed subscription expired
+    # everything between the paid TTL (30 days) and the free one (7) the instant it lapsed, and
+    # this job deleted it that night — silently, irreversibly, triggered by a billing event.
+    # `entitlements.retention_days` is the same rule in Python; keep the two in step.
+    grace_case = (
+        f"WHEN a.plan_changed_at IS NOT NULL"
+        f"  AND a.plan_changed_at > now() - interval '{entitlements.DOWNGRADE_GRACE_DAYS} days'"
+        f" THEN interval '{entitlements.MAX_CHECKPOINT_TTL_DAYS} days'"
+    )
+    ttl_cases = grace_case + " " + " ".join(
         f"WHEN a.plan = '{plan}' THEN interval '{lim.checkpoint_ttl_days} days'"
         for plan, lim in entitlements.LIMITS.items()
     )

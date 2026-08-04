@@ -6,13 +6,15 @@ also set while the tests run. That is fine for most settings and actively wrong 
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from dataclasses import dataclass
 
 import pytest
 from calypr_api.config import settings
 from calypr_api.db.models import Account, Workspace
-from calypr_api.db.session import SessionLocal
+from calypr_api.db.session import SessionLocal, engine
+from sqlalchemy import text
 
 
 @dataclass(frozen=True)
@@ -57,6 +59,40 @@ def tenant_factory():
     with SessionLocal() as s:
         s.query(Account).filter(Account.id.in_(made)).delete(synchronize_session=False)
         s.commit()
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _checkpoint_tables():
+    """Make sure LangGraph's checkpoint tables exist before any test writes to them.
+
+    They are created by `AsyncPostgresSaver.setup()`, not Alembic, so until now they appeared
+    only as a **side effect of whichever test module first entered the app lifespan** — in
+    practice `test_lifespan.py`. Every other module that touches `checkpoints` was silently
+    relying on running after it.
+
+    Alphabetical collection order is what makes that a trap rather than a nuisance: a new module
+    sorting before `test_lifespan` finds no tables and fails, while the same code passes locally
+    against a developer database where the app has run at least once. `test_downgrade.py` hit
+    exactly that, and it was green locally and red in CI.
+
+    Session-scoped and idempotent — `setup()` is safe to re-run, and a database that isn't
+    reachable is left to the per-module `requires_db` skips."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+    except Exception:
+        return  # no database; `requires_db` handles the skipping
+
+    async def _setup() -> None:
+        from calypr_runtime.checkpoint import postgres_checkpointer
+
+        async with postgres_checkpointer(settings.database_url) as cp:
+            await cp.setup()
+
+    try:
+        asyncio.run(_setup())
+    except Exception:  # pragma: no cover - a checkpointer we can't build is the module's problem
+        pass
 
 
 @pytest.fixture(autouse=True)

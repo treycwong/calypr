@@ -124,7 +124,14 @@ def grant_monthly(
     `ref_id`.
 
     Grants **replace** rather than accumulate — the plan is "2,000 a month", not "2,000 that
-    pile up forever". Rollover is explicitly out of v1 (`PRICING-SPEC.md` §1)."""
+    pile up forever". Rollover is explicitly out of v1 (`PRICING-SPEC.md` §1).
+
+    **Tops up, never down.** For a renewal on the same plan those are the same thing, because the
+    balance can only have gone down. They diverge exactly once: after a **downgrade**, where a
+    leftover Plus balance is larger than the Free allowance. Subtracting the difference would
+    write a *negative* row labelled `grant` and take back credits the user had already been
+    given — so the delta is clamped, and they spend down what they have before Free top-ups
+    resume."""
     amount = MONTHLY_GRANT.get(account.plan or entitlements.FREE, 0)
     if amount <= 0:
         return False
@@ -136,11 +143,19 @@ def grant_monthly(
 
     current = balance_micro(session, account.id)
     target = amount * MICRO
-    delta = target - current  # top *up to* the grant, don't stack on leftovers
+    delta = target - current  # negative when the balance already exceeds the new allowance
 
     savepoint = session.begin_nested()
     try:
-        _write(session, account.id, delta, "grant", source="stripe", ref_id=ref_id)
+        # **Only ever top up.** A non-positive delta means the balance already meets the
+        # allowance, so there is nothing to grant — and writing it anyway would post a *negative*
+        # row labelled `grant`, taking back credits the user had already been given. That only
+        # happens after a downgrade, where a leftover Plus balance exceeds the Free allowance.
+        #
+        # The cycle is anchored either way: the month *has* been granted, and leaving the anchor
+        # unset would make `ensure_current_grant` retry this on every run for the rest of it.
+        if delta > 0:
+            _write(session, account.id, delta, "grant", source="stripe", ref_id=ref_id)
         account.grant_cycle_anchor = cycle
         savepoint.commit()
     except IntegrityError:
