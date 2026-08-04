@@ -347,6 +347,14 @@ export type WorkspaceSummary = {
   is_current: boolean;
 };
 
+/** The switcher's payload. `can_create` is decided by the API from `entitlements.LIMITS` — the
+ *  same table `create_workspace` enforces — so the UI never re-derives "free means one" here. */
+export type WorkspaceList = {
+  workspaces: WorkspaceSummary[];
+  plan: string;
+  can_create: boolean;
+};
+
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
  * once that provider's key is saved in API Keys. Served by the API so the picker and the
  * validation on save can never drift apart. */
@@ -473,7 +481,7 @@ export async function renameWorkspace(name: string): Promise<WorkspaceInfo> {
 }
 
 /** Every workspace on this account — the switcher's list. */
-export async function listWorkspaces(): Promise<WorkspaceSummary[]> {
+export async function listWorkspaces(): Promise<WorkspaceList> {
   const res = await fetch("/api/workspaces", { cache: "no-store" });
   if (!res.ok) throw new Error(`workspaces failed (${res.status})`);
   return res.json();

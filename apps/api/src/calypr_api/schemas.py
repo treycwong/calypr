@@ -212,6 +212,24 @@ class WorkspaceSummary(BaseModel):
     is_current: bool = False
 
 
+class WorkspaceList(BaseModel):
+    """The switcher's whole payload: the rows, plus whether another one may be created.
+
+    `can_create` is answered **here** rather than derived in the browser from a plan name. The
+    cap lives in `entitlements.LIMITS` and is enforced in `create_workspace`; a second copy of
+    "free means one" in TypeScript is a copy that drifts, and the version that drifts is the one
+    deciding what to show. The client's job is to render the answer, not to work it out.
+
+    It also keeps the sidebar to a single request. The dashboard layout renders on every page
+    under /dashboard and deliberately avoids `/workspaces/current`, which counts projects and can
+    write a lazy credit grant — so the entitlement rides along with the list it already fetches.
+    """
+
+    workspaces: list[WorkspaceSummary]
+    plan: str
+    can_create: bool
+
+
 class WorkspaceCreate(BaseModel):
     name: str
 

@@ -76,6 +76,56 @@ def _set_plan(user_id: str, plan: str) -> uuid.UUID:
         return account_id
 
 
+# --- what the switcher is allowed to offer -------------------------------------------------------
+
+
+@requires_db
+def test_free_is_told_it_cannot_create_another_workspace(user):
+    """The switcher asks the API rather than deciding for itself.
+
+    On Free the cap is 1 and `resolve_account` guarantees a 'Personal' workspace exists, so
+    "New workspace" could never succeed — the menu links to pricing instead of opening a dialog
+    whose only outcome is a refusal. This is the answer that drives that."""
+    _set_plan(user, entitlements.FREE)
+    body = client.get("/workspaces", headers=_hdr(user)).json()
+
+    assert len(body["workspaces"]) == 1
+    assert body["plan"] == entitlements.FREE
+    assert body["can_create"] is False
+
+
+@requires_db
+def test_plus_may_create_until_it_reaches_the_cap(user):
+    """And the boundary is the cap itself, not the plan name — so raising `LIMITS` is the only
+    edit needed to change this behaviour."""
+    _set_plan(user, entitlements.PLUS)
+    cap = entitlements.limits(entitlements.PLUS).workspaces
+
+    body = client.get("/workspaces", headers=_hdr(user)).json()
+    assert body["can_create"] is True
+
+    while len(client.get("/workspaces", headers=_hdr(user)).json()["workspaces"]) < cap:
+        assert (
+            client.post("/workspaces", json={"name": "more"}, headers=_hdr(user)).status_code
+            == 201
+        )
+
+    body = client.get("/workspaces", headers=_hdr(user)).json()
+    assert len(body["workspaces"]) == cap
+    assert body["can_create"] is False
+    # And the affordance agrees with what the endpoint would actually do.
+    assert client.post("/workspaces", json={"name": "x"}, headers=_hdr(user)).status_code == 402
+
+
+@requires_db
+def test_the_switcher_offers_creation_without_an_internal_key(monkeypatch):
+    """Dev/CI: caps aren't enforced, so reporting `can_create: false` would hide an affordance
+    that demonstrably works locally — and take the e2e coverage of the create flow with it."""
+    monkeypatch.setattr(settings, "internal_key", "")
+    body = client.get("/workspaces").json()
+    assert body["can_create"] is True
+
+
 # --- the caps pool across an account's workspaces ------------------------------------------------
 
 
@@ -153,7 +203,7 @@ def test_credits_are_pooled_not_per_workspace(user):
         assert accounts.workspace_count(s, account_id) == 2
 
     # Spend from one workspace; the other sees the same reduced balance.
-    workspaces = client.get("/workspaces", headers=_hdr(user)).json()
+    workspaces = client.get("/workspaces", headers=_hdr(user)).json()["workspaces"]
     assert len(workspaces) == 2
     with SessionLocal() as s:
         credits.debit_run(
@@ -222,7 +272,7 @@ def test_a_legitimate_second_workspace_is_selectable(user):
     side = created.json()["id"]
 
     assert client.get("/workspaces/current", headers=_hdr(user, side)).json()["id"] == side
-    listing = client.get("/workspaces", headers=_hdr(user, side)).json()
+    listing = client.get("/workspaces", headers=_hdr(user, side)).json()["workspaces"]
     assert {w["name"] for w in listing} == {"Personal", "Side"}
     assert [w["id"] for w in listing if w["is_current"]] == [side]
 
@@ -247,7 +297,11 @@ def test_deleting_frees_a_slot(user):
         )
     assert client.post("/workspaces", json={"name": "D"}, headers=_hdr(user)).status_code == 402
 
-    doomed = [w for w in client.get("/workspaces", headers=_hdr(user)).json() if w["name"] == "C"]
+    doomed = [
+        w
+        for w in client.get("/workspaces", headers=_hdr(user)).json()["workspaces"]
+        if w["name"] == "C"
+    ]
     assert client.request(
         "DELETE", f"/workspaces/{doomed[0]['id']}", headers=_hdr(user)
     ).status_code == 204

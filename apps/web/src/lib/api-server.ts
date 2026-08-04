@@ -1,7 +1,7 @@
 import "server-only";
 
 import { internalHeaders } from "@/lib/api-headers";
-import type { WorkspaceSummary } from "@/lib/api";
+import type { WorkspaceList } from "@/lib/api";
 
 // Server-component reads that hit the Python API directly.
 //
@@ -29,7 +29,16 @@ async function get<T>(path: string, fallback: T): Promise<T> {
   }
 }
 
-/** Every workspace on the signed-in user's account, for the sidebar switcher. */
-export function fetchWorkspaces(): Promise<WorkspaceSummary[]> {
-  return get<WorkspaceSummary[]>("/workspaces", []);
+/** Every workspace on the signed-in user's account, plus whether another may be created — the
+ *  sidebar switcher's whole payload, in one request.
+ *
+ *  The fail-soft fallback claims `can_create: false`. With the API unreachable we cannot know the
+ *  plan, and offering a create that will fail is worse than omitting an affordance for the length
+ *  of an outage. */
+export function fetchWorkspaces(): Promise<WorkspaceList> {
+  return get<WorkspaceList>("/workspaces", {
+    workspaces: [],
+    plan: "free",
+    can_create: false,
+  });
 }
