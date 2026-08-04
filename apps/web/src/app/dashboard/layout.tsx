@@ -23,7 +23,9 @@ export default async function DashboardLayout({
   // Fetched server-side rather than in the client sidebar so the workspace name is right on
   // first paint instead of flashing. The layout re-renders on `router.refresh()`, which is what
   // the switcher triggers after setting the cookie.
-  const workspaces = await fetchWorkspaces();
+  // Carries `can_create` alongside the rows, so the switcher can offer the right affordance on
+  // first paint without a second request — see `WorkspaceList` in the API schemas.
+  const { workspaces, can_create } = await fetchWorkspaces();
 
   return (
     <div className="flex h-screen">
@@ -31,6 +33,7 @@ export default async function DashboardLayout({
         session={session}
         betterAuth={betterAuthEnabled()}
         workspaces={workspaces}
+        canCreateWorkspace={can_create}
       />
       <main className="flex-1 overflow-auto">{children}</main>
     </div>

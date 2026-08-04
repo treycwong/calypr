@@ -342,7 +342,8 @@ export function SettingsView({
             <label htmlFor="account-image" className="mt-3 block text-xs text-muted-foreground">
               Or paste an image URL
             </label>
-            <div className="mt-2 flex items-center gap-2">
+            {/* Save lives below, not on this row — see the note at the save block. */}
+            <div className="mt-2">
               <Input
                 id="account-image"
                 className="max-w-xs"
@@ -352,19 +353,6 @@ export function SettingsView({
                 onChange={(e) => setProfileImage(e.target.value)}
                 data-testid="account-image"
               />
-              <Button
-                size="sm"
-                onClick={saveProfile}
-                disabled={!manageable}
-                data-testid="account-save"
-              >
-                Save
-              </Button>
-              {profileMsg ? (
-                <span className="text-xs text-muted-foreground" data-testid="account-saved">
-                  {profileMsg}
-                </span>
-              ) : null}
             </div>
 
             {!manageable ? (
@@ -373,6 +361,32 @@ export function SettingsView({
                 save here wouldn&rsquo;t stick. Set Better Auth keys to enable real auth.
               </p>
             ) : null}
+
+            {/* One Save for the whole section, on its own row.
+                It used to sit inline beside the avatar-URL input, which read as "save this
+                field" — so a name edit looked unsaved, or worse, looked like it needed a
+                different button that doesn't exist. A single `updateUser` call has always sent
+                both; the layout was the thing lying about it. The rule this follows: a control's
+                position is a claim about its scope, so a section-scoped action belongs after the
+                section, not welded to the last input in it. */}
+            <div className="mt-4 flex items-center gap-3 border-t border-border pt-4">
+              <Button
+                size="sm"
+                onClick={saveProfile}
+                disabled={!manageable}
+                data-testid="account-save"
+              >
+                Save changes
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Saves your display name and avatar.
+              </span>
+              {profileMsg ? (
+                <span className="text-xs text-muted-foreground" data-testid="account-saved">
+                  {profileMsg}
+                </span>
+              ) : null}
+            </div>
 
             <Separator className="my-4" />
 

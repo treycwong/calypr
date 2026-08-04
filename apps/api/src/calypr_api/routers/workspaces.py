@@ -30,6 +30,7 @@ from calypr_api.schemas import (
     PlanLimits,
     WorkspaceCreate,
     WorkspaceInfo,
+    WorkspaceList,
     WorkspaceSummary,
     WorkspaceUpdate,
 )
@@ -75,9 +76,15 @@ def _info(t: Tenant, ws: Workspace) -> WorkspaceInfo:
     )
 
 
-@router.get("/workspaces", response_model=list[WorkspaceSummary])
-def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> list[WorkspaceSummary]:
-    """Every workspace this account owns — what the sidebar switcher renders.
+@router.get("/workspaces", response_model=WorkspaceList)
+def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> WorkspaceList:
+    """Every workspace this account owns, plus whether another one may be created — what the
+    sidebar switcher renders.
+
+    `can_create` ships with the list so the switcher can offer an honest affordance instead of a
+    dialog that exists to say no. On Free the cap is 1 and every account already has 'Personal',
+    so "New workspace" could *never* succeed there; the menu now links to pricing rather than
+    asking someone to name a workspace before refusing it.
 
     In dev/CI (no internal key) there is no user to resolve, and every request is the shared dev
     workspace; return that single row rather than an empty list so the switcher still renders
@@ -85,19 +92,26 @@ def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> list[Works
     user_id = request.headers.get("x-calypr-user-id")
     if not settings.internal_key or not user_id:
         ws = t.session.get(Workspace, t.workspace_id)
-        return [
-            WorkspaceSummary(
-                id=str(t.workspace_id),
-                name=ws.name if ws else "Dev Workspace",
-                created_at=ws.created_at if ws else None,
-                is_current=True,
-            )
-        ]
+        return WorkspaceList(
+            workspaces=[
+                WorkspaceSummary(
+                    id=str(t.workspace_id),
+                    name=ws.name if ws else "Dev Workspace",
+                    created_at=ws.created_at if ws else None,
+                    is_current=True,
+                )
+            ],
+            plan=entitlements.FREE,
+            # The same dev/CI carve-out `create_workspace` uses: caps aren't enforced without an
+            # internal key, so reporting `false` here would hide an affordance that does in fact
+            # work locally — and would take the e2e coverage of the create flow with it.
+            can_create=True,
+        )
     rows = t.session.execute(
         text("SELECT id, name, created_at FROM list_account_workspaces(:uid)"),
         {"uid": user_id},
     ).all()
-    return [
+    summaries = [
         WorkspaceSummary(
             id=str(row.id),
             name=row.name,
@@ -106,6 +120,16 @@ def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> list[Works
         )
         for row in rows
     ]
+    # Read the plan off the account rather than counting through `accounts.workspace_count`: the
+    # rows are already in hand, so the count is free, and this stays a pure read — no lazy grant,
+    # nothing the dashboard layout would be paying for on every page.
+    account = accounts.account_for_workspace(t.session, t.workspace_id)
+    plan = account.plan if account else entitlements.FREE
+    return WorkspaceList(
+        workspaces=summaries,
+        plan=plan,
+        can_create=len(summaries) < entitlements.limits(plan).workspaces,
+    )
 
 
 @router.post("/workspaces", response_model=WorkspaceInfo, status_code=201)

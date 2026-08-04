@@ -7,6 +7,7 @@ import {
   Gauge,
   LayoutGrid,
   LayoutTemplate,
+  Lock,
   Plus,
   Settings,
 } from "lucide-react";
@@ -51,10 +52,14 @@ export function Sidebar({
   session,
   betterAuth,
   workspaces = [],
+  canCreateWorkspace = false,
 }: {
   session: Session;
   betterAuth: boolean;
   workspaces?: WorkspaceSummary[];
+  /** Whether this account's plan has room for another workspace. Decided by the API from
+   *  `entitlements.LIMITS` — never re-derived here from a plan name. */
+  canCreateWorkspace?: boolean;
 }) {
   // The list already says which one the request resolved to. That's the *resolved* workspace,
   // not what the cookie asked for, so a stale or foreign cookie self-corrects on the next paint.
@@ -142,17 +147,34 @@ export function Sidebar({
               </DropdownMenuItem>
             ))}
             <DropdownMenuSeparator />
-            <DropdownMenuItem
-              data-testid="ws-new"
-              onClick={() => {
-                setCreateError(null);
-                setNewName("");
-                setCreating(true);
-              }}
-            >
-              <Plus className="h-3.5 w-3.5" />
-              New workspace
-            </DropdownMenuItem>
+            {canCreateWorkspace ? (
+              <DropdownMenuItem
+                data-testid="ws-new"
+                onClick={() => {
+                  setCreateError(null);
+                  setNewName("");
+                  setCreating(true);
+                }}
+              >
+                <Plus className="h-3.5 w-3.5" />
+                New workspace
+              </DropdownMenuItem>
+            ) : (
+              // At the plan's cap. Shown rather than hidden, and sent to pricing rather than to
+              // a dialog: on Free the cap is 1 and every account already has 'Personal', so the
+              // old flow could only ever ask someone to name a workspace and then refuse it.
+              // Hiding it entirely would be tidier but would mean nothing in the product ever
+              // mentions that more workspaces exist — the gate is worth showing, the dead end
+              // isn't.
+              <DropdownMenuItem
+                data-testid="ws-new-upgrade"
+                onClick={() => router.push("/pricing")}
+              >
+                <Lock className="h-3.5 w-3.5" />
+                <span className="flex-1">New workspace</span>
+                <span className="text-xs text-muted-foreground">Plus</span>
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => router.push("/dashboard/settings?tab=workspace")}>
               Workspace settings
             </DropdownMenuItem>
