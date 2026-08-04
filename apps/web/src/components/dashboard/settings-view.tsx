@@ -368,7 +368,8 @@ export function SettingsView({
                 different button that doesn't exist. A single `updateUser` call has always sent
                 both; the layout was the thing lying about it. The rule this follows: a control's
                 position is a claim about its scope, so a section-scoped action belongs after the
-                section, not welded to the last input in it. */}
+                section, not welded to the last input in it — which is also why this needs no
+                caption spelling out what it saves. The divider and the placement say it. */}
             <div className="mt-4 flex items-center gap-3 border-t border-border pt-4">
               <Button
                 size="sm"
@@ -378,9 +379,6 @@ export function SettingsView({
               >
                 Save changes
               </Button>
-              <span className="text-xs text-muted-foreground">
-                Saves your display name and avatar.
-              </span>
               {profileMsg ? (
                 <span className="text-xs text-muted-foreground" data-testid="account-saved">
                   {profileMsg}
