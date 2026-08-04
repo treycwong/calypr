@@ -17,6 +17,35 @@ export const auth = betterAuth({
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
     },
   },
+  session: {
+    // Better Auth gates its "sensitive" operations on session *freshness*, and `deleteUser` is
+    // one of them: without this it throws `SESSION_EXPIRED` unless the session was created
+    // within `freshAge` (default 24h) **or** the request carries a password. Our users sign in
+    // with GitHub, so they have no `credential` account and the password branch is unreachable —
+    // meaning anyone who signed in more than a day ago could never complete a deletion.
+    //
+    // Setting it to 0 buys back nothing an attacker didn't already have: a stolen session can
+    // call our own `DELETE /api/account`, which is the request that actually destroys the data
+    // and has no freshness check of its own. The friction that matters is the typed
+    // confirmation in the dialog, not this.
+    freshAge: 0,
+  },
+  user: {
+    // Opt-in, required for `authClient.deleteUser()`. It removes the Better Auth identity —
+    // the `user`/`session`/`account` rows — and clears the session cookie, which is the one
+    // thing our own `DELETE /api/account` deliberately cannot do (see that route).
+    //
+    // This exposes `POST /api/auth/delete-user` to any signed-in session with no confirmation
+    // email. Acceptable here: all of our data sits behind `/api/account`, so the worst this
+    // alone achieves is signing someone out of an identity they already control. Note the
+    // static-segment trap — `/api/auth/signout` and `/api/auth/dev` are *our* routes and shadow
+    // the catch-all, so never add a static route at `/api/auth/delete-user`.
+    deleteUser: { enabled: true },
+    // `changeEmail` stays **off**. The API trusts `x-calypr-user-email` as the provider-verified
+    // address and matches it against the beta invite list, so a user who could change their own
+    // email could type an invited one and self-grant beta — which includes code export, a paid
+    // feature. Enabling this means moving entitlements off the mutable address first.
+  },
   // dash() connects this server to the Better Auth hosted dashboard; it reads its key from
   // BETTER_AUTH_API_KEY (set in the deployed env). nextCookies() must stay last — it lets Better
   // Auth set cookies through Next server actions.

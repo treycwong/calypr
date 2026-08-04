@@ -1,17 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   type AssistantModelOption,
+  deleteAccount,
   deleteProviderKey,
   getSubscription,
   getWorkspace,
@@ -23,8 +33,10 @@ import {
   setDefaultModel as setDefaultModelApi,
   setProviderKey,
   startBillingPortal,
+  uploadImage,
   type SubscriptionInfo,
 } from "@/lib/api";
+import { authClient } from "@/lib/auth-client";
 import { PLAN_COPY } from "@/lib/plans";
 import { useProviderKeys } from "@/lib/use-provider-keys";
 
@@ -45,13 +57,26 @@ export function SettingsView({
   email,
   image,
   initialTab = "account",
+  manageable = false,
+  providers: linkedProviders = [],
 }: {
   name: string;
   email: string;
   image: string | null;
   initialTab?: string;
+  /** Whether profile edits can persist — false on the dev auth path, which has no profile store. */
+  manageable?: boolean;
+  /** Social providers linked to this account, resolved server-side. */
+  providers?: string[];
 }) {
-  const initials = (name || email || "U").slice(0, 2).toUpperCase();
+  // Local so the avatar preview updates as the URL is typed, and so a save that fails leaves
+  // the user's text where they can fix it rather than snapping back to the server's value.
+  const [profileName, setProfileName] = useState(name);
+  const [profileImage, setProfileImage] = useState(image ?? "");
+  const [profileMsg, setProfileMsg] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const initials = (profileName || email || "U").slice(0, 2).toUpperCase();
   const [wsName, setWsName] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
   const [model, setModel] = useState("");
@@ -167,6 +192,43 @@ export function SettingsView({
     }
   }
 
+  async function uploadAvatar(file: File) {
+    setUploading(true);
+    setProfileMsg("Uploading…");
+    try {
+      // Reuses `/api/uploads` rather than adding an avatar-specific endpoint: it already does
+      // the content-type allowlist, the magic-byte sniff and the 5MB streaming cap, and — the
+      // part that matters here — it records an `upload` row against the workspace, so an
+      // avatar is attributable storage and gets collected when the account is deleted. A
+      // bespoke endpoint would have had to re-earn all four.
+      const url = await uploadImage(file);
+      // Fills the field rather than saving: the avatar above previews it immediately, and the
+      // change isn't committed until Save, so a mis-picked file can just be replaced.
+      setProfileImage(url);
+      setProfileMsg("Uploaded — press Save to apply");
+    } catch (e) {
+      // The API's own message is worth showing: "only PNG, JPEG, WebP, or GIF images are
+      // accepted" and "image exceeds the 5MB limit" both tell the user what to do next, which
+      // a generic failure line would not.
+      setProfileMsg(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function saveProfile() {
+    setProfileMsg("Saving…");
+    // One call for both fields: they're edited together and a partial save is a confusing
+    // state to have to explain.
+    const { error } = await authClient.updateUser({
+      name: profileName.trim(),
+      image: profileImage.trim() || undefined,
+    });
+    // Better Auth's client returns `{data, error}` and does **not** throw, so a try/catch here
+    // would silently treat every failure as a success.
+    setProfileMsg(error ? "Save failed" : "Saved ✓");
+  }
+
   async function saveWorkspace() {
     setSavedMsg("Saving…");
     try {
@@ -195,15 +257,18 @@ export function SettingsView({
         </TabsList>
 
         <TabsContent value="account" className="mt-4">
-          <div className="rounded-lg border border-border p-5">
+          {/* --- Account information ------------------------------------------------------ */}
+          <div className="rounded-lg border border-border p-5" data-testid="account-info-card">
             <div className="flex items-center gap-3">
               <Avatar className="h-12 w-12">
-                {image ? <AvatarImage src={image} alt="" /> : null}
+                {/* Previews `profileImage`, not the prop, so a URL edit updates live — the
+                    point of the field is seeing what you're about to save. */}
+                {profileImage ? <AvatarImage src={profileImage} alt="" /> : null}
                 <AvatarFallback>{initials}</AvatarFallback>
               </Avatar>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{name || "—"}</span>
+                  <span className="text-sm font-medium">{profileName || "—"}</span>
                   <Badge
                     variant={plan === "free" ? "outline" : "default"}
                     data-testid="account-plan"
@@ -214,7 +279,117 @@ export function SettingsView({
                 <div className="truncate text-xs text-muted-foreground">{email}</div>
               </div>
             </div>
+
             <Separator className="my-4" />
+
+            <label htmlFor="account-name" className="text-sm font-medium">
+              Display name
+            </label>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              What appears on your account and shared runs.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                id="account-name"
+                className="max-w-xs"
+                value={profileName}
+                disabled={!manageable}
+                onChange={(e) => setProfileName(e.target.value)}
+                data-testid="account-name"
+              />
+            </div>
+
+            <div className="mt-4 text-sm font-medium">Avatar</div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Upload an image, or paste a link to one. Leave it empty to use your initials.
+            </p>
+            <div className="mt-2 flex items-center gap-2">
+              {/* The file input is hidden and driven by a Button so it matches every other
+                  control on this page — a bare `input[type=file]` renders as the browser's
+                  chrome and is the one thing here that would look borrowed.
+
+                  The **Button** is the user-facing gate, so it carries `disabled`; the input
+                  itself doesn't, because it is unreachable except through that button. That
+                  also leaves the wiring drivable by `setInputFiles` in e2e, which otherwise
+                  couldn't cover it at all — the whole suite runs on the dev path, where
+                  `manageable` is false. */}
+              <input
+                ref={fileRef}
+                type="file"
+                accept={ACCEPTED_IMAGE_TYPES}
+                className="hidden"
+                data-testid="account-image-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  // Reset first: picking the *same* file twice fires no change event
+                  // otherwise, so a failed upload couldn't be retried by reselecting it.
+                  e.target.value = "";
+                  if (file) uploadAvatar(file);
+                }}
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={!manageable || uploading}
+                onClick={() => fileRef.current?.click()}
+                data-testid="account-image-upload"
+              >
+                {uploading ? "Uploading…" : "Upload image"}
+              </Button>
+              <span className="text-xs text-muted-foreground">PNG, JPEG, WebP or GIF, up to 5MB.</span>
+            </div>
+
+            <label htmlFor="account-image" className="mt-3 block text-xs text-muted-foreground">
+              Or paste an image URL
+            </label>
+            <div className="mt-2 flex items-center gap-2">
+              <Input
+                id="account-image"
+                className="max-w-xs"
+                value={profileImage}
+                disabled={!manageable}
+                placeholder="https://…"
+                onChange={(e) => setProfileImage(e.target.value)}
+                data-testid="account-image"
+              />
+              <Button
+                size="sm"
+                onClick={saveProfile}
+                disabled={!manageable}
+                data-testid="account-save"
+              >
+                Save
+              </Button>
+              {profileMsg ? (
+                <span className="text-xs text-muted-foreground" data-testid="account-saved">
+                  {profileMsg}
+                </span>
+              ) : null}
+            </div>
+
+            {!manageable ? (
+              <p className="mt-3 text-xs text-muted-foreground" data-testid="account-dev-notice">
+                Development sign-in has no profile to edit — these fields are disabled because a
+                save here wouldn&rsquo;t stick. Set Better Auth keys to enable real auth.
+              </p>
+            ) : null}
+
+            <Separator className="my-4" />
+
+            {/* Email is rendered as **text, not a disabled input**. It isn't a field you may
+                not edit yet — it is not a field. The API trusts this address as the verified
+                one from the provider (it matches against the beta invite list), so making it
+                editable would let anyone self-grant a paid entitlement. */}
+            <div className="text-sm font-medium">Email</div>
+            <p className="mt-1 text-sm" data-testid="account-email">
+              {email}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Your email comes from GitHub and can&rsquo;t be changed here.
+            </p>
+
+            <Separator className="my-4" />
+
             {/* What the tier actually gets you, rather than a bare word: "Beta" on its own
                 tells you nothing about whether you can export your code. */}
             <div className="flex flex-wrap items-center gap-2">
@@ -231,10 +406,38 @@ export function SettingsView({
                 </Link>
               ) : null}
             </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Your account details come from your sign-in provider (GitHub).
-            </p>
           </div>
+
+          {/* --- Integrations ------------------------------------------------------------- */}
+          {/* Connected state only, with no disconnect. GitHub is the only way in, so an
+              "unlink" button is a button that locks you out of your own account. */}
+          <div
+            className="mt-4 rounded-lg border border-border p-5"
+            data-testid="account-integrations-card"
+          >
+            <h2 className="text-sm font-medium">Account integrations</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              How you sign in to Calypr.
+            </p>
+            <div
+              className="mt-4 flex items-center justify-between gap-4"
+              data-testid="account-integration-github"
+              data-connected={linkedProviders.includes("github")}
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium">GitHub</span>
+                <span className="font-mono text-xs text-muted-foreground">
+                  {manageable ? "OAuth" : "development sign-in"}
+                </span>
+              </div>
+              <Badge variant={linkedProviders.includes("github") ? "default" : "outline"}>
+                {linkedProviders.includes("github") ? "Connected" : "Not connected"}
+              </Badge>
+            </div>
+          </div>
+
+          {/* --- Danger ------------------------------------------------------------------- */}
+          <DangerCard manageable={manageable} plan={plan} />
         </TabsContent>
 
         <TabsContent value="billing" className="mt-4">
@@ -446,6 +649,155 @@ export function SettingsView({
           </div>
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/** The exact phrase the confirm button waits for. Compared `.trim().toLowerCase()`, so the
+ *  friction is deliberate but not pedantic about capitalisation or a trailing space. */
+const CONFIRM_PHRASE = "delete my account";
+
+/** Kept in step with the API's `_ALLOWED` map in `routers/uploads.py` — it is the enforcement,
+ *  this is only the file picker's filter. */
+const ACCEPTED_IMAGE_TYPES = "image/png,image/jpeg,image/webp,image/gif";
+
+/**
+ * Delete Account.
+ *
+ * **Type-to-confirm is a deliberate departure** from the one-click precedent in
+ * `app/dashboard/page.tsx`. That guards a single rebuildable graph; this destroys every
+ * workspace, cancels a paid subscription mid-period, and ends a session the user cannot get
+ * back. Copying an affordance designed for the cheap case into the expensive one is the
+ * mistake, not the departure.
+ *
+ * It also **adds the error handling that precedent omits**: the dialog stays open and renders
+ * the server's message inline. The message that matters is the Stripe 502 — nothing was
+ * deleted and retrying is right — and a toast is the wrong shape for that while a modal is up.
+ */
+function DangerCard({ manageable, plan }: { manageable: boolean; plan: string }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const armed = typed.trim().toLowerCase() === CONFIRM_PHRASE;
+
+  async function confirmDelete() {
+    setBusy(true);
+    setError("");
+    try {
+      // **Our API first, Better Auth second.** The reverse order destroys the identity we need
+      // in order to *find* the account — orphaning a live subscription nobody can cancel. If
+      // this succeeds and the next step fails, the account is already soft-deleted and every
+      // call 401s, so a retry is harmless.
+      const result = await deleteAccount();
+      // Dev mode has no Better Auth identity to remove, and the proxy has already cleared the
+      // only cookie the dev session has. Calling Better Auth anyway would hit its catch-all
+      // with no secret configured and reject on the server for nothing.
+      if (result.mode === "live") {
+        // Better Auth's client returns `{data, error}` and **does not throw**, so this has to
+        // be checked explicitly — a bare `await` here silently treats a refusal as success.
+        const { error } = await authClient.deleteUser();
+        if (error) {
+          // It can still refuse (a session past `freshAge`, a transient failure). Our data is
+          // already soft-deleted at this point and the account 401s everywhere, so the only
+          // thing that matters now is not leaving a *valid session cookie* behind — being
+          // signed in to an account that no longer works is the worst of both outcomes.
+          await authClient.signOut().catch(() => {});
+        }
+      }
+    } catch (e) {
+      setBusy(false);
+      setError(e instanceof Error ? e.message : "Something went wrong. Please try again.");
+      return; // keep the dialog open, so the message sits next to the button that failed
+    }
+    // Whatever happened to step 2, never leave someone signed into an account that no longer
+    // functions — every subsequent request would 401 with no explanation.
+    window.location.href = "/sign-in?deleted=1";
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-lg border border-destructive/40 p-5"
+      data-testid="account-danger-card"
+    >
+      <h2 className="text-sm font-medium">Delete account</h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Permanently delete your account and everything in it.
+      </p>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+        <li>Every workspace and project you own</li>
+        <li>Your run history, uploads and share links</li>
+        <li>Any remaining credit balance — no refund</li>
+        {/* Named explicitly because it is a real cost the user is agreeing to, and the
+            cancellation is immediate and unprorated. */}
+        {plan !== "free" ? (
+          <li>
+            Your subscription is cancelled <strong>immediately</strong>, with no refund for the
+            rest of the period
+          </li>
+        ) : null}
+        <li>Any beta invite is forfeited</li>
+      </ul>
+      <p className="mt-3 text-xs text-muted-foreground">This can&rsquo;t be undone.</p>
+
+      {!manageable ? (
+        <p className="mt-3 text-xs text-muted-foreground" data-testid="account-delete-dev-notice">
+          On the development sign-in there is no account to delete — this signs you out instead.
+        </p>
+      ) : null}
+
+      <div className="mt-4">
+        <Button
+          variant="destructive"
+          size="sm"
+          onClick={() => {
+            setTyped("");
+            setError("");
+            setOpen(true);
+          }}
+          data-testid="account-delete-open"
+        >
+          Delete account
+        </Button>
+      </div>
+
+      <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete your account?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes every workspace, project, run and upload on your account,
+              cancels any subscription immediately, and signs you out. It can&rsquo;t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="account-delete-confirm" className="text-sm">
+            Type <span className="font-mono font-medium">{CONFIRM_PHRASE}</span> to confirm.
+          </label>
+          <Input
+            id="account-delete-confirm"
+            value={typed}
+            autoComplete="off"
+            onChange={(e) => setTyped(e.target.value)}
+            data-testid="account-delete-input"
+          />
+          {error ? (
+            <p className="text-sm text-destructive" data-testid="account-delete-error">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline">Cancel</Button>} />
+            <Button
+              variant="destructive"
+              disabled={!armed || busy}
+              onClick={confirmDelete}
+              data-testid="account-delete-confirm"
+            >
+              {busy ? "Deleting…" : "Delete account"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

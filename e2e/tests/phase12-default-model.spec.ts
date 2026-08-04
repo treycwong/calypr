@@ -1,5 +1,19 @@
 import { expect, test } from "@playwright/test";
 
+/** Switch to the Workspace tab, retrying until the panel is actually up.
+ *
+ * The tab trigger is server-rendered, so it is visible and clickable before React hydrates —
+ * a click in that window is swallowed, the panel never switches, and the assertion that follows
+ * fails on a component that is perfectly correct. Same race, and same fix, as `openSwitcher` in
+ * `phase13-workspaces.spec.ts`. */
+async function openWorkspaceTab(page: import("@playwright/test").Page) {
+  await expect(async () => {
+    await page.getByTestId("tab-workspace").click();
+    await expect(page.getByTestId("ws-name")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
+
 // The workspace default model (Settings → Workspace). Blocks ship `model: ""` — inherit — so
 // this one setting decides what the whole canvas runs on, and an untouched workspace has to
 // land on a real model rather than the `fake` test seam that answers "Echo: …".
@@ -7,7 +21,7 @@ import { expect, test } from "@playwright/test";
 test("the Workspace tab exposes the default model picker", async ({ page }) => {
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const picker = page.getByTestId("ws-default-model");
   await expect(picker).toBeVisible();
@@ -20,14 +34,14 @@ test("the Workspace tab exposes the default model picker", async ({ page }) => {
 test("the default model saves and survives a reload", async ({ page }) => {
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const picker = page.getByTestId("ws-default-model");
   await picker.selectOption("gpt-4o");
   await expect(page.getByText("Saved ✓")).toBeVisible();
 
   await page.reload();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
   await expect(page.getByTestId("ws-default-model")).toHaveValue("gpt-4o");
 
   // Put it back so the shared dev workspace doesn't leak this choice into other specs.

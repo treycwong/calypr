@@ -1,5 +1,19 @@
 import { expect, type Page, test } from "@playwright/test";
 
+/** Switch to the Workspace tab, retrying until the panel is actually up.
+ *
+ * The tab trigger is server-rendered, so it is visible and clickable before React hydrates —
+ * a click in that window is swallowed, the panel never switches, and the assertion that follows
+ * fails on a component that is perfectly correct. Same race, and same fix, as `openSwitcher` in
+ * `phase13-workspaces.spec.ts`. */
+async function openWorkspaceTab(page: import("@playwright/test").Page) {
+  await expect(async () => {
+    await page.getByTestId("tab-workspace").click();
+    await expect(page.getByTestId("ws-name")).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 15_000 });
+}
+
+
 // Dashboard → Settings → Workspace exposes the AI assistant's default model. The options come
 // from the API's allow-list, and frontier models (kimi-k3) are disabled until the workspace has
 // that provider's own key on file — the picker must never offer a value /assist would refuse.
@@ -9,7 +23,7 @@ test("the Workspace tab exposes the assistant model picker", async ({ page }) =>
   await page.getByTestId("dev-sign-in").click();
   await expect(page).toHaveURL(/\/dashboard\/settings/);
 
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const picker = page.getByTestId("ws-assistant-model");
   await expect(picker).toBeVisible();
@@ -39,7 +53,7 @@ test("kimi-k3 is offered but disabled without a Moonshot key", async ({ page }) 
   await withProviderKeys(page, []);
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const frontier = page
     .getByTestId("ws-assistant-model")
@@ -54,7 +68,7 @@ test("kimi-k3 becomes selectable once a Moonshot key is on file", async ({ page 
   await withProviderKeys(page, ["moonshot"]);
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const frontier = page
     .getByTestId("ws-assistant-model")
@@ -67,7 +81,7 @@ test("the provider list offers a live Kimi key and Coming Soon rows", async ({ p
   await withProviderKeys(page, []);
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   // Moonshot is wired, so its input is live and Save waits for input.
   const kimi = page.getByTestId("ws-key-moonshot");
@@ -94,7 +108,7 @@ test("the provider list offers a live Kimi key and Coming Soon rows", async ({ p
 test("the headline model for each provider is named", async ({ page }) => {
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   for (const model of [
     "kimi-k3",
@@ -110,7 +124,7 @@ test("a stored key shows as on-file and is never echoed back", async ({ page }) 
   await withProviderKeys(page, [MOONSHOT_ON_FILE]);
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   await expect(page.getByTestId("ws-key-moonshot-onfile")).toBeVisible();
   await expect(page.getByTestId("ws-key-moonshot-remove")).toBeVisible();
@@ -126,7 +140,7 @@ test("a Coming Soon provider never shows key controls, even with a key on file",
   await withProviderKeys(page, ["google"]);
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   await expect(page.getByTestId("ws-key-google-onfile")).toHaveCount(0);
   await expect(page.getByTestId("ws-key-google-remove")).toHaveCount(0);
@@ -148,14 +162,14 @@ test("Moonshot is no longer offered in the canvas API-keys panel", async ({ page
 test("choosing a non-frontier model persists across a reload", async ({ page }) => {
   await page.goto("/dashboard/settings");
   await page.getByTestId("dev-sign-in").click();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
 
   const picker = page.getByTestId("ws-assistant-model");
   await picker.selectOption("gpt-4o-mini");
   await expect(page.getByText("Saved ✓")).toBeVisible();
 
   await page.reload();
-  await page.getByTestId("tab-workspace").click();
+  await openWorkspaceTab(page);
   await expect(page.getByTestId("ws-assistant-model")).toHaveValue("gpt-4o-mini");
 
   // Leave the workspace on the server default so other specs are unaffected.
