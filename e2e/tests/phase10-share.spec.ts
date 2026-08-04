@@ -1,13 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 10 gate (WEEK3-SHARE-LINKS-PLAN §C): an owner builds + saves an agent, mints a share
 // link, and a LOGGED-OUT visitor opens /s/{token}, sees the agent name (never the spec), and
 // gets a streamed reply. Revoking the link makes it unavailable. Uses the keyless "fake" model,
 // so the gate needs no provider key (CI provides Postgres + `alembic upgrade head`).
 
 async function buildAndSaveAgent(page: Page): Promise<string> {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 

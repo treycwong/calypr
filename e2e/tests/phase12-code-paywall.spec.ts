@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Code export is a paid feature (closed-product pivot, 2026-07-22). An unentitled workspace gets
 // the opening lines of the generated file plus an upgrade prompt, not the whole thing.
 //
@@ -37,8 +39,7 @@ async function stubTruncatedCodegen(page: Page, totalLines = 96) {
 }
 
 async function openCanvasWithAnAgent(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
   await page.getByTestId("add-input").click();
   await page.getByTestId("add-agent").click();

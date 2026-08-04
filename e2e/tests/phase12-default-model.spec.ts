@@ -1,17 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-/** Switch to the Workspace tab, retrying until the panel is actually up.
- *
- * The tab trigger is server-rendered, so it is visible and clickable before React hydrates —
- * a click in that window is swallowed, the panel never switches, and the assertion that follows
- * fails on a component that is perfectly correct. Same race, and same fix, as `openSwitcher` in
- * `phase13-workspaces.spec.ts`. */
-async function openWorkspaceTab(page: import("@playwright/test").Page) {
-  await expect(async () => {
-    await page.getByTestId("tab-workspace").click();
-    await expect(page.getByTestId("ws-name")).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 15_000 });
-}
+import { signInAt } from "./helpers";
 
 
 // The workspace default model (Settings → Workspace). Blocks ship `model: ""` — inherit — so
@@ -19,9 +8,8 @@ async function openWorkspaceTab(page: import("@playwright/test").Page) {
 // land on a real model rather than the `fake` test seam that answers "Echo: …".
 
 test("the Workspace tab exposes the default model picker", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   const picker = page.getByTestId("ws-default-model");
   await expect(picker).toBeVisible();
@@ -32,16 +20,15 @@ test("the Workspace tab exposes the default model picker", async ({ page }) => {
 });
 
 test("the default model saves and survives a reload", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
-  await openWorkspaceTab(page);
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
 
   const picker = page.getByTestId("ws-default-model");
   await picker.selectOption("gpt-4o");
   await expect(page.getByText("Saved ✓")).toBeVisible();
 
   await page.reload();
-  await openWorkspaceTab(page);
+  await page.getByTestId("tab-workspace").click();
   await expect(page.getByTestId("ws-default-model")).toHaveValue("gpt-4o");
 
   // Put it back so the shared dev workspace doesn't leak this choice into other specs.
@@ -53,8 +40,7 @@ test("a new Agent block inherits instead of naming a model", async ({ page }) =>
   // The canvas half of the same rule: dragging a block on and never opening its config must
   // still produce a working agent. Router/Evaluator/Memory/Responder/Revisor used to default
   // to `fake` here, which shipped canned "Echo:" answers to anyone who used them.
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 
   await page.getByTestId("add-agent").click();
@@ -65,8 +51,7 @@ test("a new Agent block inherits instead of naming a model", async ({ page }) =>
 // The plan indicator on Settings → Account. "Can I export my code?" should have a visible
 // answer where people look, rather than being inferred from whether the Code tab works.
 test("the Account tab shows the workspace plan", async ({ page }) => {
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/settings");
 
   const badge = page.getByTestId("account-plan");
   await expect(badge).toBeVisible();
@@ -81,8 +66,7 @@ test("an entitled plan says what it includes and offers no upgrade", async ({ pa
   await page.route("**/api/workspace", (route) =>
     route.fulfill({ json: workspacePayload({ plan: "plus" }) }),
   );
-  await page.goto("/dashboard/settings");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/settings");
 
   await expect(page.getByTestId("account-plan")).toHaveText("Plus");
   await expect(page.getByText(/yours to edit, download and run anywhere/)).toBeVisible();
@@ -120,8 +104,7 @@ test("the Usage tab shows the credit balance", async ({ page }) => {
   await page.route("**/api/usage", (route) =>
     route.fulfill({ json: workspacePayload({ credits: { allowance: 2000, remaining: 1487, used: 513 } }) }),
   );
-  await page.goto("/dashboard/usage");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/usage");
 
   const panel = page.getByTestId("ws-credits");
   await expect(panel).toBeVisible();
@@ -135,8 +118,7 @@ test("an exhausted balance says what to do about it", async ({ page }) => {
   await page.route("**/api/usage", (route) =>
     route.fulfill({ json: workspacePayload({ plan: "free", credits: { allowance: 100, remaining: 0, used: 100 } }) }),
   );
-  await page.goto("/dashboard/usage");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/usage");
 
   await expect(page.getByTestId("ws-credits")).toContainText("out of credits");
   await expect(page.getByTestId("ws-credits")).toContainText("upgrade to Plus");
@@ -153,8 +135,7 @@ test("the panel is hidden when there is no allowance", async ({ page }) => {
       }),
     }),
   );
-  await page.goto("/dashboard/usage");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard/usage");
   // Wait for the page to actually render before asserting an absence — otherwise the assertion
   // passes instantly against a page that hasn't loaded, and the test ends mid-route-fetch.
   await expect(page.getByTestId("usage-projects")).toBeVisible();

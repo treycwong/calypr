@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // API-as-a-tool gate (Phase 8a): external APIs reach the canvas as *providers on the existing
 // Tool node*, so the LLM decides when to call them (ReAct), rather than a node fetching
 // deterministically. Two surfaces are covered: the Unsplash preset (key from Settings, stub
@@ -10,8 +12,7 @@ import { expect, type Page, test } from "@playwright/test";
 // live-key path is covered by the node unit test.
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }

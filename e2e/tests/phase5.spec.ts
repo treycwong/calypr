@@ -1,13 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 5a gate: tools reach the canvas. The ReAct template projects to the canonical
 // LangGraph tool loop (`ToolNode` + `tools_condition`); the Tool node exposes a provider
 // dropdown + API-key input; and the Agent panel no longer has an agent-type dropdown (the
 // templates carry the type now). Viewing code needs no API key and no database.
 
 async function openCanvas(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
   await expect(page.locator(".react-flow__controls")).toBeVisible();
 }

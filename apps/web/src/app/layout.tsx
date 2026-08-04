@@ -4,6 +4,7 @@ import localFont from "next/font/local";
 import "./globals.css";
 
 import { AnalyticsInit } from "@/components/analytics-init";
+import { HydrationMarker } from "@/components/hydration-marker";
 import { ToastProvider } from "@/components/ui/toast";
 
 // Display / headings — PP Hatton (self-hosted, see src/fonts).
@@ -69,6 +70,7 @@ export default function RootLayout({
     >
       <body className="flex min-h-full flex-col">
         <AnalyticsInit />
+        <HydrationMarker />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>

@@ -1,13 +1,14 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 6 gate: the user dashboard. Dev sign-in lands on the dashboard shell; New Project
 // creates a real agent (which opens on the canvas) that then shows in the Projects grid and
 // can be renamed + deleted; Settings shows the account/workspace tabs. Needs the database
 // (agent CRUD), so it runs in CI where Postgres is available.
 
 async function signIn(page: Page) {
-  await page.goto("/dashboard");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/dashboard");
   await expect(page).toHaveURL(/\/dashboard/);
 }
 

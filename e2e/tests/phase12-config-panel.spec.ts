@@ -1,5 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
+import { signInAt } from "./helpers";
+
 // Phase 2c: the config panel lets you reach what the engine can actually do.
 //
 // `test_config_panel_coverage.py` proves every field has a control; these prove the controls
@@ -9,8 +11,7 @@ import { expect, type Page, test } from "@playwright/test";
 // and the goal/reflection fields below it could never appear.
 
 async function canvasWithAgent(page: Page) {
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
   await page.getByTestId("add-input").click();
   await page.getByTestId("add-agent").click();
@@ -72,8 +73,7 @@ test("temperature and max tokens are reachable and persist", async ({ page }) =>
 test("a custom code block can declare its imports", async ({ page }) => {
   // Without this the escape hatch couldn't reach the standard library: the engine honoured
   // `imports` and there was no way to set it.
-  await page.goto("/canvas");
-  await page.getByTestId("dev-sign-in").click();
+  await signInAt(page, "/canvas");
   await expect(page.locator(".react-flow__controls")).toBeVisible();
   await page.getByTestId("add-input").click();
   await page.getByTestId("add-code").click();
