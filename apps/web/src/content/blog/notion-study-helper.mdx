@@ -1,0 +1,194 @@
+export const metadata = {
+  title: "Build with MCP: use Notion as a study partner",
+  description:
+    "Calypr speaks MCP, so an agent can call the tools your apps expose — no integration code. Here's how the Tools block works, then a step-by-step build: Notion as a study partner.",
+  date: "2026-08-05",
+  category: "tutorial",
+  tags: ["mcp", "notion", "connectors", "tutorial"],
+};
+
+An agent that can only talk is a chatbot. An agent that can *go and look something up* is
+useful — and the difference between the two is whether it can reach the apps where your work
+actually lives.
+
+Calypr does that through **MCP**, the Model Context Protocol. It's a standard socket for tools:
+a vendor publishes an MCP server for their product, and any app that speaks the protocol can
+plug in, ask *"what can you do?"*, and get back a list of callable tools described well enough
+for a model to use them. No per-vendor integration code, on either side.
+
+This post covers both halves — what the MCP machinery on the canvas gives you, then a complete
+worked example: wiring **Notion** into an agent that quizzes you from your own class notes.
+About five minutes, no copy-paste, no export, no second app to keep in sync.
+
+## How MCP works on the canvas
+
+It all lives on one block: **Tools**, with its provider set to `mcp`. Four things fall out of
+that design, and they're what make it worth using over a hand-rolled integration.
+
+**Tools are discovered, not configured.** Calypr never had to build a Notion feature. It
+connects to the server, asks what's available, and hands the answer to your agent as callable
+tools. Searching pages, reading them, creating new ones — those arrive from the server. When a
+vendor adds a tool, your agent gets it without Calypr shipping anything.
+
+**Your credentials never touch the graph.** You pick a saved connection from a dropdown, not a
+URL and a token. The canvas holds only a reference; the real server address and credentials are
+Fernet-encrypted at rest and resolved server-side in the moment before your agent runs. Share
+the graph and you share the structure, never the access — and the same is true of exported code,
+which reads its credentials from environment variables.
+
+**You can narrow what the agent may do.** A tool filter on the block lets you expose only some
+of what a server offers — read but not write, say. The default is everything.
+
+**Servers compose.** An agent can be wired to more than one Tools block at once, and each call
+is dispatched to the block that owns it. So one agent can search the web *and* read your notes,
+picking per question.
+
+### Which apps you can connect today
+
+**Notion** is the first app wired in as a one-click connection, and currently the only one — its
+OAuth flow, token vault, and hosted MCP server are all in place, which is why it's the example
+below. More app connections are being added to that same list.
+
+The plumbing under it is deliberately app-agnostic: nothing in the Tools block, the connector
+dropdown, or the resolve-at-run-time path knows what Notion is. Each new app is a catalog entry
+and an OAuth flow, not a new feature. So everything in this guide past step 1 is the shape of
+*every* MCP connection — when the app you want appears, the same four steps build a helper
+against it.
+
+## Step 1 — Connect your Notion account
+
+Open [the canvas](/canvas) and go to **Settings → Connected accounts**. Click **Add Connection**,
+find Notion in the list, and hit **Connect**.
+
+You'll land on Notion's own consent screen. This is the important step, and it's the one people
+click through too fast:
+
+> Notion asks **which pages** to share. Whatever you pick here is the entire universe your agent
+> can see — it cannot reach anything you don't select.
+
+For a study helper, select your course or class-notes pages and nothing else. That's not just
+tidiness; a narrower scope makes the agent's searches noticeably sharper, because there's less
+unrelated material to wade through. You can always come back and widen it.
+
+Approve, and you're bounced back to Calypr. The connection now shows under **Connected
+accounts** with a **Test** button — click it. It runs a live probe against the server and lists
+what came back, which is the fastest way to know the connection genuinely works rather than
+merely looks saved.
+
+## Step 2 — Start from the Notion assistant template
+
+In the **Templates** panel, pick **Notion assistant**. It drops a working four-block graph onto
+the canvas:
+
+```text
+Input → Agent ⇄ Tools
+          ↓
+        Output
+```
+
+The double arrow between Agent and Tools is the part that makes it an agent rather than a
+chatbot. The agent decides it needs to look something up, the Tools block runs the lookup, and
+the result comes *back* to the agent, which can then decide it needs another one. Search, read,
+search again, then answer — as many laps as the question needs.
+
+## Step 3 — Point the Tools block at your connection
+
+Templates ship with the connector field blank, on purpose: connections belong to your workspace,
+so no template can pre-fill one for you.
+
+Click the **Tools** block. In its config panel you'll find **Connector (from Settings)** — open
+it and choose your Notion connection. A line appears confirming the server and credentials will
+resolve at run time.
+
+This is the single most-missed step. A Tools block with no connector selected loads zero tools,
+and the failure is quiet in an unhelpful way: the agent still answers, it just answers from
+memory and tells you it can't see your Notion. If your agent claims it has no access, check this
+dropdown first.
+
+Below it is **Tool filter (comma-separated, blank = all)**. Leave it blank for now. It's there
+for when you want to hand the agent read-only powers by listing only the search and retrieve
+tools — worth doing once you trust the setup and want to be sure it can never write to your
+workspace.
+
+## Step 4 — Make it a study partner, not a search box
+
+Out of the box the template is a question-answerer. The difference between that and something
+that actually helps you study is entirely in the **Agent** block's system prompt. Click the
+Agent block and replace it with something like:
+
+```text title="system prompt"
+You are a study partner with access to the user's Notion notes through MCP tools.
+
+When the user names a topic, search their Notion for it and read the pages you find
+before saying anything. Ground everything in what's actually written there.
+
+Then quiz them: ask ONE question at a time and wait for an answer. Start easy and get
+harder. After each answer, say whether it's right, and if it's wrong quote the line
+from their notes that corrects it — with the page title.
+
+If their notes don't cover something you'd expect, say so plainly. Never quiz them on
+material you didn't find in their notes.
+```
+
+Three things in there are doing real work, and they generalise to any agent you build:
+
+- **"search before you answer"** — otherwise a model will happily answer from general knowledge
+  and never touch your notes at all.
+- **"one question at a time and wait"** — without it you get a worksheet of ten questions dumped
+  at once, which is not studying.
+- **"never quiz them on material you didn't find"** — this is the guardrail that keeps the
+  session about *your* notes instead of drifting into the model's own idea of the subject.
+
+## Step 5 — Run it
+
+Hit **Run** and try:
+
+```text
+Quiz me on my cell biology notes.
+```
+
+Watch the canvas while it works — blocks light up as they execute, so you can see the agent hand
+off to Tools, get its results, and loop back. If it goes straight to Output without the Tools
+block lighting up, it answered from memory: strengthen the "search first" instruction in the
+prompt.
+
+A few prompts worth trying once the basic loop works:
+
+| Ask for | Why it works well |
+| --- | --- |
+| "What's on my exam-topics page that I have no notes for?" | Cross-references two searches — a genuinely tedious manual task |
+| "Explain photosynthesis using only my notes, then tell me what's missing" | Separates recall from gap-finding |
+| "Turn my lecture 4 notes into ten flashcards" | Reads one page, transforms it |
+
+That last one pairs nicely with write access: with the full tool set, the agent can create the
+flashcard page back in Notion rather than just printing it at you.
+
+## When it doesn't work
+
+| Symptom | Cause |
+| --- | --- |
+| "I don't have access to your Notion" | No connector selected on the Tools block (step 3) |
+| It finds nothing about a topic you definitely wrote up | That page wasn't shared during the Notion consent screen — reconnect and widen the selection |
+| It answers confidently without the Tools block lighting up | The system prompt isn't forcing a search first |
+| It answers, but blandly, and never cites a page | Notes were found but too thin — ask it directly what it found |
+
+Worth knowing: if a connection is revoked or removed, a run doesn't crash. The agent simply gets
+zero tools and answers without them. That's deliberate — a broken integration shouldn't cost you
+a run — but it does mean a silent degradation is possible, which is why **Test** in Settings is
+the right first stop when something feels off.
+
+## Beyond Notion
+
+Look back at what you built: only step 1 was Notion-specific. The Tools block, the connector
+dropdown, the ReAct loop, the "search before you answer" prompt — that's the shape of every MCP
+connection, and it's why the next app to land under **Add Connection** won't need a new tutorial.
+
+The composition point from the top of this post is where it gets genuinely interesting. Drop a
+second Tools block, wire it to the same agent, and each call routes to the block that owns it —
+a study partner that checks *your* notes first and only searches the web for what they don't
+cover is this graph plus one block.
+
+---
+
+Built something with this? [Tell us what broke](/waitlist) — it's the fastest way to shape what
+gets connected next.
