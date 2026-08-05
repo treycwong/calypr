@@ -99,6 +99,16 @@ def test_image_finder_prompts_for_an_inline_preview():
     assert "leading ! is required" in prompt
 
 
+def test_notion_assistant_never_asks_for_a_page_id():
+    """"Read a page" used to cost two turns: the agent asked for an ID, and only searched once
+    the user said "any page". It has search — a broad request is a reason to use it, not a reason
+    to interview the user. The prompt is the only thing standing between those two behaviours."""
+    graph = next(g for g in TEMPLATES if g.id == "tpl-notion-assistant")
+    prompt = next(n for n in graph.nodes if n.type == "agent").config["system_prompt"]
+    assert "Never ask the user for a page ID" in prompt
+    assert "pick a sensible page yourself" in prompt
+
+
 @pytest.mark.parametrize("graph", STARTERS, ids=lambda g: g.id)
 def test_starter_llm_nodes_inherit_the_workspace_model(graph):
     """LLM nodes in a starter carry `model: ""` — inherit — not a hard-coded id.
