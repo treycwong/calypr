@@ -107,3 +107,111 @@ test("Templates and Usage are reachable from the sidebar", async ({ page }) => {
   await expect(page.getByTestId("usage-workspaces")).toBeVisible();
   await expect(page.getByTestId("usage-storage")).toBeVisible();
 });
+
+// --- Delete workspace ---------------------------------------------------------------------
+//
+// The card is on Settings → Workspace. Unlike the layout's workspace list (server-fetched, and
+// therefore invisible to `page.route` — see the header above), the card reads `/api/workspace`
+// client-side, so the plan's limits and the account's usage *are* mockable here.
+
+/** Mock the singular workspace payload the card gates and confirms on. */
+async function mockWorkspace(
+  page: import("@playwright/test").Page,
+  { name = "Side project", allowed = 3, owned = 2 } = {},
+) {
+  await page.route("**/api/workspace", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        id: "w2",
+        name,
+        plan: allowed > 1 ? "plus" : "free",
+        limits: { projects: 20, workspaces: allowed, monthly_credits: 0, storage_bytes: 0 },
+        usage: { projects: 2, workspaces: owned, storage_bytes: 0 },
+      },
+    });
+  });
+}
+
+async function openWorkspaceTab(page: import("@playwright/test").Page) {
+  // Click through to the tab rather than deep-linking `?tab=workspace`: the dev sign-in redirect
+  // drops the query string, so the deep link silently lands on the Account tab.
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
+  // Something from the tab, so the assertions below distinguish "card absent" from "tab not open".
+  await expect(page.getByTestId("ws-name")).toBeVisible();
+}
+
+test("a single-workspace plan holding one workspace is not offered the card at all", async ({
+  page,
+}) => {
+  // The Free case. A permanently disabled destructive control is clutter, so it isn't rendered.
+  await mockWorkspace(page, { name: "Personal", allowed: 1, owned: 1 });
+  await openWorkspaceTab(page);
+  await expect(page.getByTestId("ws-danger-card")).toHaveCount(0);
+});
+
+test("a lapsed plan still holding several workspaces keeps the card", async ({ page }) => {
+  // The case a literal "plus only" gate would break: a downgraded account keeps its workspaces
+  // with the excess read-only (`locking.py`), and deleting one is how it gets back under the cap.
+  // Gating on the plan *name* would strand exactly the people who most need this.
+  await mockWorkspace(page, { name: "Side project", allowed: 1, owned: 2 });
+  await openWorkspaceTab(page);
+  await expect(page.getByTestId("ws-danger-card")).toBeVisible();
+  await expect(page.getByTestId("ws-delete-open")).toBeEnabled();
+});
+
+test("a multi-workspace plan down to its last workspace is told why it can't delete", async ({
+  page,
+}) => {
+  await mockWorkspace(page, { name: "Personal", allowed: 3, owned: 1 });
+  await openWorkspaceTab(page);
+  // Mirrored from the server rather than enforced here: reaching a dead end after typing out a
+  // workspace name is a worse way to learn the rule than never being offered the button.
+  await expect(page.getByTestId("ws-delete-only-notice")).toBeVisible();
+  await expect(page.getByTestId("ws-delete-open")).toBeDisabled();
+});
+
+test("deleting a workspace needs its name typed exactly, and names what it will destroy", async ({
+  page,
+}) => {
+  let deletedId: string | null = null;
+
+  await mockWorkspace(page, { name: "Side project", allowed: 3, owned: 2 });
+  await page.route("**/api/agents", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: [
+        { id: "a1", name: "One", updated_at: new Date().toISOString(), locked: false },
+        { id: "a2", name: "Two", updated_at: new Date().toISOString(), locked: false },
+      ],
+    });
+  });
+  await page.route("**/api/workspaces/*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletedId = route.request().url().split("/").pop() ?? null;
+    return route.fulfill({ status: 204, body: "" });
+  });
+
+  await openWorkspaceTab(page);
+
+  // The count is fetched rather than described in the abstract — "2 projects" is something you
+  // can weigh, where "your projects" is a phrase people click past.
+  await expect(page.getByTestId("ws-delete-projects")).toContainText("2 projects");
+
+  await page.getByTestId("ws-delete-open").click();
+  const confirm = page.getByTestId("ws-delete-confirm");
+  await expect(confirm).toBeDisabled();
+
+  // The name of a *different* workspace must not arm it — that is the whole point of typing the
+  // name rather than a fixed phrase.
+  await page.getByTestId("ws-delete-input").fill("Personal");
+  await expect(confirm).toBeDisabled();
+
+  // Case and surrounding space are forgiven; the name itself is not.
+  await page.getByTestId("ws-delete-input").fill("  side PROJECT ");
+  await expect(confirm).toBeEnabled();
+
+  await confirm.click();
+  await expect.poll(() => deletedId).toBe("w2");
+});

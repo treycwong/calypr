@@ -23,18 +23,22 @@ import {
   type AssistantModelOption,
   deleteAccount,
   deleteProviderKey,
+  deleteWorkspace,
   getSubscription,
   getWorkspace,
+  listAgents,
   listAssistantModels,
   type LLMProvider,
   listLLMProviders,
   renameWorkspace,
+  switchWorkspace,
   setAssistantModel,
   setDefaultModel as setDefaultModelApi,
   setProviderKey,
   startBillingPortal,
   uploadImage,
   type SubscriptionInfo,
+  type WorkspaceInfo,
 } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 import { PLAN_COPY } from "@/lib/plans";
@@ -79,6 +83,11 @@ export function SettingsView({
   const initials = (profileName || email || "U").slice(0, 2).toUpperCase();
   const [wsName, setWsName] = useState("");
   const [savedMsg, setSavedMsg] = useState("");
+  // The workspace as *persisted*, kept apart from the `wsName` input above. Delete-to-confirm
+  // matches against this: typing a new name without saving must not arm a delete against a name
+  // the workspace does not actually have. Carries the plan's limits and the account's usage too,
+  // which is what decides whether the delete card appears at all.
+  const [savedWs, setSavedWs] = useState<WorkspaceInfo | null>(null);
   const [model, setModel] = useState("");
   const [modelOptions, setModelOptions] = useState<AssistantModelOption[]>([]);
   const [modelMsg, setModelMsg] = useState("");
@@ -106,6 +115,7 @@ export function SettingsView({
     getWorkspace()
       .then((w) => {
         setWsName(w.name);
+        setSavedWs(w);
         setModel(w.assistant_model ?? "");
         setDefaultModel(w.default_model ?? "");
         setPlan(w.plan ?? "free");
@@ -234,6 +244,7 @@ export function SettingsView({
     try {
       const w = await renameWorkspace(wsName.trim() || "Workspace");
       setWsName(w.name);
+      setSavedWs(w);
       setSavedMsg("Saved ✓");
     } catch {
       setSavedMsg("Save failed");
@@ -659,8 +670,188 @@ export function SettingsView({
               ))}
             </div>
           </div>
+
+          <DeleteWorkspaceCard workspace={savedWs} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/**
+ * Delete Workspace.
+ *
+ * Type-to-confirm like `DangerCard`, but the phrase is **the workspace's own name** rather than a
+ * fixed string. With several workspaces the question is not only "do you mean to delete
+ * something" but "do you mean to delete *this* one", and typing the name is the only confirmation
+ * that answers the second. Matched against the *saved* name, never the rename input — otherwise
+ * an unsaved edit would arm the button against a name the workspace does not have.
+ *
+ * The project count is fetched rather than described in the abstract: "deletes 12 projects" is a
+ * fact someone can weigh, where "deletes your projects" is a sentence people click past. If the
+ * count can't be loaded the warning stays qualitative rather than guessing or claiming zero.
+ *
+ * The API refuses to delete the last workspace (`routers/workspaces.py`) because an account with
+ * none would silently get a fresh "Personal" one on the next request. That refusal is mirrored
+ * here as a disabled button with the reason — reaching a dead end after typing a name out is a
+ * worse way to learn the rule — but the server stays the enforcement, not this.
+ *
+ * **Who sees it.** Deleting is for accounts that can have more than one workspace, so the card is
+ * hidden entirely from a single-workspace plan holding a single workspace — a Free user has one
+ * workspace and nothing to choose between, and a permanently disabled destructive control is
+ * clutter at best.
+ *
+ * It stays visible for an account that *has* several, whatever it pays today. A lapsed Plus
+ * account keeps its three workspaces with the excess read-only (`locking.py`), and deleting one
+ * is precisely how it gets back under the cap — the endpoint exists because that would otherwise
+ * be unrecoverable. Gating on the literal plan name would strand exactly the people who most
+ * need this.
+ *
+ * Both halves read the API's own numbers — `limits.workspaces` for what the plan allows,
+ * `usage.workspaces` for what the account has — rather than testing for "plus", so beta accounts
+ * (three workspaces, different name) work without being enumerated here.
+ */
+function DeleteWorkspaceCard({ workspace }: { workspace: WorkspaceInfo | null }) {
+  const [open, setOpen] = useState(false);
+  const [typed, setTyped] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [projectCount, setProjectCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    // What this would destroy. Cheap, and only paid for on the Workspace tab. On failure the
+    // warning stays qualitative rather than guessing or claiming zero.
+    listAgents()
+      .then((rows) => setProjectCount(rows.length))
+      .catch(() => setProjectCount(null));
+  }, [workspace?.id]);
+
+  // Hooks first: the visibility check below has to come after them, not before.
+  const planAllowsMultiple = (workspace?.limits?.workspaces ?? 1) > 1;
+  const isOnly = (workspace?.usage?.workspaces ?? 1) <= 1;
+  if (!workspace || (!planAllowsMultiple && isOnly)) return null;
+
+  const armed = typed.trim().toLowerCase() === workspace.name.trim().toLowerCase();
+  // A local const so the null-check above survives into the async closure: TypeScript doesn't
+  // carry a *parameter's* narrowing into a nested function, only a const's.
+  const target = workspace;
+
+  async function confirmDelete() {
+    setBusy(true);
+    setError("");
+    try {
+      await deleteWorkspace(target.id);
+    } catch (e) {
+      setBusy(false);
+      // Keep the dialog open so the reason sits next to the button that failed — this is where
+      // the server's "cannot delete your only workspace" surfaces if the mirror above was wrong.
+      setError(e instanceof Error ? e.message : "Could not delete that workspace.");
+      return;
+    }
+    // The cookie now points at a workspace that no longer exists. `resolve_workspace` would fall
+    // back on its own, but clearing it is what makes the next request unambiguous rather than
+    // merely survivable. A full navigation, not `router.refresh()`: we are leaving a workspace
+    // that is gone, and every client page still holding its data has to be rebuilt from scratch.
+    await switchWorkspace().catch(() => {});
+    window.location.assign("/dashboard");
+  }
+
+  return (
+    <div
+      className="mt-4 rounded-lg border border-destructive/40 p-5"
+      data-testid="ws-danger-card"
+    >
+      <h2 className="text-sm font-medium">Delete workspace</h2>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Permanently delete{" "}
+        <span className="font-medium text-foreground">{workspace.name}</span>{" "}
+        and everything inside it.
+      </p>
+      <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
+        <li data-testid="ws-delete-projects">
+          {projectCount === null
+            ? "Every project in this workspace"
+            : projectCount === 1
+              ? "Its 1 project"
+              : `Its ${projectCount} projects`}
+        </li>
+        <li>Their run history, uploads and share links</li>
+        <li>Any connectors and API keys saved here</li>
+      </ul>
+      {/* Says where the blast radius stops. Someone deleting one of several workspaces is
+          reasonably worried about the other ones and about being billed. */}
+      <p className="mt-3 text-xs text-muted-foreground">
+        Your other workspaces, your account and your subscription are not affected. This
+        can&rsquo;t be undone.
+      </p>
+
+      {isOnly ? (
+        <p className="mt-3 text-xs text-muted-foreground" data-testid="ws-delete-only-notice">
+          This is your only workspace, so it can&rsquo;t be deleted — your work would have nowhere
+          to live. Create another one first, or delete your account from the Account tab.
+        </p>
+      ) : null}
+
+      <div className="mt-4">
+        <Button
+          variant="destructive"
+          size="sm"
+          disabled={isOnly}
+          onClick={() => {
+            setTyped("");
+            setError("");
+            setOpen(true);
+          }}
+          data-testid="ws-delete-open"
+        >
+          Delete workspace
+        </Button>
+      </div>
+
+      <Dialog open={open} onOpenChange={(o) => !busy && setOpen(o)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete this workspace?</DialogTitle>
+            <DialogDescription>
+              This permanently deletes{" "}
+              <span className="font-medium">{workspace.name}</span>
+              {projectCount === null
+                ? " and every project in it"
+                : projectCount === 1
+                  ? " and its 1 project"
+                  : ` and its ${projectCount} projects`}
+              , along with their runs, uploads, share links and saved connectors. It can&rsquo;t be
+              undone.
+            </DialogDescription>
+          </DialogHeader>
+          <label htmlFor="ws-delete-confirm" className="text-sm">
+            Type <span className="font-mono font-medium">{workspace.name}</span> to confirm.
+          </label>
+          <Input
+            id="ws-delete-confirm"
+            value={typed}
+            autoComplete="off"
+            onChange={(e) => setTyped(e.target.value)}
+            data-testid="ws-delete-input"
+          />
+          {error ? (
+            <p className="text-sm text-destructive" data-testid="ws-delete-error">
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline">Cancel</Button>} />
+            <Button
+              variant="destructive"
+              disabled={!armed || busy}
+              onClick={confirmDelete}
+              data-testid="ws-delete-confirm"
+            >
+              {busy ? "Deleting…" : "Delete workspace"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
