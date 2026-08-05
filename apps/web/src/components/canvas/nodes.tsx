@@ -4,6 +4,7 @@ import { Handle, type NodeProps, Position } from "@xyflow/react";
 import type { ReactNode } from "react";
 
 import { type NodeData, type NodeStatus, routerHandleNames } from "@/lib/graph";
+import { useConnectors } from "@/lib/use-connectors";
 
 const handleStyle = { width: 10, height: 10 };
 
@@ -194,9 +195,14 @@ export function MemoryNodeView({ data, selected }: NodeProps) {
 export function ToolNodeView({ data, selected }: NodeProps) {
   const config = (data as NodeData).config;
   const provider = config.provider ?? "demo_search";
-  // For MCP, show the server host next to the provider tag (falls back to a hint when unset).
+  const connectors = useConnectors();
+  // For MCP, show where the tools come from next to the provider tag. A connector-backed node
+  // has no `mcp_url` on the client — the ref is all the canvas stores, and the server resolves
+  // it to a URL at run time — so name the connector instead of reading a URL that is never
+  // there. "(no server)" is reserved for a node that genuinely has neither.
   let label = String(provider);
   if (provider === "mcp") {
+    const ref = String(config.mcp_connector_ref ?? "");
     const url = String(config.mcp_url ?? "");
     let host = "";
     try {
@@ -204,7 +210,13 @@ export function ToolNodeView({ data, selected }: NodeProps) {
     } catch {
       host = url;
     }
-    label = host ? `mcp · ${host}` : "mcp · (no server)";
+    if (ref) {
+      // Until the list loads, say we have *a* connector rather than flashing "(no server)".
+      const name = connectors.find((c) => c.id === ref)?.name;
+      label = `mcp · ${name ?? "connector"}`;
+    } else {
+      label = host ? `mcp · ${host}` : "mcp · (no server)";
+    }
   }
   return (
     <>

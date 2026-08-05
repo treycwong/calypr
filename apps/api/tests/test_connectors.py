@@ -16,6 +16,8 @@ from calypr_api.config import settings
 from calypr_api.connectors import (
     ConnectorResolutionError,
     assert_egress_allowed,
+    mcp_nodes_without_a_server,
+    missing_server_notice,
     resolve,
     resolve_graph,
 )
@@ -152,3 +154,45 @@ def test_create_list_delete_connector_never_returns_secret():
 def test_create_connector_rejects_non_https_url():
     r = client.post("/connectors", json={"name": "bad", "url": "ftp://evil/mcp"})
     assert r.status_code == 422  # schema validator blocks non-https URLs
+
+
+def _mcp_graph(**tool_config) -> GraphSpec:
+    return GraphSpec(
+        id="g",
+        name="g",
+        state=[],
+        nodes=[NodeSpec(id="tools", type="tool", config={"provider": "mcp", **tool_config})],
+        edges=[EdgeSpec(id="e", source="tools", target="tools")],
+        entry="tools",
+    )
+
+
+def test_toolless_mcp_nodes_are_detected_however_they_got_that_way():
+    # No connector picked, and a ref that didn't resolve, are the same failure downstream: the
+    # node has no URL, so it binds no tools.
+    assert mcp_nodes_without_a_server(_mcp_graph()) == ["tools"]
+    assert mcp_nodes_without_a_server(_mcp_graph(mcp_connector_ref=str(uuid.uuid4()))) == ["tools"]
+
+
+def test_a_resolved_mcp_node_is_not_reported():
+    assert mcp_nodes_without_a_server(_mcp_graph(mcp_url="https://mcp.example/mcp")) == []
+
+
+def test_non_mcp_tool_nodes_are_not_reported():
+    graph = GraphSpec(
+        id="g",
+        name="g",
+        state=[],
+        nodes=[NodeSpec(id="tools", type="tool", config={"provider": "demo_search"})],
+        edges=[EdgeSpec(id="e", source="tools", target="tools")],
+        entry="tools",
+    )
+    assert mcp_nodes_without_a_server(graph) == []
+
+
+def test_the_notice_names_the_node_and_the_fix():
+    msg = missing_server_notice(["tools"])
+    assert "'tools'" in msg
+    assert "connector" in msg.lower()
+    # It must not read as a crash — the run continues, just without tools.
+    assert "no MCP tools" in msg

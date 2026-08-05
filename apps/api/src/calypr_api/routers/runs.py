@@ -17,7 +17,12 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from calypr_api import engine, run_access, spend, threads
-from calypr_api.connectors import assert_tool_urls_allowed, resolve_graph
+from calypr_api.connectors import (
+    assert_tool_urls_allowed,
+    mcp_nodes_without_a_server,
+    missing_server_notice,
+    resolve_graph,
+)
 from calypr_api.deps import run_workspace
 from calypr_api.engine import context_for
 from calypr_api.errors import (
@@ -121,6 +126,16 @@ async def create_run(
             # Resolve MCP connector refs → live url + headers (vault-decrypted, server-side)
             # before compile, off the event loop (DB I/O). No-ops when no connector is used.
             graph = await asyncio.to_thread(resolve_graph, req.graph, workspace_id)
+            # An MCP node that resolved to nothing binds zero tools and the run continues — the
+            # graceful degradation is deliberate, the silence was not. Same reasoning as the
+            # frontier-model notice below: degrade, but never invisibly.
+            if toolless := mcp_nodes_without_a_server(graph):
+                posthog_client.capture(
+                    "agent_run_mcp_no_server",
+                    distinct_id=str(workspace_id),
+                    properties={"node_count": len(toolless)},
+                )
+                yield _sse({"type": "notice", "message": missing_server_notice(toolless)})
             # Same idea for key-backed Tool providers (Unsplash): the DSL carries only the
             # provider name; the key is vault-decrypted into the node just before compile.
             graph = await asyncio.to_thread(resolve_tool_keys, graph, workspace_id)

@@ -31,6 +31,7 @@ import {
   setProviderKey,
   testConnector,
 } from "@/lib/api";
+import { invalidateConnectors } from "@/lib/use-connectors";
 
 // The Tier A catalog shown in the "Add Connection" modal. One entry per OAuth app we can
 // connect; `kind` matches Connector.kind so a row can render as already-connected. Adding an
@@ -58,11 +59,16 @@ export function SettingsPanel() {
   const [providerKeys, setProviderKeys] = useState<ProviderKeyInfo[]>([]);
 
   // Listing fails without a DB (local dev) — leave the panel empty, no error toast.
-  const refresh = () =>
-    listConnectors()
+  const refresh = () => {
+    // This panel is where connectors change, so it owns clearing the shared cache the Tool
+    // node's label and dropdown read from — otherwise a connector added here stays invisible
+    // on the canvas until a reload.
+    invalidateConnectors();
+    return listConnectors()
       .then(setConnectors)
       .catch(() => setConnectors([]))
       .finally(() => setLoading(false));
+  };
   const refreshKeys = () =>
     listProviderKeys()
       .then(setProviderKeys)

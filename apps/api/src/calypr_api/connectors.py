@@ -125,6 +125,34 @@ def _connector_refs(graph: GraphSpec) -> set[str]:
     }
 
 
+def mcp_nodes_without_a_server(graph: GraphSpec) -> list[str]:
+    """The ids of MCP Tool nodes that still have no URL — call on the *resolved* graph.
+
+    One check for every way an MCP node ends up toolless: no connector picked, a ref that no
+    longer resolves (deleted connector, wrong workspace), or a connector whose kind needs server
+    config the deployment is missing (`CALYPR_NOTION_MCP_URL`). All three look identical from
+    here, and all three produce the same silent failure — the node binds zero tools while the
+    agent's prompt still promises the workspace, so it answers confidently from nothing. The run
+    path turns this into a user-visible notice."""
+    return [
+        n.id
+        for n in graph.nodes
+        if n.type == "tool" and n.config.get("provider") == "mcp" and not n.config.get("mcp_url")
+    ]
+
+
+def missing_server_notice(node_ids: list[str]) -> str:
+    """The run-stream notice for `mcp_nodes_without_a_server` — says what won't work and what to
+    do, without implying the run failed (it didn't; the agent just has no tools)."""
+    which = "Tool node" if len(node_ids) == 1 else "Tool nodes"
+    names = ", ".join(repr(i) for i in node_ids)
+    return (
+        f"{which} {names} use MCP but no server resolved, so this run has no MCP tools — any "
+        "answer comes from the model alone. Pick a connector on the node (add one under "
+        "Settings → Connected Accounts), or set a server URL."
+    )
+
+
 def resolve_graph(graph: GraphSpec, workspace_id: uuid.UUID) -> GraphSpec:
     """Return a copy of `graph` with every MCP Tool node's `mcp_connector_ref` resolved to a
     live URL + headers, decrypting vault secrets server-side.
