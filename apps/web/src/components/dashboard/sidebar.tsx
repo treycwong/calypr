@@ -93,8 +93,10 @@ export function Sidebar({
     // Leave any page scoped to a single agent — that agent belongs to the workspace we just
     // left, so staying would 404 the moment the shell re-renders.
     if (pathname !== "/dashboard") router.push("/dashboard");
-    // The shell is a server component reading the cookie, so re-rendering it is the whole
-    // update. There's no client cache to invalidate.
+    // Re-renders the shell (a server component reading the cookie) with the new workspace. It
+    // does *not* reset the client pages beneath — `router.refresh()` preserves client state, so
+    // a page that fetched on mount would keep showing the workspace we just left. The layout
+    // keys `<main>` on the resolved workspace id to force that remount; see the comment there.
     router.refresh();
   }
 
