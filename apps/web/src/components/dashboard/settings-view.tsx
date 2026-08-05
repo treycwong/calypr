@@ -30,7 +30,6 @@ import {
   listAssistantModels,
   type LLMProvider,
   listLLMProviders,
-  listWorkspaces,
   renameWorkspace,
   switchWorkspace,
   setAssistantModel,
@@ -39,6 +38,7 @@ import {
   startBillingPortal,
   uploadImage,
   type SubscriptionInfo,
+  type WorkspaceInfo,
 } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
 import { PLAN_COPY } from "@/lib/plans";
@@ -85,8 +85,9 @@ export function SettingsView({
   const [savedMsg, setSavedMsg] = useState("");
   // The workspace as *persisted*, kept apart from the `wsName` input above. Delete-to-confirm
   // matches against this: typing a new name without saving must not arm a delete against a name
-  // the workspace does not actually have.
-  const [savedWs, setSavedWs] = useState<{ id: string; name: string } | null>(null);
+  // the workspace does not actually have. Carries the plan's limits and the account's usage too,
+  // which is what decides whether the delete card appears at all.
+  const [savedWs, setSavedWs] = useState<WorkspaceInfo | null>(null);
   const [model, setModel] = useState("");
   const [modelOptions, setModelOptions] = useState<AssistantModelOption[]>([]);
   const [modelMsg, setModelMsg] = useState("");
@@ -114,7 +115,7 @@ export function SettingsView({
     getWorkspace()
       .then((w) => {
         setWsName(w.name);
-        setSavedWs({ id: w.id, name: w.name });
+        setSavedWs(w);
         setModel(w.assistant_model ?? "");
         setDefaultModel(w.default_model ?? "");
         setPlan(w.plan ?? "free");
@@ -243,7 +244,7 @@ export function SettingsView({
     try {
       const w = await renameWorkspace(wsName.trim() || "Workspace");
       setWsName(w.name);
-      setSavedWs({ id: w.id, name: w.name });
+      setSavedWs(w);
       setSavedMsg("Saved ✓");
     } catch {
       setSavedMsg("Save failed");
@@ -694,36 +695,52 @@ export function SettingsView({
  * none would silently get a fresh "Personal" one on the next request. That refusal is mirrored
  * here as a disabled button with the reason — reaching a dead end after typing a name out is a
  * worse way to learn the rule — but the server stays the enforcement, not this.
+ *
+ * **Who sees it.** Deleting is for accounts that can have more than one workspace, so the card is
+ * hidden entirely from a single-workspace plan holding a single workspace — a Free user has one
+ * workspace and nothing to choose between, and a permanently disabled destructive control is
+ * clutter at best.
+ *
+ * It stays visible for an account that *has* several, whatever it pays today. A lapsed Plus
+ * account keeps its three workspaces with the excess read-only (`locking.py`), and deleting one
+ * is precisely how it gets back under the cap — the endpoint exists because that would otherwise
+ * be unrecoverable. Gating on the literal plan name would strand exactly the people who most
+ * need this.
+ *
+ * Both halves read the API's own numbers — `limits.workspaces` for what the plan allows,
+ * `usage.workspaces` for what the account has — rather than testing for "plus", so beta accounts
+ * (three workspaces, different name) work without being enumerated here.
  */
-function DeleteWorkspaceCard({ workspace }: { workspace: { id: string; name: string } | null }) {
+function DeleteWorkspaceCard({ workspace }: { workspace: WorkspaceInfo | null }) {
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [projectCount, setProjectCount] = useState<number | null>(null);
-  const [isOnly, setIsOnly] = useState<boolean | null>(null);
 
   useEffect(() => {
-    // Both are "what would this destroy, and may it be destroyed at all" — cheap, and only paid
-    // for on the Workspace tab. Either failing leaves the card usable: an unknown project count
-    // falls back to qualitative copy, and an unknown workspace count defers to the server's 400.
+    // What this would destroy. Cheap, and only paid for on the Workspace tab. On failure the
+    // warning stays qualitative rather than guessing or claiming zero.
     listAgents()
       .then((rows) => setProjectCount(rows.length))
       .catch(() => setProjectCount(null));
-    listWorkspaces()
-      .then((w) => setIsOnly(w.workspaces.length <= 1))
-      .catch(() => setIsOnly(null));
   }, [workspace?.id]);
 
-  const armed =
-    !!workspace && typed.trim().toLowerCase() === workspace.name.trim().toLowerCase();
+  // Hooks first: the visibility check below has to come after them, not before.
+  const planAllowsMultiple = (workspace?.limits?.workspaces ?? 1) > 1;
+  const isOnly = (workspace?.usage?.workspaces ?? 1) <= 1;
+  if (!workspace || (!planAllowsMultiple && isOnly)) return null;
+
+  const armed = typed.trim().toLowerCase() === workspace.name.trim().toLowerCase();
+  // A local const so the null-check above survives into the async closure: TypeScript doesn't
+  // carry a *parameter's* narrowing into a nested function, only a const's.
+  const target = workspace;
 
   async function confirmDelete() {
-    if (!workspace) return;
     setBusy(true);
     setError("");
     try {
-      await deleteWorkspace(workspace.id);
+      await deleteWorkspace(target.id);
     } catch (e) {
       setBusy(false);
       // Keep the dialog open so the reason sits next to the button that failed — this is where
@@ -747,7 +764,7 @@ function DeleteWorkspaceCard({ workspace }: { workspace: { id: string; name: str
       <h2 className="text-sm font-medium">Delete workspace</h2>
       <p className="mt-0.5 text-xs text-muted-foreground">
         Permanently delete{" "}
-        <span className="font-medium text-foreground">{workspace?.name ?? "this workspace"}</span>{" "}
+        <span className="font-medium text-foreground">{workspace.name}</span>{" "}
         and everything inside it.
       </p>
       <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-muted-foreground">
@@ -779,7 +796,7 @@ function DeleteWorkspaceCard({ workspace }: { workspace: { id: string; name: str
         <Button
           variant="destructive"
           size="sm"
-          disabled={!workspace || !!isOnly}
+          disabled={isOnly}
           onClick={() => {
             setTyped("");
             setError("");
@@ -797,7 +814,7 @@ function DeleteWorkspaceCard({ workspace }: { workspace: { id: string; name: str
             <DialogTitle>Delete this workspace?</DialogTitle>
             <DialogDescription>
               This permanently deletes{" "}
-              <span className="font-medium">{workspace?.name}</span>
+              <span className="font-medium">{workspace.name}</span>
               {projectCount === null
                 ? " and every project in it"
                 : projectCount === 1
@@ -808,7 +825,7 @@ function DeleteWorkspaceCard({ workspace }: { workspace: { id: string; name: str
             </DialogDescription>
           </DialogHeader>
           <label htmlFor="ws-delete-confirm" className="text-sm">
-            Type <span className="font-mono font-medium">{workspace?.name}</span> to confirm.
+            Type <span className="font-mono font-medium">{workspace.name}</span> to confirm.
           </label>
           <Input
             id="ws-delete-confirm"
