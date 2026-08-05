@@ -26,6 +26,7 @@ export default async function DashboardLayout({
   // Carries `can_create` alongside the rows, so the switcher can offer the right affordance on
   // first paint without a second request — see `WorkspaceList` in the API schemas.
   const { workspaces, can_create } = await fetchWorkspaces();
+  const current = workspaces.find((w) => w.is_current);
 
   return (
     <div className="flex h-screen">
@@ -35,7 +36,15 @@ export default async function DashboardLayout({
         workspaces={workspaces}
         canCreateWorkspace={can_create}
       />
-      <main className="flex-1 overflow-auto">{children}</main>
+      {/* Keyed on the resolved workspace so switching remounts the page beneath. The pages here
+          are client components that fetch in a mount effect, and `router.refresh()` — what the
+          switcher triggers — re-renders server components while *preserving* client state. Without
+          this key the shell renamed itself correctly and the projects underneath stayed those of
+          the workspace you just left. Belongs in the layout, not in each page: every route under
+          /dashboard reads workspace-scoped data and every one of them had the same staleness. */}
+      <main key={current?.id ?? "none"} className="flex-1 overflow-auto">
+        {children}
+      </main>
     </div>
   );
 }
