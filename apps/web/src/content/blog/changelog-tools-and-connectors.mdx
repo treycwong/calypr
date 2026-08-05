@@ -41,19 +41,27 @@ The bigger change is **MCP** support. MCP is a standard socket for tools: a vend
 MCP server for their product, and any app that speaks the protocol can plug in and immediately
 ask *"what can you do?"* — no per-vendor integration code.
 
-Your Tools block can now point at any MCP server over HTTPS. Paste a URL (and a token if it
-needs one), and the tools that server offers become tools your agent can call. It's encrypted at
-rest and resolved server-side at run time — the secret never touches your graph or the generated
-code.
+Your Tools block can now point at an MCP server, and the tools that server offers become tools
+your agent can call. Credentials are encrypted at rest and resolved server-side at run time — the
+secret never touches your graph or the generated code.
+
+> **Update, August 2026:** this originally shipped as "paste any server URL". That path is
+> paused: the MCP servers people actually run live on their own machine at `localhost`, which a
+> cloud backend can't reach and deliberately blocks reaching. App connections — Notion below —
+> are the web-shaped path, and are what Settings offers today. Workspaces that already saved a
+> server by URL keep it, working and testable. For the current walkthrough, see
+> [Build with MCP: use Notion as a study partner](/blog/notion-study-helper).
 
 ## Notion, in two clicks
 
 The first connector built on top of that: **connect your Notion account** from
-Settings → Connectors. It's a normal OAuth flow — you approve it on Notion's side, we store the
-token encrypted, and your agent gets all 24 Notion tools: search pages, read them, create them.
+Settings → Connected accounts → **Add Connection**. It's a normal OAuth flow — you approve it on
+Notion's side (picking which pages to share), we store the token encrypted, and your agent gets
+the tools that server offers: search your pages, read them, create them.
 
 The **Notion assistant** template is a working starting point — ask it about your workspace and
-it goes and looks.
+it goes and looks. There's now a
+[full walkthrough](/blog/notion-study-helper) that turns it into a study partner.
 
 ## One agent, several tools
 
