@@ -107,3 +107,94 @@ test("Templates and Usage are reachable from the sidebar", async ({ page }) => {
   await expect(page.getByTestId("usage-workspaces")).toBeVisible();
   await expect(page.getByTestId("usage-storage")).toBeVisible();
 });
+
+// --- Delete workspace ---------------------------------------------------------------------
+//
+// The card is on Settings → Workspace. Unlike the layout's workspace list (server-fetched, and
+// therefore invisible to `page.route` — see the header above), this card does its own client-side
+// reads, so how many workspaces exist and how many projects are at stake *are* mockable here.
+
+async function openWorkspaceSettings(page: import("@playwright/test").Page) {
+  // Click through to the tab rather than deep-linking `?tab=workspace`: the dev sign-in redirect
+  // drops the query string, so the deep link silently lands on the Account tab.
+  await signInAt(page, "/dashboard/settings");
+  await page.getByTestId("tab-workspace").click();
+  await expect(page.getByTestId("ws-danger-card")).toBeVisible();
+}
+
+test("the only workspace can't be deleted, and the card says why", async ({ page }) => {
+  await page.route("**/api/workspaces", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: { workspaces: [{ id: "w1", name: "Personal", is_current: true }], can_create: true },
+    });
+  });
+
+  await openWorkspaceSettings(page);
+  // Refusing in the UI *and* on the server is deliberate: reaching a dead end after typing out a
+  // workspace name is a worse way to learn the rule than never being offered the button.
+  await expect(page.getByTestId("ws-delete-only-notice")).toBeVisible();
+  await expect(page.getByTestId("ws-delete-open")).toBeDisabled();
+});
+
+test("deleting a workspace needs its name typed exactly, and names what it will destroy", async ({
+  page,
+}) => {
+  let deletedId: string | null = null;
+
+  await page.route("**/api/workspaces", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: {
+        workspaces: [
+          { id: "w1", name: "Personal", is_current: false },
+          { id: "w2", name: "Side project", is_current: true },
+        ],
+        can_create: true,
+      },
+    });
+  });
+  await page.route("**/api/agents", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({
+      json: [
+        { id: "a1", name: "One", updated_at: new Date().toISOString(), locked: false },
+        { id: "a2", name: "Two", updated_at: new Date().toISOString(), locked: false },
+      ],
+    });
+  });
+  // The name typed to confirm is matched against the *saved* workspace, which comes from the
+  // singular `/api/workspace` — not from the list above. Mocking only the list would leave the
+  // card comparing against whatever the real dev workspace is called.
+  await page.route("**/api/workspace", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    return route.fulfill({ json: { id: "w2", name: "Side project", plan: "free" } });
+  });
+  await page.route("**/api/workspaces/*", async (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletedId = route.request().url().split("/").pop() ?? null;
+    return route.fulfill({ status: 204, body: "" });
+  });
+
+  await openWorkspaceSettings(page);
+
+  // The count is fetched rather than described in the abstract — "2 projects" is something you
+  // can weigh, where "your projects" is a phrase people click past.
+  await expect(page.getByTestId("ws-delete-projects")).toContainText("2 projects");
+
+  await page.getByTestId("ws-delete-open").click();
+  const confirm = page.getByTestId("ws-delete-confirm");
+  await expect(confirm).toBeDisabled();
+
+  // The name of a *different* workspace must not arm it — that is the whole point of typing the
+  // name rather than a fixed phrase.
+  await page.getByTestId("ws-delete-input").fill("Personal");
+  await expect(confirm).toBeDisabled();
+
+  // Case and surrounding space are forgiven; the name itself is not.
+  await page.getByTestId("ws-delete-input").fill("  side PROJECT ");
+  await expect(confirm).toBeEnabled();
+
+  await confirm.click();
+  await expect.poll(() => deletedId).toBe("w2");
+});
