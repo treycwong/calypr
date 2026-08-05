@@ -289,6 +289,31 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                 )
             )
 
+    # An MCP Tool node with nowhere to connect. Without a server the node binds zero tools and
+    # the agent answers as if it had none — fluently, and wrongly, since the prompt still tells
+    # it that it can read your workspace. That silence is the failure mode worth naming.
+    #
+    # A warning, not an error: the Notion starter deliberately ships with an empty
+    # `mcp_connector_ref` (connectors are per-workspace, so a template can't hard-code one), and
+    # every starter must validate clean. The run path re-checks this and emits a notice, which
+    # is what actually catches it at the moment it matters.
+    for n in spec.nodes:
+        if n.type != "tool" or n.config.get("provider") != "mcp":
+            continue
+        if not n.config.get("mcp_url") and not n.config.get("mcp_connector_ref"):
+            issues.append(
+                Issue(
+                    severity="warning",
+                    code="mcp_tool_no_server",
+                    message=(
+                        f"Tool node {n.id!r} uses MCP but has no server: pick a connector on the "
+                        "node (Settings → Connected Accounts adds them), or set a URL. As it "
+                        "stands it provides no tools, and the agent will answer without them."
+                    ),
+                    node_id=n.id,
+                )
+            )
+
     # Reachability from entry.
     if spec.entry in id_set:
         reachable: set[str] = set()

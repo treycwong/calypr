@@ -1,9 +1,7 @@
 "use client";
 
 import type { Node } from "@xyflow/react";
-import { type ReactNode, useEffect, useState } from "react";
-
-import { type Connector, listConnectors } from "@/lib/api";
+import type { ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +25,7 @@ import {
   TTS_MODEL_OPTIONS,
   TTS_VOICE_OPTIONS,
 } from "@/lib/graph";
+import { useConnectors } from "@/lib/use-connectors";
 import { useProviderKeys } from "@/lib/use-provider-keys";
 
 type Setter = (patch: Record<string, unknown>) => void;
@@ -387,13 +386,8 @@ function ToolFields({ config, set }: { config: Config; set: Setter }) {
     ? (config.mcp_tool_filter as string[])
     : [];
   const connectorRef = String(config.mcp_connector_ref ?? "");
-  const [connectors, setConnectors] = useState<Connector[]>([]);
-  useEffect(() => {
-    if (provider !== "mcp") return;
-    listConnectors()
-      .then(setConnectors)
-      .catch(() => setConnectors([]));
-  }, [provider]);
+  // Shared with the Tool node's canvas label so the dropdown and the node agree on the name.
+  const connectors = useConnectors();
   const connectorOptions = [
     { value: "", label: "Manual URL (below)" },
     ...connectors.map((c) => ({

@@ -58,3 +58,21 @@ test("an MCP Tool node exposes a Connector dropdown", async ({ page }) => {
   // With no connector selected, the manual URL field is shown.
   await expect(page.getByTestId("cfg-mcp-url")).toBeVisible();
 });
+
+test("an MCP node with no server says so, and a typed URL replaces the hint", async ({ page }) => {
+  // The node label is the only place the canvas reports where its tools come from, so it has to
+  // stay honest: "(no server)" belongs to a node that really has none. (The connector-backed
+  // label reads its name from the connector list, which needs a database — covered by the API
+  // tests rather than here, since this suite runs DB-free.)
+  await openCanvas(page);
+
+  await page.getByTestId("add-tool").click();
+  await page.getByTestId("node-tool").click();
+  await page.getByTestId("cfg-provider").selectOption("mcp");
+
+  await expect(page.getByTestId("node-tool")).toContainText("mcp · (no server)");
+
+  await page.getByTestId("cfg-mcp-url").fill("https://mcp.example.com/mcp");
+  await expect(page.getByTestId("node-tool")).toContainText("mcp · mcp.example.com");
+  await expect(page.getByTestId("node-tool")).not.toContainText("no server");
+});

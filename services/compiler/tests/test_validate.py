@@ -122,3 +122,56 @@ def test_tool_node_wired_from_the_agent_is_fine():
     )
     codes = {i.code for i in validate_graph(spec) if i.severity == "error"}
     assert "tool_node_unbound" not in codes
+
+
+def _mcp_tool_graph(**tool_config) -> GraphSpec:
+    """The Notion-assistant shape: an agent that routes to an MCP Tool node and loops back."""
+    return GraphSpec(
+        id="g",
+        name="g",
+        state=[
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(id="in", type="input", config={"target_channel": "messages"}),
+            NodeSpec(id="agent", type="agent", config={"model": "fake"}),
+            NodeSpec(id="tools", type="tool", config={"provider": "mcp", **tool_config}),
+            NodeSpec(id="out", type="output", config={"source_channel": "messages"}),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),
+        ],
+        entry="in",
+    )
+
+
+def test_mcp_tool_node_without_a_server_is_flagged():
+    """A freshly loaded Notion template: correct topology, no connector picked yet. It binds
+    zero tools, so the agent answers as though it had searched — the failure users report."""
+    spec = _mcp_tool_graph()
+    issues = [i for i in validate_graph(spec) if i.code == "mcp_tool_no_server"]
+    assert len(issues) == 1
+    assert issues[0].node_id == "tools"
+    # A warning, not an error: the shipped starter carries this exact shape and every starter
+    # must validate clean (see test_starter_validates).
+    assert issues[0].severity == "warning"
+
+
+def test_mcp_tool_node_with_a_connector_or_url_is_not_flagged():
+    assert "mcp_tool_no_server" not in _codes(_mcp_tool_graph(mcp_connector_ref="abc-123"))
+    assert "mcp_tool_no_server" not in _codes(_mcp_tool_graph(mcp_url="https://mcp.example/mcp"))
+
+
+def test_non_mcp_tool_node_is_never_flagged():
+    """demo_search needs no server — the rule must not fire on other providers."""
+    spec = _tool_graph(
+        EdgeSpec(id="e1", source="in", target="agent"),
+        EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+        EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+        EdgeSpec(id="e4", source="tools", target="agent"),
+    )
+    assert "mcp_tool_no_server" not in _codes(spec)

@@ -263,6 +263,18 @@ def _routing_edge_unconditional() -> GraphSpec:
     return _linear(("a", "responder"), ("b", "revisor"))
 
 
+def _mcp_tool_no_server() -> GraphSpec:
+    """An MCP Tool node with neither a connector nor a URL — the state a freshly loaded Notion
+    template sits in. Correctly wired, so no other rule fires; it just has no tools to bind, and
+    the agent answers as though it had looked."""
+    spec = _linear(("agent", "agent"), ("tools", "tool"))
+    spec.nodes = [
+        NodeSpec(id=n.id, type=n.type, config={"provider": "mcp"}) if n.id == "tools" else n
+        for n in spec.nodes
+    ]
+    return spec
+
+
 VIOLATIONS = {
     "bad_entry": _bad_entry,
     "no_entry": _no_entry,
@@ -280,6 +292,7 @@ VIOLATIONS = {
     "react_branches_unwired": _react_branches_unwired,
     "tool_node_unbound": _tool_node_unbound,
     "routing_edge_unconditional": _routing_edge_unconditional,
+    "mcp_tool_no_server": _mcp_tool_no_server,
 }
 
 
