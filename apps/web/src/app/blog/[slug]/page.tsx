@@ -78,7 +78,7 @@ export default async function BlogPost({ params }: Props) {
           </p>
         </header>
 
-        <article className="prose-blog mt-10">
+        <article className="prose-blog mt-6">
           <Post />
         </article>
       </main>
