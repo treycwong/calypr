@@ -1,5 +1,6 @@
 "use client";
 
+import { Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -35,6 +36,7 @@ export function PlaygroundChat({
   busy,
   memoryExpired,
   onSend,
+  onStop,
 }: {
   messages: ChatMsg[];
   busy: boolean;
@@ -43,6 +45,8 @@ export function PlaygroundChat({
    *  follow-up and getting a baffling answer. */
   memoryExpired: boolean;
   onSend: (text: string, images: string[]) => void;
+  /** Abort the run in flight. The server keeps whatever streamed, marked `partial`. */
+  onStop: () => void;
 }) {
   const [input, setInput] = useState("");
   const { toast } = useToast();
@@ -130,7 +134,10 @@ export function PlaygroundChat({
         className="border-t border-border p-3"
         onSubmit={(e) => {
           e.preventDefault();
-          submit();
+          // While a run is streaming the same control stops it, so Enter does too — a user who
+          // hits Enter again mid-answer means "stop", not "send an empty message".
+          if (busy) onStop();
+          else submit();
         }}
       >
         {attach.pending ? (
@@ -147,8 +154,23 @@ export function PlaygroundChat({
             data-testid="chat-input"
             disabled={busy}
           />
-          <Button type="submit" disabled={busy} data-testid="chat-send">
-            Send
+          {/* One control, two jobs. Never disabled while busy — a spinning, dead Send button is
+              exactly when a user most wants a way out. `variant` shifts so it doesn't read as
+              the same action, and the testid stays `chat-send` so existing specs keep working. */}
+          <Button
+            type="submit"
+            variant={busy ? "outline" : "default"}
+            data-testid="chat-send"
+            aria-label={busy ? "Stop generating" : "Send message"}
+          >
+            {busy ? (
+              <>
+                <Square className="h-3 w-3 fill-current" />
+                Stop
+              </>
+            ) : (
+              "Send"
+            )}
           </Button>
         </div>
       </form>

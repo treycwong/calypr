@@ -23,6 +23,10 @@ export type AnalyticsEvent =
   | "run_started"
   | "run_completed"
   | "run_errored"
+  // The user pressed Stop mid-answer. Distinct from `run_errored` on purpose: an abandoned run
+  // says something about the *answer* (too slow, or visibly going wrong), and folding it into
+  // the error count would both inflate that number and hide the signal.
+  | "run_stopped"
   // starters
   | "template_selected"
   // pre-signup funnel
