@@ -58,6 +58,13 @@ class RunRecorder:
     def _disabled(cls) -> RunRecorder:
         return cls(session=None, run_id=None, workspace_id=None)
 
+    @property
+    def run_id(self) -> uuid.UUID | None:
+        """The `run` row this recorder owns — `None` when disabled. Read by `runs.py` so the
+        transcript rows `ConversationRecorder` writes can point back at the run. Safe to read
+        across sessions: the row is committed in `start`, before this is ever handed out."""
+        return self._run_id
+
     @classmethod
     def start(
         cls,

@@ -119,6 +119,12 @@ def delete_account(t: Tenant = Depends(tenant)) -> AccountDeleted:
     # **The join through `workspace.account_id` is load-bearing.** It is the only thing
     # guaranteeing we never point a permanent, unrecoverable delete at a blob this account does
     # not own. Never widen this to a pathname or prefix match.
+    #
+    # Both halves matter: `upload` is what the user pushed in, `asset` is the media their runs
+    # generated. Assets bill exactly like uploads, and they are the larger of the two — an image
+    # run writes megabytes. Omitting them would leave a deleted account's blobs billing forever
+    # with no GC arm anywhere that could ever find them, since the rows they were reachable
+    # through are gone by then.
     blob_urls = [
         r[0]
         for r in t.session.execute(
@@ -126,6 +132,16 @@ def delete_account(t: Tenant = Depends(tenant)) -> AccountDeleted:
                 "SELECT u.blob_url FROM upload u"
                 " JOIN workspace w ON w.id = u.workspace_id"
                 " WHERE w.account_id = :a"
+                " UNION ALL "
+                "SELECT a2.blob_url FROM asset a2"
+                " JOIN workspace w2 ON w2.id = a2.workspace_id"
+                " WHERE w2.account_id = :a"
+                " UNION ALL "
+                # Blobs a live delete already failed on. They are still billing and this is the
+                # last moment anything can name them.
+                "SELECT o.blob_url FROM orphan_blob o"
+                " JOIN workspace w3 ON w3.id = o.workspace_id"
+                " WHERE w3.account_id = :a"
             ),
             {"a": str(account.id)},
         )

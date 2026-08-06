@@ -8,7 +8,8 @@ from typing import Any, Literal
 
 @dataclass
 class RunEvent:
-    type: Literal["token", "usage", "final", "node"]
+    # `asset`: a media node durably stored a generated file. Carried in `state`, like `usage`.
+    type: Literal["token", "usage", "final", "node", "asset"]
     text: str = ""
     output: str = ""
     state: dict[str, Any] | None = None

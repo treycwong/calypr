@@ -14,14 +14,23 @@ honest byte cap impossible to enforce today:
 So the number is measured on a schedule and shown with the time it was taken. What actually
 bounds storage is `gc_checkpoints` below: a per-plan TTL on run state. The figure on the Usage
 tab is how a user sees that working, not a paywall.
+
+**That TTL no longer bounds "chat history".** Since 0019 the Playground transcript is a
+`conversation` + `message` row the user owns and keeps until they delete it; what expires here
+is only the agent's *memory* of the conversation (the LangGraph checkpoint). The two used to be
+the same thing, and reading this module as though they still are will lead you to the wrong
+conclusion about what a user loses when the TTL fires. Generated media (`asset`) is likewise
+durable and counted above, bounded by the user deleting it rather than by a clock.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from datetime import UTC, datetime
 
+from calypr_storage import BlobError, delete_blob
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -67,6 +76,20 @@ def measure_account(session: Session, account_id: uuid.UUID) -> int:
             """
             SELECT coalesce(sum(u.bytes), 0)
               FROM upload u JOIN workspace w ON w.id = u.workspace_id
+             WHERE w.account_id = :acc
+            """
+        ),
+        params,
+    ).scalar_one()
+
+    # Media a run generated (Image, TTS). Same shape as `uploads` and for the same reason: the
+    # bytes live in Blob and bill there, so they have to be attributable. Only durably-stored
+    # assets have a row — a `data:` fallback is the response itself and costs no storage.
+    assets = session.execute(
+        text(
+            """
+            SELECT coalesce(sum(a.bytes), 0)
+              FROM asset a JOIN workspace w ON w.id = a.workspace_id
              WHERE w.account_id = :acc
             """
         ),
@@ -124,6 +147,7 @@ def measure_account(session: Session, account_id: uuid.UUID) -> int:
     return int(
         graphs
         + uploads
+        + assets
         + checkpoints
         + runs * _RUN_BYTES
         + run_usage * _RUN_USAGE_BYTES
@@ -210,18 +234,29 @@ def gc_checkpoints(session: Session, *, batch: int = GC_BATCH_THREADS) -> dict[s
         for row in session.execute(
             text(
                 f"""
-                SELECT DISTINCT r.thread_id
+                SELECT r.thread_id
                   FROM run r
                   JOIN workspace w ON w.id = r.workspace_id
                   JOIN billing_account   a ON a.id = w.account_id
                  WHERE r.thread_id IS NOT NULL
-                   AND r.created_at < now() - (CASE {ttl_cases}
-                                               ELSE interval '{free_ttl} days' END)
                    -- Only threads that still have state to reclaim. `run` rows outlive their
                    -- checkpoints (run history is kept; the state is not), so without this every
                    -- already-swept thread matches forever and fills the batch, starving the
                    -- threads that do need collecting.
                    AND EXISTS (SELECT 1 FROM checkpoints c WHERE c.thread_id = r.thread_id)
+                -- `plan`/`plan_changed_at` join the grouping only because the CASE below reads
+                -- them: a thread lives in one workspace, so one account, so this cannot split a
+                -- thread across groups.
+                 GROUP BY r.thread_id, a.plan, a.plan_changed_at
+                -- **`max`, not any-row.** This was `SELECT DISTINCT … WHERE r.created_at <
+                -- cutoff`, which matched a thread on the strength of its *oldest* run — so a
+                -- conversation used every day was collected because it started three weeks ago.
+                -- Nearly invisible while nothing could reopen an old thread; the History tab
+                -- invites exactly that, and a user reopening yesterday's chat to find the agent
+                -- has forgotten it is the bug this prevents. The TTL means "untouched for N
+                -- days", and only the most recent run can say that.
+                HAVING max(r.created_at) < now() - (CASE {ttl_cases}
+                                                    ELSE interval '{free_ttl} days' END)
                  LIMIT :batch
                 """  # noqa: S608 — interpolated values come from our own LIMITS table
             ),
@@ -274,3 +309,43 @@ def _uuid6_floor(days: int) -> str:
     ticks = int((cutoff + 12_219_292_800) * 10_000_000)
     hi, mid, lo = (ticks >> 28) & 0xFFFFFFFF, (ticks >> 12) & 0xFFFF, ticks & 0x0FFF
     return f"{hi:08x}-{mid:04x}-6{lo:03x}-8000-000000000000"
+
+
+#: Give up retrying a blob delete after this many attempts. The row stays as the audit trail —
+#: an operator can still find it — but we stop paying for a request the provider keeps refusing.
+MAX_ORPHAN_ATTEMPTS = 5
+
+
+def gc_orphan_blobs(session: Session, *, batch: int = 500) -> dict[str, int]:
+    """Retry blob deletes that failed during a live delete, and drop the rows that succeed.
+
+    These are objects the user already asked to be gone. `purge.py` handles the same problem for
+    a deleted account; this drains the per-row parking lot `history.py` writes into. Each url is
+    attempted on its own rather than in a chunk so one permanently-bad url can't keep re-failing
+    the whole batch and starve the rest."""
+    rows = session.execute(
+        text(
+            "SELECT id, blob_url FROM orphan_blob"
+            " WHERE attempts < :max ORDER BY failed_at LIMIT :batch"
+        ),
+        {"max": MAX_ORPHAN_ATTEMPTS, "batch": batch},
+    ).all()
+
+    deleted = failed = 0
+    for row_id, url in rows:
+        try:
+            asyncio.run(delete_blob([url]))
+        except BlobError as exc:
+            failed += 1
+            session.execute(
+                text(
+                    "UPDATE orphan_blob SET attempts = attempts + 1, last_error = :e"
+                    " WHERE id = :i"
+                ),
+                {"e": str(exc)[:500], "i": str(row_id)},
+            )
+            continue
+        deleted += 1
+        session.execute(text("DELETE FROM orphan_blob WHERE id = :i"), {"i": str(row_id)})
+    session.commit()
+    return {"deleted": deleted, "failed": failed, "considered": len(rows)}

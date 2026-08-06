@@ -83,3 +83,40 @@ async def test_image_node_emits_usage_for_metering(monkeypatch):
     # And it streams the image so the Playground renders it live.
     tokens = [p for p in captured if p.get("type") == "token"]
     assert tokens and tokens[0]["text"].startswith("![a fox](")
+
+
+async def test_image_node_emits_asset_when_the_upload_is_durable(monkeypatch):
+    """The `asset` event is what puts a generated image in the Media tab. It rides the same
+    custom-event writer as `usage` so nothing tenant-aware has to reach into this package."""
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.image.safe_stream_writer", lambda: captured.append)
+
+    async def fake_put_blob(data, *, pathname, content_type):
+        return f"https://store.public.blob.vercel-storage.com/{pathname}"
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", fake_put_blob)
+    run = ImageNode.compile(ImageConfig(model="fake"), NodeContext())
+    await run({"messages": [HumanMessage(content="a fox")]})
+
+    assets = [p for p in captured if p.get("type") == "asset"]
+    assert len(assets) == 1
+    a = assets[0]
+    assert a["kind"] == "image"
+    assert a["url"].startswith("https://store.public.blob.vercel-storage.com/runs/png/")
+    assert a["pathname"].startswith("runs/png/")
+    assert a["caption"] == "a fox"
+    assert a["model"] == "fake"
+    assert a["bytes"] > 0
+
+
+async def test_image_node_emits_no_asset_without_blob_storage(monkeypatch):
+    """Blob-less deployments still *render* the image (data: URI in the token markdown) but must
+    record nothing — otherwise a multi-MB base64 string lands in Postgres."""
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.image.safe_stream_writer", lambda: captured.append)
+    run = ImageNode.compile(ImageConfig(model="fake"), NodeContext())
+    await run({"messages": [HumanMessage(content="a fox")]})
+
+    assert [p for p in captured if p.get("type") == "asset"] == []
+    tokens = [p for p in captured if p.get("type") == "token"]
+    assert tokens and "data:image/png;base64," in tokens[0]["text"]

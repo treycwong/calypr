@@ -1,7 +1,7 @@
 """Run an agent graph and stream the result as Server-Sent Events.
 
-Each SSE `data:` line is a JSON event: {type: "token"|"node"|"usage"|"notice"|"final"
-|"error", ...},
+Each SSE `data:` line is a JSON event: {type: "token"|"node"|"usage"|"asset"|"notice"|"final"
+|"conversation"|"error", ...},
 terminated by `data: [DONE]`. The web app proxies this stream to the browser.
 """
 
@@ -16,7 +16,7 @@ from calypr_runtime import run_stream
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api import engine, run_access, spend, threads
+from calypr_api import conversations, engine, run_access, spend, threads
 from calypr_api.connectors import (
     assert_tool_urls_allowed,
     mcp_nodes_without_a_server,
@@ -83,7 +83,10 @@ async def create_run(
     agent_id = uuid.UUID(req.agent_id) if req.agent_id else None
     # Namespace the caller's conversation id under their resolved workspace. The request body no
     # longer decides which thread is loaded — `threads.py` explains why that mattered.
-    thread_id = threads.workspace_thread(workspace_id, req.thread_id)
+    # Clean once and compose, so the suffix stored on `conversation` is exactly the one the
+    # thread id was built from.
+    thread_suffix = threads.clean_suffix(req.thread_id)
+    thread_id = threads.workspace_thread(workspace_id, thread_suffix)
 
     async def event_stream() -> AsyncIterator[str]:
         # Platform loss firewall: refuse before running if the monthly spend cap is hit.
@@ -120,6 +123,28 @@ async def create_run(
             agent_id=agent_id,
             thread_id=thread_id,
         )
+        # The durable transcript, on its own session and its own failure domain — see
+        # `conversations.py` for why this isn't folded into `RunRecorder`. Started after the
+        # gates so a refused run leaves no conversation behind.
+        convo = await asyncio.to_thread(
+            conversations.ConversationRecorder.start,
+            workspace_id,
+            thread_suffix=thread_suffix,
+            user_text=req.message,
+            images=req.images,
+            agent_id=agent_id,
+            run_id=recorder.run_id,
+        )
+        if convo.conversation_id is not None:
+            # Lets the History tab highlight the active conversation without a fetch. Mirrors the
+            # `thread` event the share path already emits.
+            yield _sse(
+                {
+                    "type": "conversation",
+                    "conversation_id": str(convo.conversation_id),
+                    "thread_id": thread_suffix,
+                }
+            )
         completed = False
         graph = ctx = None
         try:
@@ -172,6 +197,7 @@ async def create_run(
                 checkpointer=engine.checkpointer,
             ):
                 if ev.type == "token":
+                    convo.add_token(ev.text)
                     yield _sse({"type": "token", "text": ev.text})
                 elif ev.type == "node":
                     # Display-only: drives the canvas run animation. Not metered.
@@ -179,6 +205,12 @@ async def create_run(
                 elif ev.type == "usage":
                     recorder.add_usage(ev.state or {})
                     yield _sse({"type": "usage", **(ev.state or {})})
+                elif ev.type == "asset":
+                    # Media a node generated and durably stored. Recorded so the Media tab can
+                    # list it, and forwarded so the tab knows to refetch — the same
+                    # record-and-forward the `usage` arm above does.
+                    convo.add_asset(ev.state or {})
+                    yield _sse({"type": "asset", **(ev.state or {})})
                 elif ev.type == "final":
                     completed = True
                     yield _sse({"type": "final", "output": ev.output})
@@ -187,7 +219,30 @@ async def create_run(
                 properties={"node_count": len(req.graph.nodes) if req.graph.nodes else 0},
             )
             await asyncio.to_thread(recorder.finish, "completed")
+            await asyncio.to_thread(convo.finish, "complete")
             yield "data: [DONE]\n\n"
+        except (asyncio.CancelledError, GeneratorExit):
+            # The client went away mid-answer — closed the Playground, navigated, hit Stop.
+            #
+            # **Both exceptions, deliberately.** Starlette cancels the task on disconnect
+            # (`CancelledError`), but an async generator that is closed or finalized instead
+            # gets `GeneratorExit`, and neither is an `Exception` — so the arm below never saw
+            # either one and a stopped run left both recorders unflushed with their sessions
+            # open. Catching only the first would fix the common path and leave the leak.
+            #
+            # Both are re-raised at the end: swallowing `GeneratorExit` in particular is a
+            # RuntimeError waiting to happen.
+            #
+            # Flushed synchronously, not through `asyncio.to_thread`: awaiting anything inside a
+            # cancelled task re-raises immediately, so the write would never happen. One small
+            # transaction on the loop during teardown is the cheaper trade.
+            #
+            # The `run` row goes to `errored` rather than a new status — the run genuinely did
+            # not complete, and "running|completed|errored" is the vocabulary the rest of the
+            # metering code and the usage views already read.
+            recorder.fail()
+            convo.finish("partial")
+            raise
         except Exception as exc:  # surface engine errors to the client stream
             if not completed:
                 posthog_client.capture(
@@ -195,6 +250,7 @@ async def create_run(
                     properties={"error": type(exc).__name__},
                 )
             await asyncio.to_thread(recorder.fail)
+            await asyncio.to_thread(convo.fail)
             yield _sse(_error_payload(exc, graph, ctx))
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

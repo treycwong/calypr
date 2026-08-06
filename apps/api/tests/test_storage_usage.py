@@ -205,3 +205,104 @@ def test_internal_endpoints_refuse_a_wrong_key(monkeypatch):
         "/internal/gc/checkpoints", headers={"x-calypr-internal-key": "wrong"}
     ).status_code == 401
     assert client.post("/internal/gc/checkpoints").status_code == 401
+
+
+@requires_db
+def test_measurement_counts_generated_media(tenant):
+    """Generated media bills exactly like an upload, so it has to reach the storage figure —
+    and it is the larger of the two: one image run writes megabytes."""
+    from calypr_api.db.models import Asset
+
+    with SessionLocal() as s:
+        baseline = storage_usage.measure_account(s, tenant.account_id)
+        s.add(
+            Asset(
+                workspace_id=tenant.workspace_id,
+                kind="image",
+                blob_url="https://blob.example/runs/png/counted.png",
+                bytes=3_000_000,
+                caption="a fox",
+            )
+        )
+        s.commit()
+        assert storage_usage.measure_account(s, tenant.account_id) - baseline == 3_000_000
+
+
+@requires_db
+def test_an_actively_used_thread_survives_its_oldest_run(tenant_factory):
+    """The TTL means "untouched for N days", and only the most recent run can say that.
+
+    This was a real bug: the query matched on `DISTINCT r.thread_id … WHERE r.created_at <
+    cutoff`, so a conversation used daily was collected on the strength of the run that started
+    it three weeks ago. Invisible while nothing could reopen an old thread — the History tab
+    invites exactly that, and the symptom is an agent that has forgotten a chat the user was in
+    the middle of."""
+    tenant = tenant_factory(entitlements.FREE)  # 7-day TTL
+    thread = f"busy-{uuid.uuid4().hex}"
+
+    with SessionLocal() as s:
+        for age_days in (30, 1):  # started a month ago, used yesterday
+            s.add(
+                Run(
+                    workspace_id=tenant.workspace_id,
+                    thread_id=thread,
+                    status="completed",
+                    source="playground",
+                )
+            )
+            s.flush()
+            s.execute(
+                text(
+                    "UPDATE run SET created_at = now() - make_interval(days => :d)"
+                    " WHERE thread_id = :t AND created_at > now() - interval '1 minute'"
+                ),
+                {"d": age_days, "t": thread},
+            )
+        _write_checkpoint(s, thread)
+        s.commit()
+
+        storage_usage.gc_checkpoints(s)
+
+        left = s.execute(
+            text("SELECT count(*) FROM checkpoints WHERE thread_id = :t"), {"t": thread}
+        ).scalar_one()
+    assert left == 1, "a thread used yesterday was collected because it started a month ago"
+
+
+@requires_db
+def test_orphan_blob_gc_retries_and_gives_up(tenant_factory, monkeypatch):
+    """The parking lot `history.py` writes into when a live blob delete fails. Successes drop
+    their row; repeated failures stop being retried but stay as the audit trail."""
+    from calypr_api.db.models import OrphanBlob
+
+    t = tenant_factory()
+    with SessionLocal() as s:
+        s.add_all(
+            [
+                OrphanBlob(workspace_id=t.workspace_id, blob_url="https://blob.example/ok.png"),
+                OrphanBlob(workspace_id=t.workspace_id, blob_url="https://blob.example/bad.png"),
+            ]
+        )
+        s.commit()
+
+    from calypr_storage import BlobError
+
+    async def flaky(urls):
+        if any("bad" in u for u in urls):
+            raise BlobError("still refusing")
+
+    monkeypatch.setattr(storage_usage, "delete_blob", flaky)
+
+    with SessionLocal() as s:
+        result = storage_usage.gc_orphan_blobs(s)
+        assert result == {"deleted": 1, "failed": 1, "considered": 2}
+        rows = s.query(OrphanBlob).filter(OrphanBlob.workspace_id == t.workspace_id).all()
+        assert [r.blob_url for r in rows] == ["https://blob.example/bad.png"]
+        assert rows[0].attempts == 1
+
+        # Keep failing and it eventually stops being considered at all.
+        for _ in range(storage_usage.MAX_ORPHAN_ATTEMPTS):
+            storage_usage.gc_orphan_blobs(s)
+        assert storage_usage.gc_orphan_blobs(s)["considered"] == 0
+        # …but the row survives, so an operator can still find the leak.
+        assert s.query(OrphanBlob).filter(OrphanBlob.workspace_id == t.workspace_id).count() == 1

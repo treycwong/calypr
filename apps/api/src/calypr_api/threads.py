@@ -53,6 +53,17 @@ def _clean(suffix: str | None) -> str:
     return cleaned or uuid.uuid4().hex
 
 
+def clean_suffix(suffix: str | None) -> str:
+    """The sanitized suffix `workspace_thread` would embed, for callers that must *store* it.
+
+    `conversation.thread_suffix` holds the suffix rather than the composed id — deliberately, so
+    a value read back out of a user-facing table can never be mistaken for a whole thread id.
+    That table has to store exactly what the thread was built from, so it asks for it here
+    instead of re-implementing the sanitizing. Idempotent: cleaning a clean suffix is a no-op,
+    which is what lets a caller clean once and compose afterwards."""
+    return _clean(suffix)
+
+
 def workspace_thread(workspace_id: uuid.UUID | str, suffix: str | None) -> str:
     """The thread id for an authenticated run.
 

@@ -139,11 +139,29 @@ class ImageNode(BaseNode):
             )
             # Single-line alt so `![…](…)` stays on one line for the line-based Markdown renderer.
             alt = " ".join(raw.split()).replace("]", "")[:80]
-            urls = [
+            stored = [
                 await store_asset(data, ext="png", content_type=result.content_type, b64=b64)
                 for data, b64 in zip(result.images, result.b64, strict=False)
             ]
-            markdown = "\n\n".join(f"![{alt}]({url})" for url in urls)
+            for asset in stored:
+                # Record only what durably landed. A `data:` fallback is the file itself, so
+                # there is no object to list or delete later — see `_assets.StoredAsset`.
+                if not asset.durable:
+                    continue
+                writer(
+                    {
+                        "type": "asset",
+                        "node_id": current_node_id.get(None),
+                        "kind": "image",
+                        "url": asset.url,
+                        "pathname": asset.pathname,
+                        "content_type": asset.content_type,
+                        "bytes": asset.bytes,
+                        "caption": alt,
+                        "model": cfg.model,
+                    }
+                )
+            markdown = "\n\n".join(f"![{alt}]({a.url})" for a in stored)
             # Stream it so the Playground renders the image live (token → <Markdown>).
             writer({"type": "token", "text": markdown})
             return {cfg.output_channel: [AIMessage(content=markdown)]}

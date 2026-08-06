@@ -126,13 +126,28 @@ class TTSNode(BaseNode):
                 }
             )
             ext = _FORMAT_EXT.get(cfg.response_format, "mp3")
-            url = await store_asset(
+            asset = await store_asset(
                 result.audio, ext=ext, content_type=result.content_type, b64=result.b64
             )
             # Collapse whitespace/newlines and drop `]` so the audio link stays on ONE line — the
             # Markdown renderer is line-based, and a multi-line `[…](…)` would render as raw text.
             caption = " ".join(text.split()).replace("]", "")[:60]
-            markdown = f"[▶ {caption}]({url})"
+            if asset.durable:
+                # Only a real upload gets recorded — a `data:` fallback is the file itself.
+                writer(
+                    {
+                        "type": "asset",
+                        "node_id": current_node_id.get(None),
+                        "kind": "audio",
+                        "url": asset.url,
+                        "pathname": asset.pathname,
+                        "content_type": asset.content_type,
+                        "bytes": asset.bytes,
+                        "caption": caption,
+                        "model": cfg.model,
+                    }
+                )
+            markdown = f"[▶ {caption}]({asset.url})"
             # Stream it so the Playground renders the player live (token → <Markdown>). Prepend a
             # blank line so the player sits on its own line below any upstream text (e.g. an Agent's
             # answer streamed into the same bubble), instead of jamming onto its last line.

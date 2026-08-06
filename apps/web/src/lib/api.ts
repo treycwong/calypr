@@ -10,6 +10,12 @@ export type RunEvent =
   // A frontier model ran on the cheap platform model because no BYO key was on file. Always
   // surface this — the output is not from the model the user selected.
   | { type: "notice"; message: string }
+  // A media node durably stored a generated file. Carries the same payload the `asset` row is
+  // built from; the Playground uses it only as a signal that the Media tab is now stale.
+  | { type: "asset"; [k: string]: unknown }
+  // The durable conversation this turn was recorded against, so the History tab can highlight
+  // the active row without a fetch. Absent when history is disabled (no database).
+  | { type: "conversation"; conversation_id: string; thread_id: string }
   // `code` is a stable hint for the UI; "provider_key_rejected" gets a Fix it action.
   | { type: "error"; message: string; code?: string }
   // Share links only, and always first. Anonymous visitors all share one public token, so the
@@ -24,11 +30,13 @@ async function* streamSSE<T>(
   url: string,
   body: unknown,
   httpError: (status: number) => T,
+  signal?: AbortSignal,
 ): AsyncGenerator<T> {
   const res = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
   if (!res.ok || !res.body) {
     yield httpError(res.status);
@@ -63,11 +71,20 @@ export async function* runAgent(
   message: string,
   threadId: string,
   images: string[] = [],
+  /** The saved project this run belongs to, when there is one. Without it every playground run
+   *  records `agent_id = NULL` and neither run history nor the History tab can say which
+   *  project a conversation came from. */
+  agentId?: string,
+  /** Aborted when the Playground unmounts or the user starts a new chat. Without it a closed
+   *  panel leaves the request running until the abandoned generator is finalized, and the
+   *  server records the half-written answer as an error rather than as a partial. */
+  signal?: AbortSignal,
 ): AsyncGenerator<RunEvent> {
   yield* streamSSE<RunEvent>(
     "/api/runs",
-    { graph, message, thread_id: threadId, images },
+    { graph, message, thread_id: threadId, images, agent_id: agentId },
     (status) => ({ type: "error", message: `run failed (${status})` }),
+    signal,
   );
 }
 
@@ -645,4 +662,126 @@ export async function deleteAccount(): Promise<AccountDeleted> {
     throw new Error(detail || `Couldn't delete your account (${res.status}). Please try again.`);
   }
   return (await res.json()) as AccountDeleted;
+}
+
+/* -------------------------------------------------------------- conversations + media */
+
+export type ConversationSummary = {
+  id: string;
+  title: string;
+  /** The thread suffix — send it back as `threadId` to resume the conversation. */
+  thread_id: string;
+  agent_id: string | null;
+  message_count: number;
+  /** False once the agent's memory (the LangGraph checkpoint) has aged out. The transcript is
+   *  still fully readable; the agent just no longer remembers it. */
+  has_state: boolean;
+  preview: string;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
+export type StoredMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  images: string[];
+  /** `partial` when the user stopped the run mid-answer, `errored` when it failed. */
+  status: "complete" | "partial" | "errored";
+  created_at: string | null;
+};
+
+export type ConversationDetail = ConversationSummary & {
+  messages: StoredMessage[];
+  truncated: boolean;
+};
+
+export type StoredAsset = {
+  id: string;
+  kind: "image" | "audio";
+  url: string;
+  caption: string;
+  content_type: string | null;
+  bytes: number;
+  model: string | null;
+  conversation_id: string | null;
+  created_at: string | null;
+};
+
+type Page<T> = { items: T[]; next_cursor: string | null };
+
+async function getJSON<T>(url: string, fallback: T): Promise<T> {
+  const r = await fetch(url, { cache: "no-store" });
+  if (!r.ok) return fallback;
+  return (await r.json()) as T;
+}
+
+const query = (params: Record<string, string | number | undefined>) => {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, String(v));
+  }
+  const s = qs.toString();
+  return s ? `?${s}` : "";
+};
+
+/** Past Playground conversations, newest first. `q` searches titles *and* message bodies
+ *  server-side — the browser only holds the page it is showing. */
+export function listConversations(opts: {
+  q?: string;
+  agentId?: string;
+  limit?: number;
+  cursor?: string;
+} = {}): Promise<Page<ConversationSummary>> {
+  const url = `/api/conversations${query({
+    q: opts.q,
+    agent_id: opts.agentId,
+    limit: opts.limit,
+    cursor: opts.cursor,
+  })}`;
+  return getJSON<Page<ConversationSummary>>(url, { items: [], next_cursor: null });
+}
+
+/** One conversation with its transcript. Null when it no longer exists. */
+export async function getConversation(id: string): Promise<ConversationDetail | null> {
+  const r = await fetch(`/api/conversations/${id}`, { cache: "no-store" });
+  if (!r.ok) return null;
+  return (await r.json()) as ConversationDetail;
+}
+
+export async function renameConversation(id: string, title: string): Promise<boolean> {
+  const r = await fetch(`/api/conversations/${id}`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+  return r.ok;
+}
+
+/** Deletes the transcript, the agent's memory of it, **and the media it generated**. */
+export async function deleteConversation(id: string): Promise<boolean> {
+  const r = await fetch(`/api/conversations/${id}`, { method: "DELETE" });
+  return r.ok;
+}
+
+export function listAssets(opts: {
+  q?: string;
+  kind?: string;
+  agentId?: string;
+  limit?: number;
+  cursor?: string;
+} = {}): Promise<Page<StoredAsset>> {
+  const url = `/api/assets${query({
+    q: opts.q,
+    kind: opts.kind,
+    agent_id: opts.agentId,
+    limit: opts.limit,
+    cursor: opts.cursor,
+  })}`;
+  return getJSON<Page<StoredAsset>>(url, { items: [], next_cursor: null });
+}
+
+export async function deleteAsset(id: string): Promise<boolean> {
+  const r = await fetch(`/api/assets/${id}`, { method: "DELETE" });
+  return r.ok;
 }

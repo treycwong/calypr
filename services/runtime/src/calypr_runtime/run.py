@@ -87,6 +87,8 @@ async def run_stream(
                     yield RunEvent(type="token", text=chunk.get("text", ""))
                 elif kind == "usage":
                     yield RunEvent(type="usage", state=chunk)
+                elif kind == "asset":
+                    yield RunEvent(type="asset", state=chunk)
                 elif kind == "node":
                     yield RunEvent(
                         type="node",

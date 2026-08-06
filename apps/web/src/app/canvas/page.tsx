@@ -18,6 +18,7 @@ import "./canvas.css";
 import {
   Blocks,
   Cable,
+  Images,
   LayoutTemplate,
   type LucideIcon,
   Play,
@@ -41,6 +42,7 @@ import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import { nodeTypes } from "@/components/canvas/nodes";
 import { Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
+import { MediaTab } from "@/components/canvas/playground/MediaTab";
 import { SettingsPanel } from "@/components/canvas/SettingsPanel";
 import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button } from "@/components/ui/button";
@@ -107,10 +109,12 @@ function CanvasInner() {
   // The single rail-driven left panel — one tab at a time (or null = closed). Clicking the
   // active tab again closes it (full-width canvas).
   const [activePanel, setActivePanel] = useState<
-    "blocks" | "templates" | "settings" | "ai" | null
+    "blocks" | "templates" | "settings" | "ai" | "media" | null
   >("blocks");
-  const togglePanel = (p: "blocks" | "templates" | "settings" | "ai") =>
+  const togglePanel = (p: "blocks" | "templates" | "settings" | "ai" | "media") =>
     setActivePanel((cur) => (cur === p ? null : p));
+  // Bumped whenever a run generates a file, so the Media panel refreshes without polling.
+  const [mediaTick, setMediaTick] = useState(0);
   // The persistent right panel switches between node Properties and generated Code.
   const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
   // Entitlement tier from the API (`free|beta|plus`); `free` until it loads, so a beta-only
@@ -127,6 +131,9 @@ function CanvasInner() {
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
+  // Whether `?agent=` has been resolved yet. History is scoped per project, so listing before
+  // this is known would briefly show the wrong project's conversations.
+  const [agentResolved, setAgentResolved] = useState(false);
   const [name, setName] = useState("Untitled Agent");
   const counter = useRef(0);
   const lastNodeId = useRef<string | null>(null);
@@ -167,7 +174,14 @@ function CanvasInner() {
   // updates that agent rather than creating a new one.
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("agent");
-    if (!id) return;
+    // Both paths mark the scope resolved through a callback rather than synchronously in the
+    // effect body — a sync setState here is a cascading render, and the lint rule is right.
+    const resolved = () => setAgentResolved(true);
+    // Nothing to fetch: a fresh canvas already knows its scope (no project).
+    if (!id) {
+      void Promise.resolve().then(resolved);
+      return;
+    }
     getAgent(id)
       .then((a) => {
         const canvas = graphToCanvas(a.graph);
@@ -181,7 +195,10 @@ function CanvasInner() {
       .catch(() => {
         setSaveMsg("Couldn't load that agent");
         toast("Couldn't load that agent.", "error");
-      });
+      })
+      // Resolved either way: a project that failed to load still has a known scope (none), and
+      // leaving History waiting forever would be worse than showing it empty.
+      .finally(resolved);
   }, [setNodes, setEdges, toast]);
 
   const addNode = useCallback(
@@ -655,6 +672,17 @@ function CanvasInner() {
             onClick={() => togglePanel("ai")}
             testid="toggle-assistant"
           />
+          {/* Media sits with the workspace-level tools rather than in the Playground, because
+              it is workspace-scoped: every file this workspace's runs have generated, not just
+              the current conversation's. History stays in the Playground for the opposite
+              reason — a transcript only means anything next to the chat it belongs to. */}
+          <RailButton
+            icon={Images}
+            label="Media"
+            active={activePanel === "media"}
+            onClick={() => togglePanel("media")}
+            testid="toggle-media"
+          />
         </aside>
 
         {/* The single rail-selected left panel. */}
@@ -670,6 +698,15 @@ function CanvasInner() {
         {activePanel === "settings" ? (
           <aside className="w-72 shrink-0 overflow-auto border-r border-border p-3">
             <SettingsPanel />
+          </aside>
+        ) : null}
+        {activePanel === "media" ? (
+          <aside
+            className="w-80 shrink-0 border-r border-border"
+            data-testid="media-panel"
+          >
+            {/* `mediaTick` refetches when a run generates a file while this panel is open. */}
+            <MediaTab refreshKey={mediaTick} />
           </aside>
         ) : null}
         {activePanel === "ai" ? (
@@ -777,6 +814,9 @@ function CanvasInner() {
           >
             <Playground
               getGraph={getGraph}
+              agentId={agentId ?? undefined}
+              scopeReady={agentResolved}
+              onAssetGenerated={() => setMediaTick((n) => n + 1)}
               onNodeEvent={onNodeEvent}
               onRunReset={onRunReset}
               onRunFinished={refreshWorkspace}

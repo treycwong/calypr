@@ -56,6 +56,11 @@ class Limits:
     storage_bytes: int
     #: How long LangGraph checkpoints survive. This is the mechanism that actually bounds
     #: storage; the byte figure above is how a user sees it working.
+    #:
+    #: **This is the agent's memory, not the user's chat history.** Since 0019 the transcript is
+    #: durable (`conversation`/`message`) and outlives this window — when it fires, the user can
+    #: still read the conversation but the agent no longer remembers it, which is why the
+    #: History tab badges that state instead of hiding the row.
     checkpoint_ttl_days: int
     #: Code export — the Code tab's editable mode and "Apply to canvas".
     roundtrip: bool
