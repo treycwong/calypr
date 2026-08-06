@@ -21,11 +21,10 @@ import {
   Images,
   LayoutTemplate,
   type LucideIcon,
-  Play,
+  MessageSquare,
   Redo2,
   Share2,
   Sparkles,
-  Square,
   Undo2,
 } from "lucide-react";
 import Link from "next/link";
@@ -630,12 +629,12 @@ function CanvasInner() {
             }
             data-testid="toggle-playground"
           >
-            {showPlayground ? (
-              <Square className="h-4 w-4 fill-current" />
-            ) : (
-              <Play className="h-4 w-4" />
-            )}
-            {showPlayground ? "Stop" : "Try it"}
+            {/* One label in both states. It used to read "Try it" / "Stop", but "Stop" here only
+                ever closed the panel — and now that Send becomes a real Stop mid-generation,
+                two different Stops on one screen meaning two different things is a trap. The
+                open/closed state is carried by the button's variant instead. */}
+            <MessageSquare className="h-4 w-4" />
+            Chat
           </Button>
         </div>
       </header>

@@ -87,6 +87,63 @@ test("media is a left-rail panel with All / Images / Audio tabs", async ({ page 
   await expect(panel).toHaveCount(0);
 });
 
+test("the send button becomes Stop while a run is streaming", async ({ page }) => {
+  // Send used to be `disabled` during a run, which is exactly when someone wants a way out.
+  await openCanvas(page);
+  await buildAgent(page);
+  await page.getByTestId("toggle-playground").click();
+
+  const button = page.getByTestId("chat-send");
+  await expect(button).toHaveText("Send");
+  await expect(button).toBeEnabled();
+
+  await chat(page, "hello");
+  // Settles back to Send once the run finishes, and stays usable throughout.
+  await expect(button).toHaveText("Send");
+  await expect(button).toBeEnabled();
+});
+
+test("Stop appears mid-run, ends it, and keeps what streamed", async ({ page }) => {
+  await openCanvas(page);
+  await buildAgent(page);
+
+  // **Hold the stream open deliberately.** The `fake` model answers in milliseconds, so racing
+  // it would make this test assert nothing most runs and fail occasionally — the worst of both.
+  // Stalling the proxy gives a real in-flight run with a known start and no end, which is
+  // exactly the state Stop exists for. The two tokens land first so there is something to keep.
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => (release = r));
+  await page.route("**/api/runs", async (route) => {
+    await held;
+    await route.fulfill({
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+      body:
+        `data: ${JSON.stringify({ type: "token", text: "half an " })}\n\n` +
+        `data: ${JSON.stringify({ type: "token", text: "answer" })}\n\n` +
+        "data: [DONE]\n\n",
+    });
+  });
+
+  await page.getByTestId("toggle-playground").click();
+  await page.getByTestId("chat-input").fill("stop me");
+  await page.getByTestId("chat-send").click();
+
+  // The run is in flight and the control has become Stop — enabled, not a dead Send.
+  const button = page.getByTestId("chat-send");
+  await expect(button).toHaveText(/Stop/);
+  await expect(button).toBeEnabled();
+
+  await button.click();
+
+  // Back to a usable composer, and the abandoned turn is labelled the way History will show it.
+  await expect(button).toHaveText("Send");
+  await expect(page.getByTestId("msg-partial")).toBeVisible();
+  await expect(page.getByTestId("msg-user").last()).toContainText("stop me");
+
+  release(); // let the stalled route go so the test can tear down cleanly
+});
+
 test("switching tabs mid-conversation does not lose the transcript", async ({ page }) => {
   // The specific trap: base-ui unmounts an inactive panel, so chat state has to live above it.
   // Before that fix, a trip to History wiped the conversation on screen.

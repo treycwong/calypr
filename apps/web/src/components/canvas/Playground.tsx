@@ -70,6 +70,13 @@ export function Playground({
   const abort = useRef<AbortController | null>(null);
   useEffect(() => () => abort.current?.abort(), []);
 
+  /** Stop the run in flight. The abort surfaces as `AbortError` in `send`, and the server's
+   *  disconnect arm keeps whatever streamed as a `partial` turn — so the text on screen is the
+   *  text that was saved. */
+  const stop = useCallback(() => {
+    abort.current?.abort();
+  }, []);
+
   const reset = useCallback(() => {
     if (busy) return;
     abort.current?.abort();
@@ -160,9 +167,13 @@ export function Playground({
       }
       track(errored ? "run_errored" : "run_completed");
     } catch (err) {
-      // An abort is the user closing the panel or starting a new chat, not a failure. The
-      // server keeps what streamed as a `partial`; there is nothing to report here.
-      if ((err as Error)?.name !== "AbortError") {
+      // An abort is the user pressing Stop (or closing the panel), not a failure.
+      if ((err as Error)?.name === "AbortError") {
+        // Label it the way History will, so the turn doesn't silently change description when
+        // the user reopens it later.
+        patch((prev) => ({ ...prev, status: "partial" }));
+        track("run_stopped");
+      } else {
         onRunReset?.({ error: true });
         track("run_errored");
       }
@@ -219,6 +230,7 @@ export function Playground({
             busy={busy}
             memoryExpired={loaded !== null && !loaded.hasState}
             onSend={send}
+            onStop={stop}
           />
         </TabsContent>
         <TabsContent value="history" className="min-h-0">

@@ -9,6 +9,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { type StoredAsset, deleteAsset, listAssets } from "@/lib/api";
 import { downloadUrl, filenameFrom } from "@/lib/download";
+import { relativeTime } from "@/lib/time";
 
 import { DeleteConfirm } from "./DeleteConfirm";
 
@@ -181,23 +182,45 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
               </div>
             ) : null}
 
+            {/* Audio leads with text, images don't. A thumbnail identifies itself at a glance;
+                a row of identical player pills does not, and once a few pile up there is nothing
+                to tell them apart. The caption is the opening of what was actually spoken, which
+                is the cheapest true description available without transcribing anything. */}
             {audio.map((a) => (
               <div
                 key={a.id}
                 data-testid="media-item"
                 className="group rounded-md border border-border p-2"
               >
-                {/* Reused as-is — the compact player already carries its own download control
-                    and looks the same here as it does in the transcript. */}
-                <ChatAudio src={a.url} label={a.caption || "Untitled"} />
-                <div className="mt-1 flex justify-end opacity-0 transition group-hover:opacity-100">
-                  <IconButton
-                    label="Delete"
-                    testId="media-delete"
-                    onClick={() => setDeleting(a)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </IconButton>
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p
+                      className="truncate text-sm"
+                      // The stored caption is capped, so hovering is the only way to see a
+                      // long line in full.
+                      title={a.caption || undefined}
+                      data-testid="media-caption"
+                    >
+                      {a.caption || "Untitled audio"}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {[relativeTime(a.created_at), a.model].filter(Boolean).join(" · ")}
+                    </p>
+                  </div>
+                  <div className="shrink-0 opacity-0 transition group-hover:opacity-100">
+                    <IconButton
+                      label="Delete"
+                      testId="media-delete"
+                      onClick={() => setDeleting(a)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </IconButton>
+                  </div>
+                </div>
+                {/* The compact player, reused as-is — it already carries its own download
+                    control and looks identical to the one in the transcript. */}
+                <div className="mt-1.5">
+                  <ChatAudio src={a.url} label={a.caption || "audio"} />
                 </div>
               </div>
             ))}
