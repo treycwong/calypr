@@ -133,6 +133,13 @@ async def create_share_run(token: str, req: ShareRunRequest) -> StreamingRespons
                 elif ev.type == "usage":
                     recorder.add_usage(ev.state or {})
                     yield _sse({"type": "usage", **(ev.state or {})})
+                # **`asset` events are deliberately dropped here.** Media still renders for the
+                # visitor — the node streams the URL as Markdown in the token above — but nothing
+                # is recorded. A share link has no identity to attribute media to, so the only
+                # workspace available to hang an `asset` row on is the *owner's*, and filling
+                # their Media tab with files strangers generated is a privacy surprise, not a
+                # feature. `conversations.py` refuses the transcript for the same reason. Do not
+                # "fix" this by symmetry with the `usage` arm above.
                 elif ev.type == "final":
                     completed = True
                     yield _sse({"type": "final", "output": ev.output})

@@ -76,3 +76,30 @@ async def test_tts_node_passes_instructions():
     )
     await run({"messages": [HumanMessage(content="hi")]})
     assert seen == {"voice": "verse", "instructions": "calm and slow"}
+
+
+async def test_tts_node_emits_asset_when_the_upload_is_durable(monkeypatch):
+    """Audio's half of the Media tab — same event, `kind="audio"`."""
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.tts.safe_stream_writer", lambda: captured.append)
+
+    async def fake_put_blob(data, *, pathname, content_type):
+        return f"https://store.public.blob.vercel-storage.com/{pathname}"
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", fake_put_blob)
+    run = TTSNode.compile(TTSConfig(model="fake"), NodeContext())
+    await run({"messages": [HumanMessage(content="abcdef")]})
+
+    assets = [p for p in captured if p.get("type") == "asset"]
+    assert len(assets) == 1
+    assert assets[0]["kind"] == "audio"
+    assert assets[0]["caption"] == "abcdef"
+    assert assets[0]["url"].startswith("https://store.public.blob.vercel-storage.com/runs/")
+
+
+async def test_tts_node_emits_no_asset_without_blob_storage(monkeypatch):
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.tts.safe_stream_writer", lambda: captured.append)
+    run = TTSNode.compile(TTSConfig(model="fake"), NodeContext())
+    await run({"messages": [HumanMessage(content="abcdef")]})
+    assert [p for p in captured if p.get("type") == "asset"] == []

@@ -24,6 +24,7 @@ from calypr_api.routers import (
     assist,
     billing,
     connectors,
+    history,
     internal,
     provider_keys,
     runs,
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
     app.include_router(assist.router)
     app.include_router(share.router)
     app.include_router(uploads.router)
+    app.include_router(history.router)
     app.include_router(connectors.router)
     app.include_router(provider_keys.router)
     app.include_router(waitlist.router)

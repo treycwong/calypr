@@ -103,3 +103,65 @@ async def test_llm_router_decision_never_reaches_the_transcript():
     # would double it — one copy from the classifier, one from the agent it routed to.
     assert streamed == "summarize"
     assert events[-1].type == "final"
+
+
+async def test_asset_chunks_surface_as_asset_events(monkeypatch):
+    """A media node's `asset` custom event must reach the caller intact — it is what makes a
+    generated image listable in the Media tab. Same passthrough as `usage`: the whole payload
+    rides in `state`, so adding a field node-side needs no runtime change.
+
+    Run end to end through a real Image node so this covers the dispatch in `run.py`, not just
+    the dataclass."""
+    from calypr_dsl import GraphSpec, NodeSpec, Reducer, StateChannel
+
+    async def fake_put_blob(data, *, pathname, content_type):
+        return f"https://store.public.blob.vercel-storage.com/{pathname}"
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", fake_put_blob)
+
+    spec = GraphSpec(
+        id="image-only",
+        name="Input → Image → Output",
+        description="Exercises the asset event.",
+        state=[
+            StateChannel(key="input", type="string", reducer=Reducer.last),
+            StateChannel(key="messages", type="messages", reducer=Reducer.append),
+            StateChannel(key="output", type="string", reducer=Reducer.last),
+        ],
+        nodes=[
+            NodeSpec(
+                id="in",
+                type="input",
+                config={"input_channel": "input", "target_channel": "messages"},
+            ),
+            NodeSpec(
+                id="pic",
+                type="image",
+                config={
+                    "model": "fake",
+                    "prompt_channel": "messages",
+                    "output_channel": "messages",
+                },
+            ),
+            NodeSpec(
+                id="out",
+                type="output",
+                config={"source_channel": "messages", "output_channel": "output"},
+            ),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="pic"),
+            EdgeSpec(id="e2", source="pic", target="out"),
+        ],
+        entry="in",
+    )
+
+    events = [ev async for ev in run_stream(spec, NodeContext(), "a red bicycle")]
+
+    assets = [e.state for e in events if e.type == "asset"]
+    assert len(assets) == 1, "the image node's asset chunk did not surface as a RunEvent"
+    assert assets[0]["kind"] == "image"
+    assert assets[0]["caption"] == "a red bicycle"
+    assert assets[0]["url"].startswith("https://store.public.blob.vercel-storage.com/runs/png/")
+    # And the node id the compiler's contextvar wrapper injects, so the row is attributable.
+    assert assets[0]["node_id"] == "pic"

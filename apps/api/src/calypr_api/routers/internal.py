@@ -68,3 +68,16 @@ def purge_accounts(request: Request) -> dict[str, int]:
         result["purged"], result["failed"], result["considered"],
     )
     return result
+
+
+@router.post("/gc/orphan-blobs")
+def gc_orphan_blobs(request: Request) -> dict[str, int]:
+    """Retry blob objects a live delete failed to remove — they are still billing."""
+    _require_internal_key(request)
+    with SessionLocal() as session:
+        result = storage_usage.gc_orphan_blobs(session)
+    log.info(
+        "orphan blob gc: %s deleted, %s failed, %s considered",
+        result["deleted"], result["failed"], result["considered"],
+    )
+    return result

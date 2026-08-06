@@ -31,18 +31,7 @@ import {
   type WorkspaceList,
 } from "@/lib/api";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
-
-function relativeTime(iso: string): string {
-  const seconds = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-  if (seconds < 60) return "just now";
-  const m = Math.floor(seconds / 60);
-  if (m < 60) return `${m}m ago`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d}d ago`;
-  return new Date(iso).toLocaleDateString();
-}
+import { relativeTime } from "@/lib/time";
 
 export default function ProjectsPage() {
   const router = useRouter();

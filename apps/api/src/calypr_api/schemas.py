@@ -440,3 +440,82 @@ class ProviderKeySet(BaseModel):
         if not v.strip():
             raise ValueError("key must not be empty")
         return v.strip()
+
+
+class ConversationSummary(BaseModel):
+    """One row in the Playground's History tab.
+
+    `has_state` is the field that keeps this honest. The transcript is durable, but the agent's
+    *memory* of it is a LangGraph checkpoint on a per-plan TTL — so a conversation can be fully
+    readable while the agent no longer remembers a word of it. The UI badges that case rather
+    than letting the user discover it by asking a follow-up and getting a blank stare."""
+
+    id: str
+    title: str
+    #: The client-side thread suffix, echoed back so resuming re-attaches to the same thread.
+    thread_id: str
+    agent_id: str | None = None
+    message_count: int = 0
+    has_state: bool = False
+    preview: str = ""
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class MessageOut(BaseModel):
+    """One stored turn. `status` is `complete|partial|errored` on assistant turns — a run the
+    user stopped mid-answer keeps what streamed."""
+
+    id: str
+    role: str
+    text: str
+    images: list[str] = []
+    status: str = "complete"
+    created_at: datetime | None = None
+
+
+class ConversationDetail(ConversationSummary):
+    """A conversation plus its transcript. `truncated` when the turn count exceeded the page
+    cap — the History tab is for finding a conversation, not for paging a novel."""
+
+    messages: list[MessageOut] = []
+    truncated: bool = False
+
+
+class ConversationList(BaseModel):
+    """Keyset-paginated, not offset: new conversations land while the user is scrolling, and
+    OFFSET would duplicate or skip rows as they shift."""
+
+    items: list[ConversationSummary] = []
+    next_cursor: str | None = None
+
+
+class ConversationRename(BaseModel):
+    title: str
+
+    @field_validator("title")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("title must not be empty")
+        return v.strip()[:200]
+
+
+class AssetOut(BaseModel):
+    """One generated file in the Media tab. `url` is always a real blob URL — media produced
+    without blob storage configured is rendered but never recorded (see `_assets.StoredAsset`)."""
+
+    id: str
+    kind: str
+    url: str
+    caption: str = ""
+    content_type: str | None = None
+    bytes: int = 0
+    model: str | None = None
+    conversation_id: str | None = None
+    created_at: datetime | None = None
+
+
+class AssetList(BaseModel):
+    items: list[AssetOut] = []
+    next_cursor: str | None = None

@@ -411,3 +411,60 @@ def test_the_endpoint_requires_the_key(monkeypatch):
         "/internal/gc/purge-accounts", headers={"x-calypr-internal-key": INTERNAL_KEY}
     )
     assert r.status_code == 200
+
+
+@requires_db
+def test_generated_media_and_parked_blobs_are_collected_for_deletion(user):
+    """Deleting an account has to name **every** blob it owns, and `upload` is only one source.
+
+    Generated media (`asset`) is the bigger one — an image run writes megabytes — and
+    `orphan_blob` holds objects a live delete already failed on. Once the account is purged the
+    rows they were reachable through are gone, so anything missed here bills forever with no GC
+    arm anywhere that could ever find it again. The join through `workspace.account_id` is what
+    keeps this from ever naming somebody else's object; see the comment at the collection site."""
+    from calypr_api.db.models import Asset, OrphanBlob
+
+    with SessionLocal() as s:
+        acc = uuid.UUID(
+            str(s.execute(text("SELECT resolve_account(:u)"), {"u": user}).scalar_one())
+        )
+        s.commit()
+
+    with SessionLocal() as s:
+        ws = s.query(Workspace).filter(Workspace.account_id == acc).one()
+        s.add(
+            Upload(
+                workspace_id=ws.id,
+                blob_url="https://store.public.blob.vercel-storage.com/uploads/in.png",
+                pathname="uploads/in.png",
+                bytes=1,
+            )
+        )
+        s.add(
+            Asset(
+                workspace_id=ws.id,
+                kind="image",
+                blob_url="https://store.public.blob.vercel-storage.com/runs/png/out.png",
+                bytes=2048,
+                caption="generated",
+            )
+        )
+        s.add(
+            OrphanBlob(
+                workspace_id=ws.id,
+                blob_url="https://store.public.blob.vercel-storage.com/runs/png/stuck.png",
+            )
+        )
+        s.commit()
+
+    assert client.request("DELETE", "/account", headers=_hdr(user)).status_code == 200
+
+    with SessionLocal() as s:
+        recorded = set(
+            s.query(AccountPurge).filter(AccountPurge.account_id == acc).one().blob_urls
+        )
+    assert recorded == {
+        "https://store.public.blob.vercel-storage.com/uploads/in.png",
+        "https://store.public.blob.vercel-storage.com/runs/png/out.png",
+        "https://store.public.blob.vercel-storage.com/runs/png/stuck.png",
+    }

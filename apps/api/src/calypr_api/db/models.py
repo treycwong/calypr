@@ -411,6 +411,171 @@ class CreditLedger(Base):
     )
 
 
+class Conversation(Base):
+    """One Playground conversation — the durable transcript, not the agent's memory of it.
+
+    LangGraph's checkpoints are the memory: they hold the state a graph resumes from, they are
+    TTL-collected per plan, and they carry no `workspace_id`. This row and its `Message` children
+    are the record the *user* owns — kept until they delete it, searchable, and independent of
+    whether the checkpoint has aged out.
+
+    **`thread_suffix` is the suffix, never the composed thread id.** `threads.py` documents why
+    the `ws:<workspace>:` prefix must always be server-supplied; compose with
+    `threads.workspace_thread()` where a full id is needed. `(workspace_id, thread_suffix)` is
+    unique, which is what lets the per-turn write be a single idempotent upsert."""
+
+    __tablename__ = "conversation"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "thread_suffix", name="uq_conversation_thread"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Nullable for the same reason as `Run.agent_id`: the playground runs unsaved graphs.
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    thread_suffix: Mapped[str] = mapped_column(Text, nullable=False)
+    # Derived from the first user message; set only on insert, so a rename survives the next turn.
+    title: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    # Last activity — the list's sort key, bumped on every turn.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Message(Base):
+    """One turn in a `Conversation`. `workspace_id` is denormalized off `conversation` so the
+    RLS policy applies without a join, exactly as `run_usage` does off `run`.
+
+    `status` matters on assistant turns: a run the user stopped mid-answer, or one that errored,
+    keeps the text that actually streamed and is labelled `partial`/`errored`. Silently dropping
+    output the user watched arrive is the worse failure. Only what the *server* streamed is
+    stored — the ⚠️ and ℹ️ prefixes are client-side decoration."""
+
+    __tablename__ = "message"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    conversation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversation.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # Nullable: metering self-disables when the DB is unreachable, so there may be no run row.
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("run.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    role: Mapped[str] = mapped_column(Text, nullable=False)  # user|assistant
+    seq: Mapped[int] = mapped_column(Integer, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    images: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    status: Mapped[str] = mapped_column(
+        Text, nullable=False, server_default="complete"
+    )  # complete|partial|errored
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Asset(Base):
+    """Media a run generated (an Image node's PNG, a TTS node's MP3), recorded so it can be
+    listed, searched, counted and deleted.
+
+    Before this table the URL existed only inside the message markdown: nothing could enumerate
+    a workspace's generated media, nothing counted its bytes toward the storage figure, and
+    nothing could reclaim the object. That is the same gap `Upload` closed for inbound files.
+
+    **`blob_url` is always a real URL.** `store_asset` degrades to an inline `data:` URI when
+    blob storage isn't configured, and the node emits no asset event in that case — so a
+    multi-MB base64 string never reaches Postgres and `delete_blob` on this column is safe."""
+
+    __tablename__ = "asset"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    # CASCADE: deleting a conversation deletes the media it produced. The confirm dialog names
+    # the count so that is not a surprise.
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("conversation.id", ondelete="CASCADE"),
+        nullable=True,
+    )
+    run_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("run.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    agent_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("agent.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    node_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kind: Mapped[str] = mapped_column(Text, nullable=False)  # image|audio
+    blob_url: Mapped[str] = mapped_column(Text, nullable=False)
+    pathname: Mapped[str | None] = mapped_column(Text, nullable=True)
+    content_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    bytes: Mapped[int] = mapped_column(BigInteger, nullable=False, server_default="0")
+    caption: Mapped[str] = mapped_column(Text, nullable=False, server_default="")
+    model: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class OrphanBlob(Base):
+    """A blob object we failed to delete, parked for the nightly retry.
+
+    Vercel Blob shares no transaction with Postgres, so a delete that spans both can always lose
+    one half. `AccountPurge` solves this for a *deleted account*; this is the same idea at row
+    granularity, for a live workspace deleting one conversation or one media item. The row is
+    written in the same transaction as the database delete, so the pointer to a still-billing
+    object is never the thing that goes missing."""
+
+    __tablename__ = "orphan_blob"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, server_default=func.gen_random_uuid()
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workspace.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    blob_url: Mapped[str] = mapped_column(Text, nullable=False)
+    failed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
 class Upload(Base):
     """A file a workspace pushed to Vercel Blob.
 

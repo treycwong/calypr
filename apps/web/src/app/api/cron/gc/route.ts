@@ -35,7 +35,16 @@ export async function GET(req: Request) {
   // Purge before both: it deletes whole accounts, so running it first keeps `measure-storage`
   // from spending a full scan on accounts that are about to stop existing. No new `vercel.json`
   // cron for it — Hobby allows two and one is already spent on this route.
-  for (const job of ["purge-accounts", "checkpoints", "measure-storage"] as const) {
+  //
+  // `orphan-blobs` retries objects a live delete already failed on. It runs before
+  // `measure-storage` for the same reason as the others: those bytes should stop counting the
+  // night they actually go away, not the night after.
+  for (const job of [
+    "purge-accounts",
+    "checkpoints",
+    "orphan-blobs",
+    "measure-storage",
+  ] as const) {
     const r = await fetch(`${API_URL}/internal/gc/${job}`, { method: "POST", headers });
     results[job] = r.ok ? await r.json() : { error: r.status };
   }
