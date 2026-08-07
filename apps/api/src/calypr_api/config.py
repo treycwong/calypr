@@ -76,6 +76,11 @@ class Settings(BaseSettings):
     # Bearer` alongside the per-request `Notion-Token`. Leave unset only when the server runs
     # with `--unsafe-disable-auth` (isolated localhost dev).
     notion_mcp_auth: str = ""
+    # GitHub connector (Tier A, PAT). GitHub hosts its own MCP server, so unlike Notion there is
+    # nothing to deploy and no per-deployment URL to configure — this is the public base and only
+    # exists as a setting so tests can point the kind at a local server. The toolset path
+    # (`/x/{toolset}`) and the `/readonly` suffix are composed per connector from its `meta`.
+    github_mcp_base: str = "https://api.githubcopilot.com/mcp"
 
 
 settings = Settings()

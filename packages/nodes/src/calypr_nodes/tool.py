@@ -90,7 +90,7 @@ class ToolsNode(BaseNode):
         return ["messages"]
 
     @staticmethod
-    def _spec(cfg: ToolConfig, *, discover: bool = True):
+    def _spec(cfg: ToolConfig, *, discover: bool = True, mcp_ordinal: int = 0):
         return tool_spec(
             cfg.provider,
             max_results=cfg.max_results,
@@ -103,6 +103,7 @@ class ToolsNode(BaseNode):
             mcp_token=cfg.mcp_token,
             mcp_headers=cfg.mcp_headers,
             mcp_tool_filter=cfg.mcp_tool_filter,
+            mcp_ordinal=mcp_ordinal,
             discover=discover,
         )
 
@@ -115,9 +116,13 @@ class ToolsNode(BaseNode):
         return [spec.bind_schema]
 
     @classmethod
-    def code_refs(cls, cfg: ToolConfig) -> list[str]:
-        """The tool variable name(s) a connected LLM node should `bind_tools([...])`."""
-        spec = cls._spec(cfg, discover=False)  # codegen ref is static — never hit the server
+    def code_refs(cls, cfg: ToolConfig, mcp_ordinal: int = 0) -> list[str]:
+        """The tool variable name(s) a connected LLM node should `bind_tools([...])`.
+
+        `mcp_ordinal` must match the one passed to this node's `codegen()`, so the agent binds
+        the same suffixed list the node defines (`*mcp_tools_2`, not `*mcp_tools`)."""
+        # codegen ref is static — never hit the server
+        spec = cls._spec(cfg, discover=False, mcp_ordinal=mcp_ordinal)
         if spec.code_ref_list is not None:
             return spec.code_ref_list
         return [spec.code_ref]
@@ -206,7 +211,8 @@ class ToolsNode(BaseNode):
     def codegen(
         cls, cfg: ToolConfig, fn_name: str, ctx: CodegenContext | None = None
     ) -> CodeFragment:
-        spec = cls._spec(cfg, discover=False)  # generated code reads env — no live discovery
+        # generated code reads env — no live discovery
+        spec = cls._spec(cfg, discover=False, mcp_ordinal=ctx.mcp_ordinal if ctx else 0)
         imports = ["from langgraph.prebuilt import ToolNode", *spec.imports]
         defs = "\n\n".join(spec.code_defs)
         refs = spec.code_ref_list if spec.code_ref_list is not None else [spec.code_ref]
@@ -235,8 +241,13 @@ class ToolsNode(BaseNode):
             return None
         elts = call.args[0].elts
 
-        if any(isinstance(e, ast.Starred) for e in elts):  # ToolNode([*mcp_tools]) → MCP
-            client = ctx.defs.get("_mcp_client")
+        starred = next((e for e in elts if isinstance(e, ast.Starred)), None)
+        if starred is not None:  # ToolNode([*mcp_tools]) → MCP
+            # Follow the *starred name* to its client rather than assuming `_mcp_client`: a
+            # multi-server graph emits `mcp_tools_2` beside `_mcp_client_2`, and reading the
+            # wrong client would recover the wrong transport for the second node.
+            name = starred.value.id if isinstance(starred.value, ast.Name) else "mcp_tools"
+            client = ctx.defs.get(f"_{name.replace('mcp_tools', 'mcp_client', 1)}")
             client_val = client.value if isinstance(client, ast.Assign) else None
             transport = str_const(dict_lookup(client_val, "transport")) or "streamable_http"
             has_headers = dict_lookup(client_val, "headers") is not None

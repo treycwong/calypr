@@ -239,7 +239,7 @@ export async function deleteAgent(id: string): Promise<void> {
 /** A saved MCP/OAuth connector (never carries the secret — only `has_secret`). */
 export type Connector = {
   id: string;
-  kind: "mcp" | "notion";
+  kind: "mcp" | "notion" | "github";
   name: string;
   url: string | null;
   transport: string;
@@ -268,6 +268,28 @@ export async function createConnector(body: {
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`save connector failed (${res.status})`);
+  return res.json();
+}
+
+/** The GitHub toolsets a connector can be scoped to ("" = GitHub's own default set). */
+export const GITHUB_TOOLSETS = ["", "repos", "issues", "pull_requests", "actions", "all"] as const;
+
+/** Save a GitHub connector from a personal access token.
+ *
+ * The token goes straight to the API and is encrypted there — it is never stored in the browser
+ * and never comes back on any response. `readonly` defaults to true at both ends. */
+export async function createGithubConnector(body: {
+  name?: string;
+  pat: string;
+  toolset?: string;
+  readonly?: boolean;
+}): Promise<Connector> {
+  const res = await fetch("/api/connectors/github", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`save GitHub connector failed (${res.status})`);
   return res.json();
 }
 

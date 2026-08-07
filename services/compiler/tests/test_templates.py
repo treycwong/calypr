@@ -43,6 +43,7 @@ def test_use_case_templates_present():
         "tpl-label-reader",
         "tpl-alt-text",
         "tpl-notion-assistant",
+        "tpl-github-notion",
         "tpl-image-finder",
     ]
 

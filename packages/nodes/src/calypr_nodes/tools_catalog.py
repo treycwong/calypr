@@ -350,26 +350,36 @@ def mcp_tools(
     return _MCP_CACHE[key]
 
 
-def _mcp_code_defs(transport: str, token: str) -> list[str]:
+def mcp_suffix(ordinal: int) -> str:
+    """The name suffix for the `ordinal`-th MCP Tool node in a graph.
+
+    The first is unsuffixed and later ones are `_2`, `_3`, … so a single-server graph — the
+    common case and every pre-existing fixture — generates exactly the module it always did,
+    while a multi-server graph gets one distinct client, tool list and env var per server."""
+    return "" if ordinal <= 0 else f"_{ordinal + 1}"
+
+
+def _mcp_code_defs(transport: str, token: str, ordinal: int = 0) -> list[str]:
     """The generated-module snippet that reconstructs the MCP client from env vars.
 
-    Secrets are never serialized — the URL and (optional) bearer read from `os.environ`."""
-    headers = (
-        '\n        "headers": {"Authorization": f"Bearer {os.environ[\'MCP_TOKEN\']}"},'
-        if token
-        else ""
-    )
+    Secrets are never serialized — the URL and (optional) bearer read from `os.environ`. With
+    several MCP nodes in one graph each gets its own suffixed names and env vars (`MCP_URL_2`),
+    so the servers stay distinct in the exported module."""
+    sfx = mcp_suffix(ordinal)
+    env = sfx.upper()
+    bearer = f"f\"Bearer {{os.environ['MCP_TOKEN{env}']}}\""
+    headers = f'\n        "headers": {{"Authorization": {bearer}}},' if token else ""
     return [
-        "_mcp_client = MultiServerMCPClient(\n"
+        f"_mcp_client{sfx} = MultiServerMCPClient(\n"
         "    {\n"
         '        "server": {\n'
         f'            "transport": {transport!r},\n'
-        '            "url": os.environ["MCP_URL"],'
+        f'            "url": os.environ["MCP_URL{env}"],'
         f"{headers}\n"
         "        }\n"
         "    }\n"
         ")\n"
-        "mcp_tools = asyncio.run(_mcp_client.get_tools())"
+        f"mcp_tools{sfx} = asyncio.run(_mcp_client{sfx}.get_tools())"
     ]
 
 
@@ -386,6 +396,7 @@ def tool_spec(
     mcp_token: str = "",
     mcp_headers: dict[str, str] | None = None,
     mcp_tool_filter: list[str] | None = None,
+    mcp_ordinal: int = 0,
     discover: bool = True,
 ) -> ToolSpec:
     """Resolve a provider name to its ToolSpec.
@@ -409,8 +420,8 @@ def tool_spec(
             bind_schema={},
             runtimes=tools,
             bind_schema_list=[_schema_of(t) for t in tools],
-            code_ref_list=["*mcp_tools"],
-            code_defs=_mcp_code_defs(mcp_transport, mcp_token),
+            code_ref_list=[f"*mcp_tools{mcp_suffix(mcp_ordinal)}"],
+            code_defs=_mcp_code_defs(mcp_transport, mcp_token, mcp_ordinal),
             imports=[
                 "import asyncio",
                 "import os",

@@ -154,7 +154,8 @@ def test_templates_lists_frameworks_and_use_case_templates():
     assert by_kind["tpl-mcp-react"] == "framework"
     assert by_kind["tpl-notion-assistant"] == "template"
     assert by_kind["tpl-image-finder"] == "template"
-    assert len(starters) == 22  # 10 frameworks + 12 templates
+    assert by_kind["tpl-github-notion"] == "template"
+    assert len(starters) == 23  # 10 frameworks + 13 templates
     # each carries a full, compilable graph
     first = starters[0]
     assert first["graph"]["entry"]
