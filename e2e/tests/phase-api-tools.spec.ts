@@ -129,3 +129,31 @@ test("a photo the agent returns renders as an inline preview, not a bare link", 
   await expect(img).toHaveAttribute("src", url);
   await expect(img).toHaveAttribute("alt", "Manhattan in the distance");
 });
+
+test("a plain link renders as a link, instead of printing its own markdown", async ({ page }) => {
+  // What an MCP agent emits after writing to Notion: a plain `[label](url)` link to the page it
+  // created. It used to print raw, because the inline rules only accepted *media* URLs — an
+  // image or an audio player — and left everything else as text.
+  //
+  // The sibling fix (headings past h3) can't be driven from here: `chat-input` is a single-line
+  // <Input>, so a message can never contain the newline a heading needs to start a line.
+  const url = "https://app.notion.com/p/Issue-triage-2026-08-07-3b52434a3d4781118beffebf982364c9";
+  await openCanvas(page);
+  await loadTemplate(page, "Image Finder");
+  await page.getByTestId("node-agent").click();
+  await page.getByTestId("cfg-model").selectOption("fake");
+
+  await page.getByTestId("toggle-playground").click();
+  await page.getByTestId("chat-input").fill(`View the page [here](${url}).`);
+  await page.getByTestId("chat-send").click();
+
+  const reply = page.getByTestId("msg-assistant").last();
+  const link = reply.locator("a", { hasText: "here" });
+  await expect(link).toBeVisible({ timeout: 15_000 });
+  await expect(link).toHaveAttribute("href", url);
+  // A link built from agent-read third-party content must never get the opener window.
+  await expect(link).toHaveAttribute("target", "_blank");
+  await expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  // ...and no raw syntax survives beside it.
+  await expect(reply).not.toContainText("](http");
+});

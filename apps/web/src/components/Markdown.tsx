@@ -3,17 +3,26 @@ import { Fragment, type ReactNode } from "react";
 import { ChatAudio } from "@/components/ChatAudio";
 import { ChatImage } from "@/components/ChatImage";
 
-// A tiny, dependency-free markdown renderer for chat output — images, audio players, bold, italic,
-// inline code, headings, and ordered/unordered lists. It builds React nodes (never
+// A tiny, dependency-free markdown renderer for chat output — images, audio players, links, bold,
+// italic, inline code, headings, and ordered/unordered lists. It builds React nodes (never
 // dangerouslySetInnerHTML), so it's XSS-safe by construction. Covers what agents emit — including
 // the Image node's `![alt](url)` and the Voice node's `[label](audio-url)`; not full CommonMark.
 
 // Inline, in order: ![alt](url) image, [label](audio-url) audio player, **bold**, `code`,
-// *italic* / _italic_. The image (http/data:image) and audio (data:audio / audio-extension URL)
-// alternatives only accept media URLs, so nothing else slips into an <img>/<audio> src, and plain
-// text links stay untouched.
+// *italic* / _italic_, [label](url) link. The image (http/data:image) and audio (data:audio /
+// audio-extension URL) alternatives only accept media URLs, so nothing else slips into an
+// <img>/<audio> src.
+//
+// The link alternative is deliberately LAST: appending leaves every earlier capture-group index
+// untouched, so adding it can't silently renumber the branches below. Ordering is still correct
+// because only this alternative can match at a bare `[`.
+//
+// It also only accepts http/https — the same trick the media alternatives use, which is what keeps
+// `javascript:` and `data:` out of an href by construction rather than by a downstream check. That
+// matters more than it looks: this renderer displays text an agent read from GitHub issues and
+// Notion pages, so link targets are third-party content, not just model output.
 const INLINE =
-  /(!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)|\[([^\]]*)\]\((data:audio\/[^)\s]+|https?:\/\/[^)\s]+\.(?:mp3|wav|opus|aac|flac|ogg|m4a)(?:\?[^)\s]*)?)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_)/g;
+  /(!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)|\[([^\]]*)\]\((data:audio\/[^)\s]+|https?:\/\/[^)\s]+\.(?:mp3|wav|opus|aac|flac|ogg|m4a)(?:\?[^)\s]*)?)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_|\[([^\]]*)\]\((https?:\/\/[^)\s]+)\))/g;
 
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
@@ -33,6 +42,20 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
         <code key={key} className="rounded bg-white/10 px-1 py-0.5 font-mono text-[0.85em]">
           {m[7]}
         </code>,
+      );
+    else if (m[11] !== undefined)
+      nodes.push(
+        // New tab + noopener/noreferrer: the href can come from a GitHub issue or Notion page the
+        // agent read, so it is untrusted content — never hand it the opener window.
+        <a
+          key={key}
+          href={m[11]}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 hover:no-underline"
+        >
+          {m[10] || m[11]}
+        </a>,
       );
     else nodes.push(<em key={key}>{m[8] ?? m[9]}</em>);
     last = m.index + m[0].length;
@@ -82,7 +105,9 @@ export function Markdown({ text }: { text: string }) {
   };
 
   for (const line of text.split("\n")) {
-    const heading = /^(#{1,3})\s+(.*)$/.exec(line);
+    // #### and deeper matter: models reach for h4 inside a numbered outline without being asked,
+    // and anything unmatched here falls through to a paragraph and prints its own `#` marks.
+    const heading = /^(#{1,6})\s+(.*)$/.exec(line);
     const ordered = /^\s*\d+\.\s+(.*)$/.exec(line);
     const bullet = /^\s*[-*+]\s+(.*)$/.exec(line);
 
