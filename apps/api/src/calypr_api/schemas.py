@@ -366,12 +366,37 @@ class ConnectorCreate(BaseModel):
         return v
 
 
+#: The GitHub MCP toolsets a connector may be scoped to. "" = GitHub's own default set. Kept to
+#: the surfaces an agent plausibly needs, rather than mirroring every toolset GitHub ships.
+GITHUB_TOOLSETS = ("", "repos", "issues", "pull_requests", "actions", "all")
+
+
+class GithubConnectorCreate(BaseModel):
+    """Save a GitHub connector: a fine-grained PAT plus the toolset it may reach.
+
+    The token is write-only — it is encrypted on arrival and never echoed back. `readonly`
+    defaults to True so a freshly connected agent cannot open issues or push commits until the
+    user opts in."""
+
+    name: str = "GitHub"
+    pat: str
+    toolset: Literal["", "repos", "issues", "pull_requests", "actions", "all"] = ""
+    readonly: bool = True
+
+    @field_validator("pat")
+    @classmethod
+    def _non_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("a GitHub access token is required")
+        return v.strip()
+
+
 class ConnectorInfo(BaseModel):
     """A saved connector, safe to return to the client — carries NO secret, only a
     `has_secret` flag so the UI can show a lock/reconnect state."""
 
     id: str
-    kind: Literal["mcp", "notion"]
+    kind: Literal["mcp", "notion", "github"]
     name: str
     url: str | None
     transport: str

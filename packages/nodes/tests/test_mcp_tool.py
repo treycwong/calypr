@@ -29,8 +29,7 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
-@pytest.fixture(scope="module")
-def mcp_server() -> str:
+def _serve():
     """Start `server-everything` over Streamable HTTP; yield its /mcp URL. Skip if unavailable."""
     if shutil.which("npx") is None:
         pytest.skip("npx not available — skipping live MCP server test")
@@ -63,6 +62,18 @@ def mcp_server() -> str:
         except subprocess.TimeoutExpired:
             proc.kill()
         _MCP_CACHE.clear()
+
+
+@pytest.fixture(scope="module")
+def mcp_server():
+    yield from _serve()
+
+
+@pytest.fixture(scope="module")
+def mcp_server_b():
+    """A *second* live server, so the multi-server tests exercise two real connections rather
+    than one URL used twice (which the discovery cache would collapse into a single client)."""
+    yield from _serve()
 
 
 def test_bind_schemas_returns_many_tools(mcp_server: str):
@@ -145,3 +156,76 @@ async def test_agent_calls_mcp_tool_through_react_loop(mcp_server: str):
     assert tool_msgs, "expected an MCP ToolMessage in the transcript"
     assert any("hi mcp" in str(m.content) for m in tool_msgs)
     assert result["output"] == "Done."
+
+
+class _TwoServerFake:
+    """Calls one tool from each of two MCP servers in a single turn, then answers.
+
+    This is the case a single `tools` branch cannot serve: the router has to fan out to both
+    Tool nodes, and each must answer only its own call."""
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def stream(self, *, model, messages, system="", tools=None, **_):
+        self.calls += 1
+        if self.calls == 1:
+            a = ToolCall(id="c1", name="echo", args={"message": "from a"})
+            b = ToolCall(id="c2", name="get-sum", args={"a": 2, "b": 3})
+            yield a
+            yield b
+            yield Done(text="", tool_calls=[a, b])
+        else:
+            text = "Both done."
+            yield TextDelta(text=text)
+            yield Done(text=text, tool_calls=[])
+
+
+def _two_server_graph(url_a: str, url_b: str) -> GraphSpec:
+    """One agent, two MCP Tool nodes — the shape of the GitHub + Notion template. Each node is
+    filtered to a single tool so ownership is unambiguous even though both servers are the same
+    reference implementation."""
+    g = _mcp_react_graph(url_a)
+    nodes = [
+        *g.nodes,
+        NodeSpec(
+            id="tools_b",
+            type="tool",
+            config={"provider": "mcp", "mcp_url": url_b, "mcp_tool_filter": ["get-sum"]},
+        ),
+    ]
+    edges = [
+        *g.edges,
+        EdgeSpec(id="e5", source="agent", target="tools_b", condition="tools"),
+        EdgeSpec(id="e6", source="tools_b", target="agent"),
+    ]
+    return g.model_copy(update={"nodes": nodes, "edges": edges})
+
+
+async def test_two_mcp_servers_each_answer_their_own_calls(mcp_server: str, mcp_server_b: str):
+    """Two Tool nodes, two live servers, both called in one turn.
+
+    Guards the invariant that makes multi-server MCP work at all: every tool call is answered
+    exactly once, by the node that owns it. A regression here shows up as a duplicated or
+    missing `tool_call_id`, which corrupts the thread on the next turn."""
+    ctx = NodeContext(model=_TwoServerFake())
+    result = await run(_two_server_graph(mcp_server, mcp_server_b), ctx, "use both")
+    tool_msgs = [m for m in result["messages"] if m.__class__.__name__ == "ToolMessage"]
+    ids = [m.tool_call_id for m in tool_msgs]
+    assert sorted(ids) == ["c1", "c2"], f"each call answered exactly once, got {ids}"
+    by_id = {m.tool_call_id: str(m.content) for m in tool_msgs}
+    assert "from a" in by_id["c1"]  # the echo server answered the echo call
+    assert "5" in by_id["c2"]  # the second server answered the sum call
+    assert result["output"] == "Both done."
+
+
+def test_tool_nodes_do_not_share_a_server(mcp_server: str, mcp_server_b: str):
+    """Each node binds only its own server's (filtered) tools — no leakage between siblings."""
+    a = ToolsNode.bind_schemas(
+        ToolConfig(provider="mcp", mcp_url=mcp_server, mcp_tool_filter=["echo"])
+    )
+    b = ToolsNode.bind_schemas(
+        ToolConfig(provider="mcp", mcp_url=mcp_server_b, mcp_tool_filter=["get-sum"])
+    )
+    assert [s["name"] for s in a] == ["echo"]
+    assert [s["name"] for s in b] == ["get-sum"]

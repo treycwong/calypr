@@ -74,6 +74,12 @@ class CodegenContext:
     """
 
     tool_refs: list[str] = field(default_factory=list)
+    #: Which MCP Tool node this is, counting from 0 in graph order. Every MCP node emits a
+    #: module-level client and tool list, so a graph with two of them would otherwise collide on
+    #: `_mcp_client` / `mcp_tools` / `MCP_URL` — the second silently clobbering the first and both
+    #: binding the same server. Ordinal 0 stays unsuffixed so single-server output (the common
+    #: case, and every existing fixture) is unchanged; later nodes get `_2`, `_3`, …
+    mcp_ordinal: int = 0
 
 
 @dataclass

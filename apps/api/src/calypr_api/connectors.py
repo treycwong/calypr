@@ -70,6 +70,21 @@ class ConnectorResolutionError(RuntimeError):
     """The connector can't be turned into a live connection (e.g. Notion server URL unset)."""
 
 
+def github_mcp_url(meta: dict) -> str:
+    """Compose GitHub's hosted MCP URL from a connector's `meta`.
+
+    GitHub scopes tools by URL path rather than by request parameter: `/x/{toolset}` narrows the
+    surface (repos, issues, …; absent = GitHub's default set) and a `/readonly` suffix drops every
+    write tool. Composed at resolve time rather than stored, so changing the toolset or revoking
+    write access never requires the user to re-paste their token."""
+    base = settings.github_mcp_base.rstrip("/")
+    toolset = (meta or {}).get("toolset") or ""
+    # Default to read-only: a missing flag on an older row must not silently grant writes.
+    readonly = (meta or {}).get("readonly", True)
+    path = f"/x/{toolset}" if toolset else ""
+    return f"{base}{path}{'/readonly' if readonly else ''}"
+
+
 def resolve(cred: ConnectorCredential) -> ResolvedConnection:
     """Map a connector row to a live MCP connection, decrypting its secret. Never returns the
     secret itself — only the request headers that carry it."""
@@ -91,6 +106,17 @@ def resolve(cred: ConnectorCredential) -> ResolvedConnection:
             url=settings.notion_mcp_url,
             transport="streamable_http",
             headers=headers,
+        )
+    if cred.kind == "github":
+        # A PAT-less GitHub connector can only fail at connect time, and an anonymous request to
+        # GitHub's server fails opaquely. Raising here routes it into the same graceful
+        # degradation (node binds zero tools + a user-visible notice) as an unset Notion URL.
+        if not secret:
+            raise ConnectorResolutionError("GitHub connector has no access token.")
+        return ResolvedConnection(
+            url=github_mcp_url(cred.meta or {}),
+            transport="streamable_http",
+            headers={"Authorization": f"Bearer {secret}"},
         )
     # kind == "mcp" (Tier B): the user-supplied URL + optional bearer.
     if not cred.url:

@@ -32,6 +32,7 @@ from calypr_api.schemas import (
     ConnectorCreate,
     ConnectorInfo,
     ConnectorTestResult,
+    GithubConnectorCreate,
     NotionCallback,
     OAuthStart,
 )
@@ -129,6 +130,40 @@ def test_connector(connector_id: str, t: Tenant = Depends(tenant)) -> ConnectorT
         return ConnectorTestResult(
             ok=False, error="could not connect to the MCP server — check the URL and token."
         )
+
+
+@router.post("/connectors/github", response_model=ConnectorInfo, tags=["connectors"])
+def create_github_connector(
+    body: GithubConnectorCreate, t: Tenant = Depends(tenant)
+) -> ConnectorInfo:
+    """Save a GitHub connector from a personal access token.
+
+    No OAuth round-trip and no server to deploy — GitHub hosts the MCP server, so all we store is
+    the encrypted PAT plus the scope (`toolset` + `readonly`) it may be used at. `url` stays NULL
+    and is composed at resolve time, so the scope can be changed later without a new token."""
+    c = ConnectorCredential(
+        workspace_id=t.workspace_id,
+        kind="github",
+        name=body.name or "GitHub",
+        url=None,  # composed from `meta` at resolve time
+        transport="streamable_http",
+        secret_encrypted=encrypt(body.pat),
+        meta={"toolset": body.toolset, "readonly": body.readonly},
+    )
+    t.session.add(c)
+    t.session.commit()
+    t.session.refresh(c)
+    posthog_client.capture(
+        "connector_created",
+        distinct_id=str(t.workspace_id),
+        properties={
+            "connector_id": str(c.id),
+            "kind": "github",
+            "toolset": body.toolset,
+            "readonly": body.readonly,
+        },
+    )
+    return _info(c)
 
 
 def _notion_redirect_uri() -> str:

@@ -343,6 +343,59 @@ def notion_assistant() -> GraphSpec:
     )
 
 
+def github_notion() -> GraphSpec:
+    return GraphSpec(
+        id="tpl-github-notion",
+        name="GitHub + Notion",
+        description="One agent across two MCP servers: read GitHub, write it up in Notion. "
+        "Connect both in Settings, then pick a connector on each Tools node.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are an assistant with tools from two MCP servers: one for GitHub "
+                    "(repositories, issues, pull requests) and one for the user's Notion "
+                    "workspace. Work out which surface a request needs — often both, e.g. "
+                    "reading GitHub and writing the result to Notion — and call tools from "
+                    "either as you go. You may use both in a single turn.\n\n"
+                    "Never ask the user for an ID, URL, or link you could find yourself: "
+                    "search first, name what you picked, and only ask when a search has come "
+                    "back genuinely ambiguous. Cite the repos, issues, and page titles you "
+                    "used. If a server has no tools available, say which one and carry on with "
+                    "the other."
+                ),
+            ),
+            # Two Tool nodes, one server each. This is how Calypr expresses multi-server MCP:
+            # each node owns its own connection and answers only the tool calls naming its own
+            # tools, and the agent's router fans a turn out to both when it calls across them.
+            NodeSpec(
+                id="tools_github",
+                type="tool",
+                config={"provider": "mcp", "mcp_connector_ref": ""},
+            ),
+            NodeSpec(
+                id="tools_notion",
+                type="tool",
+                config={"provider": "mcp", "mcp_connector_ref": ""},
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            # Both Tool edges carry the same 'tools' branch name — the runtime resolves which
+            # node runs a call by tool name, so the branch label stays the ReAct convention.
+            EdgeSpec(id="e2", source="agent", target="tools_github", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="tools_notion", condition="tools"),
+            EdgeSpec(id="e4", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e5", source="tools_github", target="agent"),  # ReAct loop, GitHub
+            EdgeSpec(id="e6", source="tools_notion", target="agent"),  # ReAct loop, Notion
+        ],
+        entry="in",
+    )
+
+
 def reflexion() -> GraphSpec:
     return GraphSpec(
         id="tpl-reflexion",
@@ -785,6 +838,7 @@ TEMPLATES: list[GraphSpec] = [
     label_reader(),
     alt_text(),
     notion_assistant(),
+    github_notion(),
     image_finder(),
 ]
 

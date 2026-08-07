@@ -65,6 +65,46 @@ def test_resolve_notion_uses_notion_token_header(monkeypatch):
     assert conn.headers == {"Notion-Token": "ntn_bot_token"}
 
 
+def _github_cred(**meta) -> ConnectorCredential:
+    return ConnectorCredential(
+        workspace_id=uuid.uuid4(),
+        kind="github",
+        name="GitHub",
+        url=None,  # composed from meta at resolve time
+        transport="streamable_http",
+        secret_encrypted=vault.encrypt("ghp_tok"),
+        meta=meta,
+    )
+
+
+def test_resolve_github_defaults_to_readonly():
+    """Read-only unless the user opted in — including for a row saved before the flag existed,
+    where a missing key must not read as 'writes allowed'."""
+    conn = resolve(_github_cred())
+    assert conn.url == "https://api.githubcopilot.com/mcp/readonly"
+    assert conn.headers == {"Authorization": "Bearer ghp_tok"}
+
+
+def test_resolve_github_composes_toolset_and_write_access():
+    assert (
+        resolve(_github_cred(toolset="issues", readonly=False)).url
+        == "https://api.githubcopilot.com/mcp/x/issues"
+    )
+    assert (
+        resolve(_github_cred(toolset="repos", readonly=True)).url
+        == "https://api.githubcopilot.com/mcp/x/repos/readonly"
+    )
+
+
+def test_resolve_github_without_a_token_degrades_rather_than_connecting():
+    """An anonymous request to GitHub's server fails opaquely mid-run; raising here routes the
+    node into the same 'no server resolved' notice as an unconfigured Notion."""
+    cred = _github_cred()
+    cred.secret_encrypted = None
+    with pytest.raises(ConnectorResolutionError):
+        resolve(cred)
+
+
 def test_egress_guard_blocks_private_hosts_in_production(monkeypatch):
     # SSRF guard: on a real deployment, a Tier B URL resolving to loopback/private is rejected.
     monkeypatch.setattr(settings, "internal_key", "proxy-shared-secret")  # prod signal
@@ -148,6 +188,30 @@ def test_create_list_delete_connector_never_returns_secret():
 
     assert client.delete(f"/connectors/{cid}").status_code == 204
     assert all(c["id"] != cid for c in client.get("/connectors").json())
+
+
+@pytest_db
+def test_create_github_connector_never_returns_the_token():
+    created = client.post(
+        "/connectors/github",
+        json={"pat": "ghp_supersecret", "toolset": "repos", "readonly": True},
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["kind"] == "github"
+    assert body["has_secret"] is True
+    assert body["meta"] == {"toolset": "repos", "readonly": True}
+    assert body["url"] is None  # composed at resolve time, not stored
+    assert "ghp_supersecret" not in created.text
+
+    listed = client.get("/connectors")
+    assert "ghp_supersecret" not in listed.text
+    client.delete(f"/connectors/{body['id']}")
+
+
+@pytest_db
+def test_create_github_connector_rejects_an_empty_token():
+    assert client.post("/connectors/github", json={"pat": "   "}).status_code == 422
 
 
 @pytest_db

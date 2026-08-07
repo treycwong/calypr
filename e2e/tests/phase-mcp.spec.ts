@@ -39,6 +39,29 @@ test("the MCP ReAct framework projects to MultiServerMCPClient over the tool loo
   await expect(code).toContainText('os.environ["MCP_URL"]');
 });
 
+test("the GitHub + Notion template projects to two independent MCP servers", async ({
+  page,
+}) => {
+  await openCanvas(page);
+
+  await loadFramework(page, "GitHub + Notion");
+  // Multi-server MCP is two Tool nodes, one connection each — not one node with two servers.
+  await expect(page.getByTestId("node-tool")).toHaveCount(2);
+
+  await page.getByTestId("toggle-code").click();
+  const code = page.getByTestId("code-output");
+  await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
+  // Two clients reading two env vars: a single pair would mean both nodes silently share one
+  // server, which is the failure this template exists to prevent.
+  await expect(code).toContainText('os.environ["MCP_URL"]');
+  await expect(code).toContainText('os.environ["MCP_URL_2"]');
+  await expect(code).toContainText("ToolNode([*mcp_tools])");
+  await expect(code).toContainText("ToolNode([*mcp_tools_2])");
+  // And the agent routes to whichever node owns a call, rather than one `tools` branch.
+  await expect(code).toContainText("tools_github");
+  await expect(code).toContainText("tools_notion");
+});
+
 test("switching the Tool provider to MCP reveals the server fields", async ({
   page,
 }) => {

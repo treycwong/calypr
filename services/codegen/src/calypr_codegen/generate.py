@@ -145,18 +145,79 @@ def _metadata_trailer(graph: GraphSpec) -> str:
     return f"# calypr: {json.dumps(meta, separators=(',', ':'))}  # noqa: E501"
 
 
-def _tool_refs(graph: GraphSpec) -> dict[str, list[str]]:
-    """LLM node id → tool variable names to bind (resolved from edges to Tool nodes)."""
+def _mcp_ordinals(graph: GraphSpec) -> dict[str, int]:
+    """MCP Tool node id → its 0-based position among the graph's MCP nodes.
+
+    Each MCP node emits a module-level client and tool list; without a per-node ordinal a
+    two-server graph would emit `_mcp_client`/`mcp_tools` twice and the second would clobber the
+    first, leaving both Tool nodes bound to the same server."""
+    return {
+        n.id: i
+        for i, n in enumerate(
+            n
+            for n in graph.nodes
+            if n.type == "tool" and n.config.get("provider") == "mcp"
+        )
+    }
+
+
+def _tool_refs_by_node(graph: GraphSpec) -> dict[str, list[str]]:
+    """Tool node id → the variable name(s) its tools live under in the generated module."""
     if not has_node("tool"):
         return {}
     tool_cls = get_node("tool")
-    tool_nodes = {n.id: n for n in graph.nodes if n.type == "tool"}
+    ordinals = _mcp_ordinals(graph)
+    return {
+        n.id: tool_cls.code_refs(
+            tool_cls.config_model.model_validate(n.config), ordinals.get(n.id, 0)
+        )
+        for n in graph.nodes
+        if n.type == "tool"
+    }
+
+
+def _tool_refs(graph: GraphSpec, by_node: dict[str, list[str]]) -> dict[str, list[str]]:
+    """LLM node id → tool variable names to bind (resolved from edges to Tool nodes)."""
     refs: dict[str, list[str]] = {}
     for e in graph.edges:
-        if e.target in tool_nodes:
-            cfg = tool_cls.config_model.model_validate(tool_nodes[e.target].config)
-            refs.setdefault(e.source, []).extend(tool_cls.code_refs(cfg))
+        if e.target in by_node:
+            refs.setdefault(e.source, []).extend(by_node[e.target])
     return refs
+
+
+def _owner_map_src(name: str, targets: dict[str, list[str]]) -> str:
+    """A module-level `{tool name: owning node id}` map, built from the tool objects themselves.
+
+    An MCP server's tool names are only known once it has been contacted, so ownership can't be
+    written out statically — it is derived at import time from the same lists the nodes bind."""
+    entries = []
+    for node_id, refs in targets.items():
+        for ref in refs:
+            src = ref[1:] if ref.startswith("*") else f"[{ref}]"
+            entries.append(f"    **{{t.name: {node_id!r} for t in {src}}},")
+    return f"{name} = {{\n" + "\n".join(entries) + "\n}"
+
+
+def _tool_router_src(fn: str, owners: str, done: str) -> str:
+    """A generated router that fans a turn's tool calls out to the Tool nodes that own them.
+
+    The single-Tool-node case keeps LangGraph's stock `tools_condition`; this is only emitted
+    when an agent is wired to several, where `tools_condition`'s one branch cannot express
+    "this call goes to the GitHub node, that one to Notion"."""
+    return (
+        f"def {fn}(state: State):\n"
+        f'    """Route each tool call to the Tool node that owns it (several may run)."""\n'
+        '    messages = state.get("messages") or []\n'
+        "    last = messages[-1] if messages else None\n"
+        '    calls = getattr(last, "tool_calls", None)\n'
+        "    if not calls:\n"
+        f"        return {done!r}\n"
+        "    # dedupe but keep order, so the branch taken is stable for a given turn\n"
+        "    targets = list(\n"
+        f'        dict.fromkeys(o for c in calls if (o := {owners}.get(c["name"])))\n'
+        "    )\n"
+        f"    return targets or {done!r}"
+    )
 
 
 def generate_python(graph: GraphSpec) -> str:
@@ -168,8 +229,10 @@ def generate_python(graph: GraphSpec) -> str:
         "from langgraph.graph import END, START, StateGraph",
     }
 
-    tool_refs = _tool_refs(graph)
+    refs_by_tool_node = _tool_refs_by_node(graph)
+    tool_refs = _tool_refs(graph, refs_by_tool_node)
     tool_node_ids = {n.id for n in graph.nodes if n.type == "tool"}
+    mcp_ordinals = _mcp_ordinals(graph)
 
     routing_ids: set[str] = set()
     for node in graph.nodes:
@@ -177,7 +240,10 @@ def generate_python(graph: GraphSpec) -> str:
         fn_for[node.id] = fn
         node_cls = get_node(node.type)
         cfg = node_cls.config_model.model_validate(node.config)
-        cg_ctx = CodegenContext(tool_refs=tool_refs.get(node.id, []))
+        cg_ctx = CodegenContext(
+            tool_refs=tool_refs.get(node.id, []),
+            mcp_ordinal=mcp_ordinals.get(node.id, 0),
+        )
         fragment = node_cls.codegen(cfg, fn, cg_ctx)
         functions.append(fragment.function.rstrip("\n"))
         imports.update(fragment.imports)
@@ -219,13 +285,32 @@ def generate_python(graph: GraphSpec) -> str:
             continue
         tool_routers.add(node.id)
         out = [e for e in graph.edges if e.source == node.id]
-        tools_tgt = next((e.target for e in out if e.target in tool_node_ids), None)
+        tool_tgts = [e.target for e in out if e.target in tool_node_ids]
         done_tgt = next((e.target for e in out if e.target not in tool_node_ids), None)
         done_expr = f'"{done_tgt}"' if done_tgt else "END"
-        imports.add("from langgraph.prebuilt import tools_condition")
+        if len(tool_tgts) < 2:
+            imports.add("from langgraph.prebuilt import tools_condition")
+            build.append(
+                f'    graph.add_conditional_edges("{node.id}", tools_condition, '
+                f'{{"tools": "{tool_tgts[0] if tool_tgts else None}", END: {done_expr}}})'
+            )
+            continue
+        # Several Tool nodes on one agent: `tools_condition` has a single `tools` branch and so
+        # can only ever reach one of them, while the agent binds all of their tools. Emit a
+        # router that resolves each call to its owning node — the codegen mirror of
+        # `AgentNode.routing`'s `tool_owners` fan-out.
+        owners = f"_TOOL_OWNERS_{fn_for[node.id]}".upper()
+        route_fn = f"route_{fn_for[node.id]}"
+        done_key = done_tgt or "__end__"
+        functions.append(
+            _owner_map_src(owners, {t: refs_by_tool_node[t] for t in tool_tgts})
+        )
+        functions.append(_tool_router_src(route_fn, owners, done_key))
+        mapping = ", ".join(f'"{t}": "{t}"' for t in tool_tgts)
+        done_map = f'"{done_key}": {done_expr}'
         build.append(
-            f'    graph.add_conditional_edges("{node.id}", tools_condition, '
-            f'{{"tools": "{tools_tgt}", END: {done_expr}}})'
+            f'    graph.add_conditional_edges("{node.id}", {route_fn}, '
+            f"{{{mapping}, {done_map}}})"
         )
     for edge in graph.edges:
         if edge.source in routing_ids or edge.source in tool_routers:

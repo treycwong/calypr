@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
 import {
   type Connector,
+  createGithubConnector,
   deleteConnector,
   deleteProviderKey,
   listConnectors,
@@ -33,11 +34,33 @@ import {
 } from "@/lib/api";
 import { invalidateConnectors } from "@/lib/use-connectors";
 
-// The Tier A catalog shown in the "Add Connection" modal. One entry per OAuth app we can
-// connect; `kind` matches Connector.kind so a row can render as already-connected. Adding an
-// app here is a UI-only change — the connect handler is wired in SettingsPanel.
-const CONNECTOR_CATALOG: { kind: string; label: string; category: string; mark: string }[] = [
-  { kind: "notion", label: "Notion", category: "Web", mark: "N" },
+// The Tier A catalog shown in the "Add Connection" modal. One entry per app we can connect;
+// `kind` matches Connector.kind so a row can render as already-connected. Adding an app here is
+// a UI-only change — the connect handler is wired in SettingsPanel.
+//
+// `auth` says how the handshake happens: "oauth" redirects to the provider's consent screen,
+// "token" collects a token in a form here (GitHub hosts its own MCP server and takes a PAT, so
+// there is no redirect to make).
+const CONNECTOR_CATALOG: {
+  kind: string;
+  label: string;
+  category: string;
+  mark: string;
+  auth: "oauth" | "token";
+}[] = [
+  { kind: "notion", label: "Notion", category: "Web", mark: "N", auth: "oauth" },
+  { kind: "github", label: "GitHub", category: "Dev", mark: "GH", auth: "token" },
+];
+
+// GitHub scopes its MCP tools by URL path; these are the surfaces worth offering. "" is
+// GitHub's own default set. Mirrors GITHUB_TOOLSETS in the API schema.
+const GITHUB_TOOLSET_OPTIONS: { value: string; label: string }[] = [
+  { value: "", label: "Default (recommended)" },
+  { value: "repos", label: "Repositories" },
+  { value: "issues", label: "Issues" },
+  { value: "pull_requests", label: "Pull requests" },
+  { value: "actions", label: "Actions" },
+  { value: "all", label: "Everything" },
 ];
 
 // Providers a workspace can BYO a key for; labels drive the API Keys section.
@@ -57,6 +80,7 @@ export function SettingsPanel() {
   const [connectOpen, setConnectOpen] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [providerKeys, setProviderKeys] = useState<ProviderKeyInfo[]>([]);
+  const [githubOpen, setGithubOpen] = useState(false);
 
   // Listing fails without a DB (local dev) — leave the panel empty, no error toast.
   const refresh = () => {
@@ -84,9 +108,15 @@ export function SettingsPanel() {
   // Everything that isn't a pasted MCP endpoint is an OAuth account from the catalog.
   const accounts = connectors.filter((c) => c.kind !== "mcp");
 
-  // Each catalog entry maps to the API call that starts its OAuth handshake.
+  // Each catalog entry maps to the API call that starts its handshake — a redirect for OAuth
+  // apps, or a local form for token apps.
   const connectApp = async (kind: string) => {
     try {
+      if (kind === "github") {
+        setConnectOpen(false);
+        setGithubOpen(true);
+        return;
+      }
       if (kind === "notion") {
         // `assign` rather than `location.href = …`: same navigation, but it isn't a write to a
         // value outside the component, which the react-hooks/immutability rule (correctly)
@@ -205,6 +235,16 @@ export function SettingsPanel() {
             </div>
           </DialogContent>
         </Dialog>
+        <GithubConnectDialog
+          open={githubOpen}
+          onOpenChange={setGithubOpen}
+          onSaved={async () => {
+            setGithubOpen(false);
+            await refresh();
+            toast("GitHub connected.", "default");
+          }}
+          onError={() => toast("Couldn't save that GitHub token.", "error")}
+        />
       </section>
 
       {/* Tier B ("paste your own MCP server URL") is hidden from Settings: it's a
@@ -331,6 +371,99 @@ function ApiKeysSection({
         </div>
       ) : null}
     </section>
+  );
+}
+
+/** Collect a GitHub PAT and the scope it may be used at.
+ *
+ * GitHub hosts its own MCP server, so connecting is a token paste rather than a redirect. The
+ * token is posted straight to the API (encrypted there) and never kept in component state after
+ * save. Read-only is on by default: an agent that can push commits or open PRs by accident is a
+ * bad first run, and the box is one click away when that is what the user wants. */
+function GithubConnectDialog({
+  open,
+  onOpenChange,
+  onSaved,
+  onError,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onSaved: () => void;
+  onError: () => void;
+}) {
+  const [pat, setPat] = useState("");
+  const [toolset, setToolset] = useState("");
+  const [readonly, setReadonly] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await createGithubConnector({ pat: pat.trim(), toolset, readonly });
+      setPat("");
+      setToolset("");
+      setReadonly(true);
+      onSaved();
+    } catch {
+      onError();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="github-dialog">
+        <DialogHeader>
+          <DialogTitle>Connect GitHub</DialogTitle>
+          <DialogDescription>
+            Paste a fine-grained personal access token. It&apos;s encrypted on our server and
+            never shown again.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-3">
+          <Input
+            type="password"
+            placeholder="github_pat_…"
+            value={pat}
+            onChange={(e) => setPat(e.target.value)}
+            data-testid="github-pat"
+          />
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Tools
+            <select
+              className="h-8 rounded-md border border-border bg-transparent px-2 text-sm text-foreground"
+              value={toolset}
+              onChange={(e) => setToolset(e.target.value)}
+              data-testid="github-toolset"
+            >
+              {GITHUB_TOOLSET_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={!readonly}
+              onChange={(e) => setReadonly(!e.target.checked)}
+              data-testid="github-allow-writes"
+            />
+            Allow writes (create issues, comments, pull requests)
+          </label>
+          <Button
+            size="sm"
+            disabled={!pat.trim() || saving}
+            onClick={save}
+            data-testid="github-save"
+          >
+            {saving ? "Connecting…" : "Connect"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -304,6 +304,54 @@ def test_mcp_codegen_reads_env_and_leaks_no_secret():
     assert check.returncode == 0, check.stdout
 
 
+def test_two_mcp_nodes_generate_distinct_clients_and_route_to_both():
+    """Two MCP Tool nodes must project to two independent servers.
+
+    Both nodes emit a module-level client and tool list, so without per-node names the second
+    would clobber the first and both `ToolNode`s would silently bind the same server. And
+    `tools_condition` has one `tools` branch, so it can only ever reach one of them — the
+    exported graph would drop the other node entirely."""
+    from calypr_compiler.templates import github_notion
+
+    code = generate_python(github_notion())
+
+    # Two distinct clients, tool lists and env vars — one per server.
+    assert "_mcp_client = MultiServerMCPClient(" in code
+    assert "_mcp_client_2 = MultiServerMCPClient(" in code
+    assert 'os.environ["MCP_URL"]' in code
+    assert 'os.environ["MCP_URL_2"]' in code
+    assert "ToolNode([*mcp_tools])" in code
+    assert "ToolNode([*mcp_tools_2])" in code
+    # The agent binds both servers' tools...
+    assert ".bind_tools([*mcp_tools, *mcp_tools_2])" in code
+    # ...and routes to whichever node owns each call, rather than the single `tools` branch.
+    assert "tools_condition" not in code
+    assert '"tools_github": "tools_github"' in code
+    assert '"tools_notion": "tools_notion"' in code
+
+    fmt = subprocess.run(["ruff", "format", "-"], input=code, capture_output=True, text=True)
+    assert fmt.stdout == code, "multi-server codegen is not ruff-formatted"
+    check = subprocess.run(
+        ["ruff", "check", "--stdin-filename", "generated.py", "-"],
+        input=code,
+        capture_output=True,
+        text=True,
+    )
+    assert check.returncode == 0, check.stdout
+
+
+def test_single_mcp_node_output_is_unsuffixed():
+    """The one-server case must be untouched by multi-server support: no suffixes, and the
+    stock `tools_condition` loop. Guards the numbering rule that keeps every existing export
+    (and every fixture below) byte-identical."""
+    from calypr_compiler.templates import mcp_react
+
+    code = generate_python(mcp_react())
+    assert "mcp_tools_2" not in code
+    assert "MCP_URL_2" not in code
+    assert "tools_condition" in code
+
+
 def test_agent_prompt_placeholder_substituted_in_codegen():
     """An Agent whose prompt uses `{{ state.context }}` (the RAG pattern) emits a runtime
     substitution in the generated code, so the exported agent fills in retrieved context
