@@ -75,7 +75,7 @@ export default function ProjectsPage() {
   return (
     <div className="w-full max-w-5xl px-10 py-8">
       <header className="flex items-center justify-between gap-4">
-        <h1 className="text-xl font-semibold">Projects</h1>
+        <h1 className="font-heading text-2xl">Projects</h1>
         <div className="flex items-center gap-2">
           <Input
             placeholder="Search projects…"

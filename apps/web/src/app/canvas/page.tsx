@@ -634,7 +634,10 @@ function CanvasInner() {
           ) : null}
           <Button
             size="sm"
-            variant={showPlayground ? "outline" : "default"}
+            // Outline when closed, so it sits level with Save and Share; solid white when the
+            // playground is open. It used to be the other way round, which made Chat the loudest
+            // thing in the header at exactly the moment it had nothing to do with.
+            variant={showPlayground ? "default" : "outline"}
             onClick={() =>
               setShowPlayground((s) => {
                 if (s) setRunStatus({}); // closing the playground clears any lingering run glow
@@ -774,6 +777,9 @@ function CanvasInner() {
             onPaneClick={() => setSelectedId(null)}
             nodeTypes={nodeTypes}
             fitView
+            // Same call the template mini-maps already make — the badge is chrome we don't want
+            // sitting over the canvas corner.
+            proOptions={{ hideAttribution: true }}
           >
             {/* Subtle grey dots — visible as texture (Railway-style), not bright specks. */}
             <Background gap={22} size={1} color="#4a4a52" />

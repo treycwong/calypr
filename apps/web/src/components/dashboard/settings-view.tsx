@@ -253,16 +253,19 @@ export function SettingsView({
 
   return (
     <div className="w-full max-w-2xl px-10 py-8">
-      <h1 className="text-xl font-semibold">Settings</h1>
+      <h1 className="font-heading text-2xl">Settings</h1>
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList>
-          <TabsTrigger value="account" data-testid="tab-account">
+        {/* Sized up from the shared default (h-8, px-1.5 triggers), which is tuned for dense
+            in-panel tab strips and reads as cramped under a page heading. Overridden here rather
+            than in components/ui/tabs.tsx so the canvas panels keep the compact size. */}
+        <TabsList className="h-10 gap-1 p-1">
+          <TabsTrigger value="account" className="px-4" data-testid="tab-account">
             Account
           </TabsTrigger>
-          <TabsTrigger value="billing" data-testid="tab-billing">
+          <TabsTrigger value="billing" className="px-4" data-testid="tab-billing">
             Billing
           </TabsTrigger>
-          <TabsTrigger value="workspace" data-testid="tab-workspace">
+          <TabsTrigger value="workspace" className="px-4" data-testid="tab-workspace">
             Workspace
           </TabsTrigger>
         </TabsList>
