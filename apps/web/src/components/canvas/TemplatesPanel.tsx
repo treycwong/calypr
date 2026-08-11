@@ -73,15 +73,12 @@ export function TemplatesPanel({
 
   return (
     <div className="flex flex-col gap-3" data-testid="templates-panel">
-      <div className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        Templates
-      </div>
       {templates.length === 0 ? (
         <p className="text-xs text-muted-foreground">Loading…</p>
       ) : null}
       {groups.map(([label, list]) =>
         list.length ? (
-          <div key={label} className="space-y-1">
+          <div key={label} className="space-y-1.5">
             <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
             {list.map((t) => (
               <button
@@ -90,7 +87,10 @@ export function TemplatesPanel({
                 aria-label={t.name}
                 title={t.description}
                 onClick={() => setPreview(t)}
-                className="w-full rounded-md border border-border bg-card px-2 py-1.5 text-left text-xs font-medium transition hover:border-foreground/20 hover:bg-muted/50"
+                // Sized to the Blocks palette's buttons — h-8 worth of box, same radius and
+                // horizontal padding — so the two rail panels read as one list style. `min-h`
+                // rather than `h` because a long template name still has to wrap.
+                className="flex min-h-8 w-full items-center rounded-lg border border-border bg-card px-2.5 py-2 text-left text-xs font-medium transition hover:border-foreground/20 hover:bg-muted/50"
               >
                 {t.name}
               </button>

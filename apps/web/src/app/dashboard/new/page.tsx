@@ -72,14 +72,14 @@ export default function NewProjectPage() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 py-8">
+    <div className="w-full max-w-4xl px-10 py-8">
       <Link
         href="/dashboard"
         className={buttonVariants({ variant: "ghost", size: "sm" })}
       >
         <ArrowLeft className="h-4 w-4" /> Projects
       </Link>
-      <h1 className="mt-4 text-2xl font-semibold">Start a new project</h1>
+      <h1 className="mt-4 font-heading text-2xl">Start a new project</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Name it, then start from a blank canvas or a template.
       </p>
