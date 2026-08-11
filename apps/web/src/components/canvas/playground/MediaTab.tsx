@@ -81,11 +81,8 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
 
   return (
     <div className="flex h-full flex-col">
-      {/* h-11 to match the Playground's header — the two panels sit side by side, so their
-          headers and the tab strips beneath them have to share a baseline. */}
-      <div className="flex h-11 shrink-0 items-center justify-between border-b border-border px-3">
-        <span className="text-sm font-medium">Media</span>
-      </div>
+      {/* No header here — the left-panel shell in app/canvas/page.tsx renders one for every rail
+          tab, at the h-11 that keeps it level with the Playground's header across the canvas. */}
       {/* The same `line` tab strip the Playground uses, so the two panels read as one system. */}
       <Tabs value={kind} onValueChange={(v) => setKind(v as string)}>
         <TabsList

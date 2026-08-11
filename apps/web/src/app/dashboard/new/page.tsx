@@ -72,7 +72,7 @@ export default function NewProjectPage() {
   ];
 
   return (
-    <div className="mx-auto w-full max-w-4xl px-6 py-8">
+    <div className="w-full max-w-4xl px-10 py-8">
       <Link
         href="/dashboard"
         className={buttonVariants({ variant: "ghost", size: "sm" })}

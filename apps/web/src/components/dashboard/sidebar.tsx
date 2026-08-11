@@ -158,38 +158,30 @@ export function Sidebar({
                 {ws.id === current?.id ? <Check className="h-3.5 w-3.5" /> : null}
               </DropdownMenuItem>
             ))}
-            <DropdownMenuSeparator />
+            {/* Both entries below are workspace *management*, and on a plan capped at one
+                workspace there is nothing to manage from here: 'New workspace' could only ever
+                lead to an upsell dead end, and the settings tab it points at is one click away
+                under Settings anyway. Upgrading is surfaced on the Settings → Billing tab, so
+                nothing is lost by keeping this menu to the switching it is for. */}
             {canCreateWorkspace ? (
-              <DropdownMenuItem
-                data-testid="ws-new"
-                onClick={() => {
-                  setCreateError(null);
-                  setNewName("");
-                  setCreating(true);
-                }}
-              >
-                <Plus className="h-3.5 w-3.5" />
-                New workspace
-              </DropdownMenuItem>
-            ) : (
-              // At the plan's cap. Shown rather than hidden, and sent to pricing rather than to
-              // a dialog: on Free the cap is 1 and every account already has 'Personal', so the
-              // old flow could only ever ask someone to name a workspace and then refuse it.
-              // Hiding it entirely would be tidier but would mean nothing in the product ever
-              // mentions that more workspaces exist — the gate is worth showing, the dead end
-              // isn't.
-              <DropdownMenuItem
-                data-testid="ws-new-upgrade"
-                onClick={() => router.push("/pricing")}
-              >
-                <Lock className="h-3.5 w-3.5" />
-                <span className="flex-1">New workspace</span>
-                <span className="text-xs text-muted-foreground">Plus</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem onClick={() => router.push("/dashboard/settings?tab=workspace")}>
-              Workspace settings
-            </DropdownMenuItem>
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  data-testid="ws-new"
+                  onClick={() => {
+                    setCreateError(null);
+                    setNewName("");
+                    setCreating(true);
+                  }}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  New workspace
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => router.push("/dashboard/settings?tab=workspace")}>
+                  Workspace settings
+                </DropdownMenuItem>
+              </>
+            ) : null}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

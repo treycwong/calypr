@@ -252,7 +252,7 @@ export function SettingsView({
   }
 
   return (
-    <div className="mx-auto w-full max-w-2xl px-6 py-8">
+    <div className="w-full max-w-2xl px-10 py-8">
       <h1 className="text-xl font-semibold">Settings</h1>
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         <TabsList>

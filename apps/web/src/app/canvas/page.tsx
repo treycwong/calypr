@@ -22,6 +22,7 @@ import {
   LayoutTemplate,
   type LucideIcon,
   MessageSquare,
+  PanelLeftClose,
   Redo2,
   Share2,
   Sparkles,
@@ -32,6 +33,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { GraphSpec } from "@calypr/dsl";
 
+import { CalyprMark } from "@/components/brand/CalyprMark";
 import {
   AssistantPanel,
   type CanvasSnapshot,
@@ -96,6 +98,16 @@ function RailButton({
     </button>
   );
 }
+
+/** Panel titles live in the shell, not in the panels — see the header comment below. Keyed by
+ *  the rail tab, and worded to match the rail's own tooltips. */
+const PANEL_TITLES = {
+  blocks: "Blocks",
+  templates: "Templates",
+  settings: "Connectors",
+  ai: "AI assistant",
+  media: "Media",
+} as const;
 
 function CanvasInner() {
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<NodeData>>([]);
@@ -501,10 +513,12 @@ function CanvasInner() {
             href="/dashboard"
             aria-label="Calypr — back to dashboard"
             title="Back to dashboard"
-            className="transition hover:opacity-90"
+            className="rounded-md transition-colors"
           >
-            <span className="flex h-7 w-7 items-center justify-center rounded-md bg-gradient-to-br from-cyan-400 to-cyan-600 text-sm font-bold text-black">
-              C
+            {/* No chip behind the mark — it sits straight on the header. The only affordance is
+                the hover wash, so it has to be visible enough to read as a target. */}
+            <span className="flex h-7 w-7 items-center justify-center rounded-md text-foreground transition-colors hover:bg-white/10">
+              <CalyprMark className="h-4 w-4" />
             </span>
           </Link>
           <input
@@ -684,41 +698,67 @@ function CanvasInner() {
           />
         </aside>
 
-        {/* The single rail-selected left panel. */}
-        {activePanel === "blocks" || activePanel === "templates" ? (
-          <aside className="w-52 shrink-0 overflow-auto border-r border-border p-3">
-            {activePanel === "blocks" ? (
-              <Palette onAdd={addNode} />
-            ) : (
-              <TemplatesPanel templates={templates} onLoad={loadTemplate} />
-            )}
-          </aside>
-        ) : null}
-        {activePanel === "settings" ? (
-          <aside className="w-72 shrink-0 overflow-auto border-r border-border p-3">
-            <SettingsPanel />
-          </aside>
-        ) : null}
-        {activePanel === "media" ? (
+        {/* The single rail-selected left panel. One shell for all five tabs: the width used to
+            be set per tab (w-52 / w-72 / w-80), so the canvas jumped sideways every time you
+            switched rails. w-72 is the widest that all of them read well at — Connectors needs
+            it for the account rows, and the chat panels are comfortable there. */}
+        {activePanel ? (
           <aside
-            className="w-80 shrink-0 border-r border-border"
-            data-testid="media-panel"
+            className="flex w-72 shrink-0 flex-col border-r border-border"
+            data-testid={
+              activePanel === "ai"
+                ? "assistant"
+                : activePanel === "media"
+                  ? "media-panel"
+                  : undefined
+            }
           >
-            {/* `mediaTick` refetches when a run generates a file while this panel is open. */}
-            <MediaTab refreshKey={mediaTick} />
-          </aside>
-        ) : null}
-        {activePanel === "ai" ? (
-          <aside
-            className="w-80 shrink-0 border-r border-border"
-            data-testid="assistant"
-          >
-            <AssistantPanel
-              getCurrentGraph={getCurrentGraph}
-              snapshot={snapshotCanvas}
-              applyGraph={applyGraphToCanvas}
-              restore={restoreCanvas}
-            />
+            {/* One header for every tab, so the title and the hide button share a baseline and
+                the panels stop each styling their own. h-11 matches the Playground header on the
+                far side of the canvas — the two are level when both are open. */}
+            <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
+              <span className="truncate text-xs font-medium tracking-wide uppercase">
+                {PANEL_TITLES[activePanel]}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActivePanel(null)}
+                title="Hide panel"
+                aria-label="Hide panel"
+                data-testid="hide-panel"
+                className="-mr-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </button>
+            </div>
+            {/* `min-h-0` so the panels that scroll internally (chat, media) size to the shell
+                instead of growing past it. The chat panels bring their own padding because
+                their scroll region has to run edge to edge. */}
+            <div
+              className={`min-h-0 flex-1 ${
+                activePanel === "blocks" ||
+                activePanel === "templates" ||
+                activePanel === "settings"
+                  ? "overflow-auto p-3"
+                  : ""
+              }`}
+            >
+              {activePanel === "blocks" ? <Palette onAdd={addNode} /> : null}
+              {activePanel === "templates" ? (
+                <TemplatesPanel templates={templates} onLoad={loadTemplate} />
+              ) : null}
+              {activePanel === "settings" ? <SettingsPanel /> : null}
+              {/* `mediaTick` refetches when a run generates a file while this panel is open. */}
+              {activePanel === "media" ? <MediaTab refreshKey={mediaTick} /> : null}
+              {activePanel === "ai" ? (
+                <AssistantPanel
+                  getCurrentGraph={getCurrentGraph}
+                  snapshot={snapshotCanvas}
+                  applyGraph={applyGraphToCanvas}
+                  restore={restoreCanvas}
+                />
+              ) : null}
+            </div>
           </aside>
         ) : null}
 
@@ -742,10 +782,15 @@ function CanvasInner() {
               pannable
               zoomable
               className="rounded-md border border-border"
-              style={{ backgroundColor: "var(--card)" }}
-              maskColor="rgb(2 6 23 / 0.6)"
-              nodeColor="#22d3ee"
-              nodeStrokeColor="#0e7490"
+              // ~65% of React Flow's 200×150 default: readable, without the full-size map eating
+              // the bottom-right corner of the canvas.
+              style={{ backgroundColor: "var(--card)", width: 130, height: 98 }}
+              // Monochrome on purpose. Cyan in this product means "this node is running" — the
+              // canvas glow uses it — so spending it on every minimap node made the map look
+              // permanently live. Greys leave the colour free to mean something.
+              maskColor="rgb(0 0 0 / 0.6)"
+              nodeColor="#d4d4d8"
+              nodeStrokeColor="#52525b"
             />
           </ReactFlow>
         </div>
@@ -761,7 +806,7 @@ function CanvasInner() {
               onClick={() => setRightTab("properties")}
               className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
                 rightTab === "properties"
-                  ? "border-cyan-400 text-foreground"
+                  ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -773,7 +818,7 @@ function CanvasInner() {
               onClick={() => setRightTab("code")}
               className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
                 rightTab === "code"
-                  ? "border-cyan-400 text-foreground"
+                  ? "border-foreground text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >

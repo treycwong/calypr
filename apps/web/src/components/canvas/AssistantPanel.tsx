@@ -181,12 +181,8 @@ export function AssistantPanel({
 
   return (
     <div className="flex h-full flex-col" data-testid="assistant-panel">
-      <div className="px-3 pt-3 pb-2">
-        <span className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          AI assistant
-        </span>
-      </div>
-
+      {/* No title here — the left-panel shell in app/canvas/page.tsx renders one header for
+          every rail tab. */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
         {messages.length === 0 ? (
           <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">

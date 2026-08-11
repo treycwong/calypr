@@ -23,9 +23,6 @@ const ITEMS: { type: CalyprNodeType; label: string; hint: string }[] = [
 export function Palette({ onAdd }: { onAdd: (type: CalyprNodeType) => void }) {
   return (
     <div className="flex flex-col gap-2">
-      <div className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Blocks
-      </div>
       {ITEMS.map((it) => (
         <Button
           key={it.type}
