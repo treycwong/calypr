@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // MCP node gate: an MCP server's tools reach the canvas through the existing Tool seam. The
 // MCP ReAct framework projects to a `MultiServerMCPClient` over the canonical `ToolNode` +
@@ -11,7 +11,7 @@ import { signInAt } from "./helpers";
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 async function loadFramework(page: Page, name: string) {
@@ -29,7 +29,7 @@ test("the MCP ReAct framework projects to MultiServerMCPClient over the tool loo
   await expect(page.getByTestId("node-agent")).toBeVisible();
   await expect(page.getByTestId("node-tool")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("MultiServerMCPClient");
@@ -48,7 +48,7 @@ test("the GitHub + Notion template projects to two independent MCP servers", asy
   // Multi-server MCP is two Tool nodes, one connection each — not one node with two servers.
   await expect(page.getByTestId("node-tool")).toHaveCount(2);
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   // Two clients reading two env vars: a single pair would mean both nodes silently share one

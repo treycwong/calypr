@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { buildChain, signInAt } from "./helpers";
 
 // Phase 10 gate (WEEK3-SHARE-LINKS-PLAN §C): an owner builds + saves an agent, mints a share
 // link, and a LOGGED-OUT visitor opens /s/{token}, sees the agent name (never the spec), and
@@ -10,14 +10,11 @@ import { signInAt } from "./helpers";
 async function buildAndSaveAgent(page: Page): Promise<string> {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  // Wired by hand: adding a block no longer connects it to anything, and a shared agent has to
+  // be a real graph — an unwired one saves and shares fine, then streams nothing.
+  await buildChain(page, ["input", "agent", "output"]);
 
   await page.getByTestId("node-agent").click();
   await page.getByTestId("cfg-model").selectOption("fake");

@@ -3,7 +3,13 @@
 import { Handle, type NodeProps, Position } from "@xyflow/react";
 import type { ReactNode } from "react";
 
-import { type NodeData, type NodeStatus, routerHandleNames } from "@/lib/graph";
+import { NODE_STYLE } from "@/components/canvas/node-style";
+import {
+  type CalyprNodeType,
+  type NodeData,
+  type NodeStatus,
+  routerHandleNames,
+} from "@/lib/graph";
 import { useConnectors } from "@/lib/use-connectors";
 
 const handleStyle = { width: 10, height: 10 };
@@ -24,37 +30,55 @@ function statusOf(data: unknown): NodeStatus | undefined {
 // Flow runs left → right: inputs enter on the Left, outputs leave on the Right.
 function Shell({
   title,
-  accent,
+  type,
   selected,
   status,
   testid,
   children,
 }: {
   title: string;
-  accent: string;
+  type: CalyprNodeType;
   selected?: boolean;
   status?: NodeStatus;
   testid?: string;
   children?: ReactNode;
 }) {
+  // The icon comes from the same map the Blocks palette reads, so the card you picked in the
+  // sidebar is visibly the card that landed here. It replaced a 2px coloured dot whose colour was
+  // hardcoded at each of the fourteen call sites — and it is monochrome, which leaves the canvas
+  // free to use colour for run state alone (the cyan active glow, the emerald done ring).
+  const { icon: Icon } = NODE_STYLE[type];
   // A run status takes visual priority over selection so you can watch execution move even while
   // a node is selected; otherwise fall back to the selected glow, then idle.
+  // The background is part of this rather than a constant `bg-card` on the base class: two
+  // background utilities on one element are decided by their order in Tailwind's output, not by
+  // the class attribute, so the selected wash would win or lose unpredictably.
   const stateClass = status
-    ? STATUS_CLASS[status]
+    ? `bg-card ${STATUS_CLASS[status]}`
     : selected
-      ? "border-cyan-400 shadow-[0_0_0_1px_rgb(34_211_238),0_0_22px_-2px_rgb(34_211_238/0.6)]"
-      : "border-border hover:border-muted-foreground/40";
+      ? // Neutral, not cyan. Cyan is the running state on this canvas — using it for selection
+        // too meant a selected node and a running node looked the same, and a graph you had
+        // clicked around looked like it was mid-run.
+        //
+        // **Opaque.** This was a translucent white wash, which let the wires behind the card
+        // show straight through it — selecting a node in a busy part of the graph made it
+        // harder to read, not easier. A card is a solid object.
+        "bg-neutral-700 border-white/60 shadow-[0_0_0_1px_rgb(255_255_255/0.25)]"
+      : "bg-card border-border hover:border-muted-foreground/40";
   return (
     <div
       data-testid={testid}
       data-status={status ?? undefined}
-      className={`min-w-[168px] rounded-lg border bg-card px-3 py-2 shadow-sm transition ${stateClass}`}
+      // `transition-colors duration-75`, not a bare `transition`. The bare utility animates every
+      // animatable property — box-shadow and background included — over 150ms, so a click landed
+      // its state change in ~45ms and then took another 150ms to *look* selected. That reads as
+      // lag. 75ms is enough to stop the hover border snapping, and short enough that selection
+      // feels immediate.
+      className={`min-w-[168px] rounded-lg border px-3 py-2 shadow-sm transition-colors duration-75 ${stateClass}`}
     >
       <div className="flex items-center gap-2">
-        <span
-          className={`h-2 w-2 rounded-full ${accent} ${
-            status === "active" ? "animate-pulse" : ""
-          }`}
+        <Icon
+          className={`h-3.5 w-3.5 shrink-0 ${status === "active" ? "animate-pulse" : ""}`}
         />
         <span className="text-sm font-medium">{title}</span>
       </div>
@@ -70,7 +94,7 @@ export function InputNodeView({ data, selected }: NodeProps) {
     <>
       <Shell
         title="Input"
-        accent="bg-sky-500"
+        type="input"
         selected={selected}
         status={statusOf(data)}
         testid="node-input"
@@ -89,7 +113,7 @@ export function AgentNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title={title} accent="bg-violet-500" selected={selected} status={statusOf(data)} testid="node-agent">
+      <Shell title={title} type="agent" selected={selected} status={statusOf(data)} testid="node-agent">
         {String(config.agent_type ?? "model_based")} · {String(config.model ?? "fake")}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
@@ -103,7 +127,7 @@ export function OutputNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Output"
-        accent="bg-emerald-500"
+        type="output"
         selected={selected}
         status={statusOf(data)}
         testid="node-output"
@@ -120,7 +144,7 @@ export function CodeNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Custom Code"
-        accent="bg-amber-500"
+        type="code"
         selected={selected}
         status={statusOf(data)}
         testid="node-code"
@@ -141,7 +165,7 @@ export function RouterNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Router" accent="bg-rose-500" selected={selected} status={statusOf(data)} testid="node-router">
+      <Shell title="Router" type="router" selected={selected} status={statusOf(data)} testid="node-router">
         {(isLlm ? ["llm", ...names] : names).join(" · ")}
       </Shell>
       {names.map((name, i) => (
@@ -167,7 +191,7 @@ export function EvaluatorNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Evaluator"
-        accent="bg-orange-500"
+        type="evaluator"
         selected={selected}
         status={statusOf(data)}
         testid="node-evaluator"
@@ -184,7 +208,7 @@ export function MemoryNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Memory" accent="bg-teal-500" selected={selected} status={statusOf(data)} testid="node-memory">
+      <Shell title="Memory" type="memory" selected={selected} status={statusOf(data)} testid="node-memory">
         {String(op)}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
@@ -221,7 +245,7 @@ export function ToolNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Tools" accent="bg-yellow-500" selected={selected} status={statusOf(data)} testid="node-tool">
+      <Shell title="Tools" type="tool" selected={selected} status={statusOf(data)} testid="node-tool">
         {label}
       </Shell>
       {/* Loops back to the agent that called it (the ReAct cycle). */}
@@ -237,7 +261,7 @@ export function RetrieverNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Knowledge"
-        accent="bg-lime-500"
+        type="retriever"
         selected={selected}
         status={statusOf(data)}
         testid="node-retriever"
@@ -255,7 +279,7 @@ export function ResponderNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Responder"
-        accent="bg-indigo-500"
+        type="responder"
         selected={selected}
         status={statusOf(data)}
         testid="node-responder"
@@ -275,7 +299,7 @@ export function RevisorNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell
         title="Revisor"
-        accent="bg-fuchsia-500"
+        type="revisor"
         selected={selected}
         status={statusOf(data)}
         testid="node-revisor"
@@ -303,7 +327,7 @@ export function ImageNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Image" accent="bg-pink-500" selected={selected} status={statusOf(data)} testid="node-image">
+      <Shell title="Image" type="image" selected={selected} status={statusOf(data)} testid="node-image">
         {String(config.model ?? "gpt-image-2")} · {String(config.size ?? "1024x1024")}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
@@ -316,7 +340,7 @@ export function TTSNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Voice" accent="bg-purple-500" selected={selected} status={statusOf(data)} testid="node-tts">
+      <Shell title="Voice" type="tts" selected={selected} status={statusOf(data)} testid="node-tts">
         {String(config.model ?? "gpt-4o-mini-tts")} · {String(config.voice ?? "alloy")}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
@@ -329,7 +353,7 @@ export function UploadNodeView({ data, selected }: NodeProps) {
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
-      <Shell title="Upload" accent="bg-orange-400" selected={selected} status={statusOf(data)} testid="node-upload">
+      <Shell title="Upload" type="upload" selected={selected} status={statusOf(data)} testid="node-upload">
         image in · up to {String(max)}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // API-as-a-tool gate (Phase 8a): external APIs reach the canvas as *providers on the existing
 // Tool node*, so the LLM decides when to call them (ReAct), rather than a node fetching
@@ -14,7 +14,7 @@ import { signInAt } from "./helpers";
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 async function loadTemplate(page: Page, name: string) {
@@ -32,7 +32,7 @@ test("the Image Finder template projects to an Unsplash tool over the ReAct loop
   await expect(page.getByTestId("node-agent")).toBeVisible();
   await expect(page.getByTestId("node-tool")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("def search_images(");
@@ -75,7 +75,7 @@ test("the HTTP provider exposes URL, params, and response path", async ({ page }
   await page.getByTestId("cfg-http-params").fill("q={query}");
   await expect(page.getByTestId("cfg-http-url")).toHaveValue("https://api.example.com/search");
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   // The emitted module is ruff-formatted, so string literals come back double-quoted.
   await expect(code).toContainText('_HTTP_URL = "https://api.example.com/search"', {

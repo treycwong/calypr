@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { buildChain, openCode, signInAt } from "./helpers";
 
 // Phase 3 gate (realignment §Phase 3): the canvas projects to ownable Python, and a
 // Custom Code node round-trips verbatim into the generated code (the no-ceiling escape
@@ -10,21 +10,14 @@ test("the canvas projects to ownable Python with a Custom Code escape hatch", as
 }) => {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
-  // Build Input → Agent → Custom Code → Output (a sensible linear chain). Gate each add
-  // on the node mounting so no click is lost under parallel load.
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-code").click();
-  await expect(page.getByTestId("node-code")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  // Build Input → Agent → Custom Code → Output (a sensible linear chain), wiring it by hand:
+  // adding a block no longer connects it to anything.
+  await buildChain(page, ["input", "agent", "code", "output"]);
 
   // Open the Code view — idiomatic LangGraph, with the custom code emitted verbatim.
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("StateGraph");

@@ -320,7 +320,14 @@ export async function notionConnectUrl(): Promise<string> {
 }
 
 /** A model provider's BYO-key state ({has_key}) — the value is never returned. */
-export type ProviderKeyInfo = { provider: string; has_key: boolean };
+/** `key_hint` is the key's last 4 characters, stored in the clear at write time so the UI can say
+ *  *which* key is on file without the real one ever leaving the server. `null` means no key, or a
+ *  key saved before migration `0020`. */
+export type ProviderKeyInfo = {
+  provider: string;
+  has_key: boolean;
+  key_hint?: string | null;
+};
 
 /** Which providers have a workspace BYO key on file (the Settings "API Keys" section). */
 export async function listProviderKeys(): Promise<ProviderKeyInfo[]> {

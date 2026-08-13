@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // Phase 4 gate: the agent ladder + conditional control flow reach the canvas and project to
 // ownable Python. A Reflection agent emits its critique→revise loop, and an If-Else router
@@ -9,7 +9,7 @@ import { signInAt } from "./helpers";
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 // Templates moved from a header dropdown to the left icon-rail's Templates panel.
@@ -31,7 +31,7 @@ test("a Router projects to add_conditional_edges", async ({ page }) => {
   await page.getByTestId("add-output").click();
   await expect(page.getByTestId("node-output")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("add_conditional_edges");
@@ -46,7 +46,7 @@ test("a starter template loads onto the canvas and projects to code", async ({
   await loadTemplate(page, "Reflection");
   await expect(page.getByTestId("node-agent")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("critique_prompt", { timeout: 15_000 });
 });

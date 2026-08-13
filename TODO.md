@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-04.
+> record — what shipped and why. Updated 2026-08-13.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -24,11 +24,28 @@ unmetered. Storage is displayed rather than enforced, on purpose. See the sectio
 Delete Account, and a lapsed Plus subscription that no longer destroys run state or claws back
 credits, with over-cap workspaces/projects locked read-only rather than deleted. See the section
 below. **Four things it left open**, none blocking: a real Stripe cancellation and a real blob
-delete are still unverified by hand (`ACCOUNT-DELETION-RUNBOOK.md`); image-node and share-page
-uploads still write no `upload` row so those blobs survive deletion; the Usage tab renders `3 of 1`
+delete are still unverified by hand (`ACCOUNT-DELETION-RUNBOOK.md`); ~~image-node~~ and share-page
+uploads write no row so those blobs survive deletion (**image/TTS output fixed 2026-08-06 by
+`0019`'s `asset` table**; share-page uploads still unattributable); the Usage tab renders `3 of 1`
 as an ordinary meter when over-limit; and **Vercel preview deployments have been failing all day
-while production is fine** — proven environmental with a control branch, but worth a look at the
-dashboard.
+while production is fine** — proven environmental with a control branch, still true on 2026-08-06
+(#73 and #74 both showed a red Vercel check and merged and deployed cleanly), but worth a look at
+the dashboard.
+
+**Playground history + media shipped 2026-08-06** (PRs #73, #74 — both live and verified in
+production): Playground conversations are now durable and per-project, generated images and audio
+are recorded in an `asset` table and browsable from a Media rail panel, and Stop actually stops a
+run mid-answer. See the section below. It **closes half of §3's blob-GC item** — generated media
+is now recorded, deletable and collected on account deletion — and leaves the orphan sweep for
+pre-0019 objects open. Two bugs fixed in passing: a stopped run lost its answer entirely
+(`GeneratorExit` is not an `Exception`), and `gc_checkpoints` collected actively-used threads on
+the strength of their oldest run.
+
+**The canvas toolbar shipped 2026-08-13** (on branch, not yet merged): React Flow's stock
+`<Controls />` and `<MiniMap />` are replaced by one weavy-style bar centred on the canvas —
+arrow/hand tools, undo/redo, and a live zoom readout — with V/H/⌘Z/⌘⇧Z/+/− shortcuts and
+Figma-style scrolling. See the section below; note that `.react-flow__controls` was the e2e
+readiness sentinel and is now `canvas-toolbar`.
 
 §2 is closed: billing is enforced end-to-end and live. §3 is the money-safety work that should
 land before real charges, none of it blocking.
@@ -282,10 +299,17 @@ Build order (each step is useful on its own):
       A `recompute_balance` sweep with an alert on any non-zero difference would turn this from
       "nobody looked" into "we would know" — that is probably the right next step rather than
       hunting the original cause cold.
-- [ ] **Blob GC does not exist** — every image/TTS generation writes a permanent object under
-      `runs/{png,mp3}/…`; nothing deletes them, ever, including on run/agent/share deletion. A
-      monotonically growing bill under a "positive gross margin" gate. Needs `delete_blob` in
-      `calypr_storage` wired to deletions + an orphan sweep.
+- [~] **Blob GC — half closed (2026-08-06, PR #73).** Every image/TTS generation used to write a
+      permanent object under `runs/{png,mp3}/…` that nothing could ever delete, because nothing
+      recorded it. `0019`'s `asset` table starts that record: media is now deletable from the
+      Media panel (row + object together), cascades when its conversation is deleted, is counted
+      in the storage figure, and is collected on account deletion. Failed object deletes park in
+      `orphan_blob` and are retried by `POST /internal/gc/orphan-blobs` nightly.
+      **What is still open:** an **orphan sweep for objects written before `0019`** — those have
+      no row and are unattributable and unrecoverable, exactly like the pre-`0016` uploads. And
+      media generated where `BLOB_READ_WRITE_TOKEN` is unset is deliberately not recorded (it is
+      inlined as a `data:` URI instead), which is correct but means a deployment that later gains
+      a token has a gap either side of that change.
 - [ ] **FORCE RLS on `run` / `run_usage`** — isolation is app-level `workspace_id` filtering and
       billing will read these tables. Give the platform-wide `SUM(cost_usd)` spend-cap query a
       bypass path when forcing.
@@ -406,6 +430,258 @@ Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the s
 
 ---
 
+## 🟢 Canvas & dashboard UI pass — DONE (2026-08-13), on branch
+
+A day of design work bringing the canvas and dashboard toward the weavy.ai language. The toolbar
+(section below) was the first piece; everything here rode after it, on the same branch.
+
+### What changed
+
+- **Sidebar is a tile system.** Blocks, Templates, Connectors and Models are all the same
+  2-column grid of `TILE_CLASS` tiles — icon over label, monochrome, low-opacity white hover.
+  Blocks gained icons (`components/canvas/node-style.ts`), which the canvas node cards read too,
+  so a block looks the same in the sidebar and on the canvas. Rail widened to 52px, active tab
+  ringed, AI icon is a robot, panel is 240px.
+- **Blocks are dragged onto the canvas**, and **nothing auto-links any more** — see the trap
+  below. Palette tiles carry a custom `application/calypr-block` MIME type so the canvas ignores
+  dragged files and links.
+- **Connectors**: account cards with a status dot and a 3-dot menu (Test / API key / Disconnect,
+  with a confirm on disconnect). "API key" only appears on token apps; OAuth apps get
+  "Reconnect", because there is no update endpoint and changing the credential means re-running
+  the original handshake.
+- **Models** (was "API keys"): a tile per provider. `0020` adds `provider_key.key_hint` — the
+  key's last 4 characters, stored in the clear at write time so the UI can say *which* key is on
+  file without the real one ever leaving the server. See that migration for why 4 is safe and why
+  it can't be backfilled.
+- **AI assistant** opens on an intro with four example prompts that send verbatim.
+- **Media** tiles audio in the same grid as images.
+- **Wires take the colour of the block they leave** (`NODE_STYLE.edge`), saturated `-500`s. Run
+  state still wins, so the tint is *withheld* rather than overridden — an inline `stroke` would
+  beat the CSS class and the cyan run glow would never show.
+- **Dashboard**: full width, square cards carrying **deterministic generative art** seeded by the
+  project id. A first pass drew each project's actual graph, backed by a new compact `preview`
+  field on `AgentSummary`; both were removed. Drawing the graph was accurate and unhelpful — most
+  graphs are a short line of dots, so every card looked the same, and finding a project at a
+  glance is the one thing a dashboard has to do. The art carries no information, which is exactly
+  what frees it to be distinctive. (`preview` came out of the API with it: an unread field on a
+  list endpoint is just payload.) Cards are 16:10 and six-up at the widest breakpoint — square
+  art at three-up made each one a poster. The composition is colour fields only; an earlier pass
+  drew pale strokes over them, which at card size read as scratches on the glass.
+- **Browser tab is named after the project**, and follows a rename as you type.
+- Selected node is a solid grey card with a white-grey border (cyan means *running*), and the
+  right panel now follows the selection.
+
+### The traps, all of which cost real time
+
+- **Removing auto-link broke eight suites at once.** Adding a block used to also wire it to the
+  previously added one, and a third of the e2e suite quietly depended on that to produce a
+  runnable graph. `helpers.ts` grew `connect()` / `buildChain()`, which drag handle-to-handle.
+  Then `buildChain` itself was wrong: `fitView` on a canvas holding one node zooms to the 2×
+  maximum, so by the third block the chain ran off-screen and its handles could not be clicked —
+  it silently made 1 edge out of 2. It now zooms out and pans before wiring.
+- **Next streams metadata**, so the route's `<title>` lands *after* hydration and overwrites
+  anything a mount effect set. Rendering a `<title>` doesn't help either — React hoists it, but
+  the browser reads the *first* title element and the streamed one is already there. The working
+  answer is `document.title` plus a `MutationObserver` on `<head>` to re-assert it.
+- **A hidden browser pane pauses `requestAnimationFrame`**, so anything animated is unobservable
+  there: programmatic zoom looked completely dead, and a CSS transition made a selected node read
+  as unselected. Both were fine under Playwright. Check the environment before rewriting working
+  code.
+- **Colours must be polled on the property that actually changes.** The node border is white in
+  both states — only its alpha differs — so polling lightness passes instantly against an
+  unselected node. Tailwind v4 also emits `oklab()` for `color-mix` and plain `lab()` for a
+  literal palette colour, with different lightness ranges.
+- **Two background utilities on one element** are resolved by Tailwind's output order, not the
+  class attribute — so the selected wash has to replace `bg-card`, not sit alongside it.
+- **The bare `transition` utility animates every animatable property over 150ms.** A node click
+  landed its state change in ~45ms and then took another 150ms to *look* selected, which reads as
+  lag. `transition-colors duration-75` fixed it.
+- **Collapsing the left panel moved the canvas.** It is a flex child, so the container widens
+  leftwards and every node slides 240px. The viewport is now compensated by exactly the panel
+  width in a `useLayoutEffect`, so the graph stays where your eyes left it.
+
+### Verified
+
+`typecheck` + `lint` clean · **1557 python, 147 e2e**, zero failures. New specs: `phase16`
+(toolbar), `phase17` (sidebar tiles), `phase18` (panel UI), `phase19` (canvas interaction), plus
+`test_graph_preview.py`.
+
+### Still open
+
+- **The e2e suite shares the dev workspace with real projects.** Repeated full runs polluted it
+  (waitlist rows, workspace caps) and produced a spread of failures that looked like regressions
+  but reproduced on a clean tree. Point the suite at its own workspace before it touches
+  something that matters.
+- **Saved prompts is a tab with a "Coming soon" panel**, nothing behind it yet.
+- **Multiple keys per provider with a primary per project** was scoped out: the table is one row
+  per `(workspace, provider)`, so it needs a migration, CRUD endpoints, run-time resolution
+  changes and a project→key link. Open question before starting: is the primary per project or
+  per agent, given runs resolve keys per workspace today.
+- **The favicon is cut from the vector mark** at 16–256px. A supplied 50px PNG was tried and
+  reverted — it could only support 16/32/48 without upscaling.
+- **The right panel's reopen control lives on the canvas edge**, not the header. It is the only
+  route back to the Code tab with nothing selected, so it cannot be dropped without replacing it.
+- **`TabsList` pins `h-8` through a `group-data-horizontal/tabs:` variant**, which out-specifies a
+  plain height utility — so the Media/Playground tab strips need `h-12!` to breathe. Padding alone
+  did the opposite of what it looked like it would: the strip stayed 32px and the labels squeezed.
+
+---
+
+## 🟢 Canvas toolbar — DONE (2026-08-13), on branch
+
+React Flow's stock chrome is gone. `<Controls />` (the vertical zoom/fit strip, bottom-left) and
+`<MiniMap />` (bottom-right) are replaced by one floating bar centred on the bottom edge of the
+canvas, in the style of weavy.ai: **arrow · hand │ undo · redo │ `100% ⌄`**. New component
+`components/canvas/CanvasToolbar.tsx`; wired into `app/canvas/page.tsx` through React Flow's
+`<Panel position="bottom-center">`.
+
+Shortcuts: **V** arrow, **H** hand, **⌘Z / ⌘⇧Z** undo/redo (unchanged), **+ / −** zoom. Scroll
+moved to the Figma convention — the wheel pans, ⌘/ctrl+wheel and pinch zoom.
+
+### The decisions worth remembering
+
+- **Undo/redo moved out of the header rather than being duplicated.** They now sit next to the
+  tool and zoom controls, within reach of the canvas being edited. The `data-testid`s came along
+  unchanged, so `phase5`'s history test needed no edit at all.
+- **Zoom is owned inside `CanvasToolbar`, not passed down.** `useViewport()` re-renders its caller
+  on *every* viewport change; hoisting it into `CanvasInner` would have re-rendered the whole
+  canvas shell on every pan. The dropdown carries only Zoom in / Zoom out — no fit, no 100% — by
+  decision, which does mean **losing fit-view**; `fitView` on mount stays, so opening a saved
+  agent still frames its graph.
+- **One keydown listener for the whole canvas.** The V/H keys are bare letters, so they share the
+  existing "ignore while typing" guard with undo/redo rather than adding a second listener with
+  its own copy of the rule. That guard is now `isTypingTarget()` and covers `<select>` too —
+  letters there jump to a matching option, and the config panel is full of them.
+- **Arrow = marquee, hand = pan with nodes pinned.** Before this, left-drag always panned and
+  marquee-selecting needed Shift. Holding **Space** still pans in either mode — that is React
+  Flow's default `panActivationKeyCode`, free.
+
+### The trap: `.react-flow__controls` was load-bearing in the e2e suite
+
+It was the *canvas-is-ready* sentinel in `e2e/tests/helpers.ts` and inlined in ~12 specs. Deleting
+`<Controls />` would have failed the entire canvas suite for a reason that looks nothing like the
+change. All of them now wait on `getByTestId("canvas-toolbar")`. New spec:
+`e2e/tests/phase16-canvas-toolbar.spec.ts` (5 cases — tool switching, the typing guard, the zoom
+menu, the zoom keys, and that the stock widgets are actually gone).
+
+### An environment trap that looks exactly like a bug
+
+Driving the app through the in-app Browser pane, programmatic zoom appeared **completely dead** —
+`zoomIn()` left the viewport at `scale(1)` from both the menu and the keyboard. Nothing was
+wrong: a hidden browser pane pauses `requestAnimationFrame`, and React Flow's zoom runs through a
+**d3 transition**, which never ticks. Anything animated is unobservable there. Playwright is the
+real gate; it passed first try. Same class of thing as the Vercel-preview trap below — check the
+environment before rewriting working code.
+
+### Verified
+
+`typecheck` + `lint` clean · **122 e2e passed**, zero failures.
+
+---
+
+## 🟢 Playground history + media — DONE (2026-08-06), merged to main
+
+Two PRs, both live and verified in production: **#73** (`792af97`) durable history + media
+library, migration `0019` · **#74** (`756307e`) Stop mid-run + audio descriptions.
+
+A Playground transcript lived in React state and nothing else, so a reload lost it. Generated
+media was worse: `store_asset` returned a blob URL that existed **only inside the message
+markdown** — no row, so nothing could list it, search it, count its bytes, or reclaim it.
+Inbound uploads have had an `upload` row since `0016`; the media we generate and bill for had
+none.
+
+**LangGraph checkpoints were never a substitute, and conflating the two is the trap.** They hold
+the agent's *memory* of a conversation: TTL-collected per plan, no `workspace_id`, not
+searchable. The transcript is now a separate durable thing the user owns. Consequence worth
+internalising — a conversation can be fully readable while the agent remembers nothing of it, so
+the History row badges "memory expired" rather than hiding.
+
+`0019` adds `conversation`, `message`, `asset`, `orphan_blob`, each with the usual workspace RLS
+policy.
+
+### The three decisions that shaped it
+
+- **`conversation.thread_suffix` stores the suffix, never the composed `ws:<id>:<suffix>`.**
+  `threads.py` closed a cross-tenant hole by making the prefix always server-supplied; putting
+  the composed id in a user-facing table read back out is how it drifts into being trusted input
+  again.
+- **Media is recorded via a new `asset` run event** (node → `run_stream` → `runs.py`), the same
+  path `usage` already takes, so `packages/nodes` stays tenant-free — it gets code-generated into
+  users' exported scripts. `store_asset` returns a `StoredAsset` and a row is written **only when
+  `durable`**: a blob-less deployment still renders the file as a `data:` URI but records
+  nothing, which keeps megabytes of base64 out of Postgres and guarantees `asset.blob_url` is
+  always safe to hand to `delete_blob`.
+- **`share.py` and `assist.py` record neither transcript nor media, on purpose.** Anonymous
+  visitors have no identity to attribute to, so the only workspace available is the *owner's* —
+  their Media panel filling with strangers' files is a privacy surprise, not a feature. Both
+  refusals are commented at the call site; do not wire them up by symmetry.
+
+`ConversationRecorder` mirrors `RunRecorder`'s contract exactly (own session, best-effort,
+self-disabling, two round-trips, nothing per token) and is deliberately **not** folded into it:
+that flush puts usage rows and the credit debit in one transaction, and a bad message payload
+must never be able to roll back a debit.
+
+### Two bugs found in passing, both worse than the feature
+
+- **A stopped run lost its answer entirely.** `runs.py` caught `asyncio.CancelledError` on client
+  disconnect — but a closed async generator raises **`GeneratorExit`**, also a `BaseException`,
+  also invisible to `except Exception`. Both recorders were left unflushed with their sessions
+  open, and the half-written answer was recorded as an error rather than a partial. Pinned by a
+  test that stalls the proxy and fails if either exception is dropped.
+- **`gc_checkpoints` over-collected.** It matched `DISTINCT r.thread_id WHERE r.created_at <
+  cutoff`, so a conversation used daily was collected on the strength of the run that *started*
+  it weeks ago. Now `GROUP BY … HAVING max(r.created_at) < cutoff`. Pre-existing and nearly
+  invisible — a History tab is precisely what makes it reachable, and the symptom would have been
+  an agent forgetting a chat the user was in the middle of.
+
+### Where things live, and why
+
+**History is per project** (`agent_id`, or `agent_id=none` for an unsaved canvas) and sits in the
+Playground; **Media is workspace-wide** and sits in the left rail with All / Images / Audio tabs.
+The split is deliberate: a transcript only means something next to its chat, while media is every
+file the workspace ever produced. History originally shipped workspace-wide — on the theory that
+pre-save conversations have a NULL `agent_id` and would vanish — and the consequence showed up
+within minutes of real use: every project listed every other project's chats. The `none` sentinel
+covers the unsaved case, and the recorder's upsert adopts a conversation into a project on its
+next turn.
+
+Audio rows lead with the caption plus a relative time and model; image tiles don't, because a
+thumbnail identifies itself and a column of identical player pills does not.
+
+### Two environment traps that look exactly like bugs
+
+Both cost real debugging time and will again:
+
+- **"History isn't saving"** = `alembic upgrade head` never ran locally. The recorder's
+  best-effort contract means a missing table logs *one* warning and silently disables. Check
+  `alembic current` first. (Production is automatic — `railway.json` has a `preDeployCommand`
+  running the upgrade before the new container takes traffic, and `alembic` is a **runtime**
+  dependency in `apps/api/pyproject.toml`, not a dev one, which is what makes that work.)
+- **"Generated images don't appear in Media"** = `BLOB_READ_WRITE_TOKEN` unset. The image still
+  *renders* in chat as a `data:` URI, which is what makes this read as a bug rather than missing
+  config.
+
+### Verified in production (2026-08-06)
+
+`alembic_version = 0019` · a real Playground message appears in History and survives a reload ·
+generated audio recorded and listed in the Media panel with its description · per-project
+isolation confirmed. Pre-merge: **1515 python tests, 115 e2e**, zero failures, against a real
+Postgres.
+
+### Still open
+
+- **Orphan sweep for pre-`0019` media** — see §3. Those objects have no row and are
+  unrecoverable, the same shape as the pre-`0016` uploads.
+- **Share-page uploads remain unattributable** (`workspace_id=None`), so they still survive
+  account deletion — see the account-deletion section.
+- **Media is not scoped per project.** The `/assets` endpoint already accepts `agent_id`, so it
+  is a one-line frontend change if that ever becomes wanted.
+- **TTS captions are capped at 60 characters** and are simply the opening of what was spoken. If
+  a caption reads generically, the cause is upstream in what feeds the Voice node's text channel,
+  not in the Media panel.
+
+---
+
 ## 🟢 Account deletion + the downgrade path — DONE (2026-08-04), merged to main
 
 Six PRs, all live: **#60** (`75fb5f7`) delete backend · **#61** (`56a4796`) Settings → Account ·
@@ -506,10 +782,12 @@ locked, oldest kept; rename 402s; deleting one takes the count 2 → 1).
   are live — prefer a 100%-off coupon on a throwaway), and a real **blob delete** confirmed by the
   URL actually 404-ing. The test account is still inside its 7-day purge window; see
   `ACCOUNT-DELETION-RUNBOOK.md`.
-- **Blobs we cannot delete.** `_assets.py` (image-node output) writes no `upload` row, and
-  share-page uploads pass `workspace_id=None`, so those objects survive account deletion
-  permanently and are unattributable. A real gap in a "delete my account" promise. The danger copy
-  says "uploads", not "all your files", on purpose.
+- **Blobs we cannot delete — half fixed (2026-08-06, PR #73).** `_assets.py` (image/TTS output)
+  now writes an `asset` row, and account deletion collects `asset.blob_url` and
+  `orphan_blob.blob_url` alongside `upload.blob_url` through the same load-bearing
+  `workspace.account_id` join. **Still unattributable:** share-page uploads (`workspace_id=None`)
+  and any media generated before `0019`. The danger copy still says "uploads" rather than "all
+  your files" — keep it that way until the share path is covered.
 - **Usage tab renders `3 of 1`** as an ordinary meter when over-limit — honest, not styled as one.
 - **Vercel *preview* deployments have been failing all day** (`Resource provisioning failed`,
   duration `?`) while **production deploys fine**. Proven environmental with a control branch: an

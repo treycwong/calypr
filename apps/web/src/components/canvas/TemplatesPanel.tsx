@@ -3,7 +3,10 @@
 import { Background, ReactFlow, ReactFlowProvider } from "@xyflow/react";
 import { useState } from "react";
 
+import { InfoTip, InfoTipGroup } from "@/components/canvas/InfoTip";
+import { iconForNodeTypes } from "@/components/canvas/node-style";
 import { nodeTypes } from "@/components/canvas/nodes";
+import { TILE_CLASS } from "@/components/canvas/Palette";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -55,9 +58,13 @@ export function TemplatesPanel({
   onLoad: (id: string) => void;
 }) {
   const [preview, setPreview] = useState<Template | null>(null);
+  // "Workflows" rather than "Templates": the panel itself is called Templates, so a group inside
+  // it with the same name said nothing about what separates the two. These are complete
+  // multi-agent systems for a job ("Market research report"); the others are the architecture
+  // patterns an agent can be built on.
   const groups: [string, Template[]][] = [
     ["Frameworks", templates.filter((t) => t.kind === "framework")],
-    ["Templates", templates.filter((t) => t.kind === "template")],
+    ["Workflows", templates.filter((t) => t.kind === "template")],
   ];
 
   function apply() {
@@ -72,63 +79,79 @@ export function TemplatesPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3" data-testid="templates-panel">
-      {templates.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Loading…</p>
-      ) : null}
-      {groups.map(([label, list]) =>
-        list.length ? (
-          <div key={label} className="space-y-1.5">
-            <div className="text-[11px] font-medium text-muted-foreground">{label}</div>
-            {list.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                aria-label={t.name}
-                title={t.description}
-                onClick={() => setPreview(t)}
-                // Sized to the Blocks palette's buttons — h-8 worth of box, same radius and
-                // horizontal padding — so the two rail panels read as one list style. `min-h`
-                // rather than `h` because a long template name still has to wrap.
-                className="flex min-h-8 w-full items-center rounded-lg border border-border bg-card px-2.5 py-2 text-left text-xs font-medium transition hover:border-foreground/20 hover:bg-muted/50"
-              >
-                {t.name}
-              </button>
-            ))}
-          </div>
-        ) : null,
-      )}
+    <InfoTipGroup>
+      <div className="flex flex-col gap-3" data-testid="templates-panel">
+        {templates.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Loading…</p>
+        ) : null}
+        {groups.map(([label, list]) =>
+          list.length ? (
+            <div key={label} className="space-y-1.5">
+              {/* Same treatment as the Connectors panel's "CONNECTED ACCOUNTS" / "MODELS", so a
+                  section heading looks like a section heading in every rail panel. */}
+              <div className="font-mono text-xs font-medium tracking-wide uppercase text-muted-foreground">
+                {label}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                {list.map((t) => {
+                  const Icon = iconForNodeTypes((t.graph.nodes ?? []).map((n) => n.type));
+                  return (
+                    <InfoTip
+                      key={t.id}
+                      title={t.name}
+                      description={t.description}
+                      // Load-bearing: several specs select these by accessible name, scoped to
+                      // `templates-panel` (`getByRole("button", { name, exact: true })`).
+                      aria-label={t.name}
+                      onClick={() => setPreview(t)}
+                      className={TILE_CLASS}
+                    >
+                      <Icon className="h-5 w-5" />
+                      {/* Template names are sentences ("Customer support automation") where block
+                        labels are one word, so they clamp rather than blow the tile out of shape.
+                        The hover card carries the full name, which is why clamping is safe. */}
+                      <span className="line-clamp-2 text-[11px] leading-tight font-medium">
+                        {t.name}
+                      </span>
+                    </InfoTip>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null,
+        )}
 
-      <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
-        <DialogContent className="sm:max-w-xl" data-testid="template-modal">
-          {preview ? (
-            <>
-              <DialogHeader>
-                <DialogTitle className="flex items-center gap-2">
-                  {preview.name}
-                  <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-normal text-muted-foreground capitalize">
-                    {preview.kind}
-                  </span>
-                </DialogTitle>
-                <DialogDescription>{preview.description}</DialogDescription>
-              </DialogHeader>
-              <TemplateDiagram template={preview} />
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setPreview(null)}
-                  data-testid="template-cancel"
-                >
-                  Cancel
-                </Button>
-                <Button onClick={apply} data-testid="template-apply">
-                  Apply
-                </Button>
-              </DialogFooter>
-            </>
-          ) : null}
-        </DialogContent>
-      </Dialog>
-    </div>
+        <Dialog open={!!preview} onOpenChange={(open) => !open && setPreview(null)}>
+          <DialogContent className="sm:max-w-xl" data-testid="template-modal">
+            {preview ? (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    {preview.name}
+                    <span className="rounded-full border border-border px-2 py-0.5 font-sans text-[10px] font-normal text-muted-foreground capitalize">
+                      {preview.kind}
+                    </span>
+                  </DialogTitle>
+                  <DialogDescription>{preview.description}</DialogDescription>
+                </DialogHeader>
+                <TemplateDiagram template={preview} />
+                <DialogFooter>
+                  <Button
+                    variant="outline"
+                    onClick={() => setPreview(null)}
+                    data-testid="template-cancel"
+                  >
+                    Cancel
+                  </Button>
+                  <Button onClick={apply} data-testid="template-apply">
+                    Apply
+                  </Button>
+                </DialogFooter>
+              </>
+            ) : null}
+          </DialogContent>
+        </Dialog>
+      </div>
+    </InfoTipGroup>
   );
 }

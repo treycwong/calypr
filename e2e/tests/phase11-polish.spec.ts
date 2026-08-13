@@ -8,7 +8,7 @@ import { signInAt } from "./helpers";
 test("a failed save surfaces an error toast", async ({ page }) => {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
   // Something to save.
   await page.getByTestId("add-input").click();

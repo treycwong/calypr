@@ -10,16 +10,12 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 
-import { openCanvas, waitForHydration } from "./helpers";
+import { buildChain, openCanvas, waitForHydration } from "./helpers";
 
 /** Input → Agent → Output on the keyless `fake` model — the same shape phase8 builds. */
 async function buildAgent(page: Page) {
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  // Wired by hand: adding a block no longer connects it to anything.
+  await buildChain(page, ["input", "agent", "output"]);
 
   await page.getByTestId("node-agent").click();
   await page.getByTestId("cfg-model").selectOption("fake");

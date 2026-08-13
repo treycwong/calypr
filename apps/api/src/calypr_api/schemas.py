@@ -437,10 +437,16 @@ PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash
 
 
 class ProviderKeyInfo(BaseModel):
-    """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
+    """Whether a workspace has a BYO key on file for a provider. Never carries the key.
+
+    `key_hint` is the key's last 4 characters, stored in the clear at write time (see migration
+    `0020`) so that identifying which key is on file never requires decrypting the real one.
+    `None` means either no key, or a key saved before that migration — both render as a plain
+    "key on file" with nothing to disambiguate."""
 
     provider: Literal["openai", "anthropic", "moonshot", "tavily", "unsplash"]
     has_key: bool
+    key_hint: str | None = None
 
 
 class AccountDeleted(BaseModel):

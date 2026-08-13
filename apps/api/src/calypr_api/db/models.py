@@ -284,6 +284,10 @@ class ProviderKey(Base):
     )
     provider: Mapped[str] = mapped_column(String, nullable=False)  # openai|anthropic|tavily|…
     key_encrypted: Mapped[str] = mapped_column(String, nullable=False)
+    # Last 4 characters of the key, in the clear, so the UI can say *which* key is on file
+    # without anything ever decrypting `key_encrypted` for display. NULL for rows written before
+    # `0020`, which render as a plain "key on file". See that migration for why 4 is safe.
+    key_hint: Mapped[str | None] = mapped_column(String, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

@@ -41,7 +41,7 @@ test("a new Agent block inherits instead of naming a model", async ({ page }) =>
   // still produce a working agent. Router/Evaluator/Memory/Responder/Revisor used to default
   // to `fake` here, which shipped canned "Echo:" answers to anyone who used them.
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
   await page.getByTestId("add-agent").click();
   await page.getByTestId("node-agent").click();

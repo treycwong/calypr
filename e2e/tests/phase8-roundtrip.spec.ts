@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { buildChain, openCode, signInAt } from "./helpers";
 
 import { API_URL } from "../playwright.config";
 
@@ -22,17 +22,13 @@ test.beforeEach(async ({ page }) => {
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 /** Input → Agent → Output on the keyless model, with a known prompt to look for in the code. */
 async function buildAgent(page: Page, prompt = PROMPT) {
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  // Wired by hand: adding a block no longer connects it to anything.
+  await buildChain(page, ["input", "agent", "output"]);
 
   await page.getByTestId("node-agent").click();
   await page.getByTestId("cfg-model").selectOption("fake");
@@ -41,7 +37,7 @@ async function buildAgent(page: Page, prompt = PROMPT) {
 }
 
 async function openCodeTab(page: Page) {
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toHaveValue(/def build_graph\(\):/, { timeout: 15_000 });
   return code;
@@ -147,7 +143,7 @@ test("the round-trip UI is hidden unless it is switched on", async ({ browser })
   await openCanvas(page);
   await buildAgent(page);
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   await expect(page.getByTestId("code-output")).toContainText("def build_graph():", {
     timeout: 15_000,
   });
@@ -164,7 +160,7 @@ test("a locked Code tab says so, and names the account", async ({ browser }) => 
     const page = await context.newPage();
     await openCanvas(page);
     await buildAgent(page);
-    await page.getByTestId("toggle-code").click();
+    await openCode(page);
     await expect(page.getByTestId("roundtrip-locked")).toContainText("private beta", {
       timeout: 15_000,
     });
@@ -194,7 +190,7 @@ test("a beta workspace gets the round-trip with no local opt-in", async ({
     const page = await context.newPage();
     await openCanvas(page);
     await buildAgent(page);
-    await page.getByTestId("toggle-code").click();
+    await openCode(page);
     await expect(page.getByTestId("apply-to-canvas")).toBeVisible({ timeout: 15_000 });
   } finally {
     // Restore `free` — the test above asserts the UI is hidden, and both run against the same

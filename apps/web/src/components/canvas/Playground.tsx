@@ -212,7 +212,7 @@ export function Playground({
       >
         <TabsList
           variant="line"
-          className="w-full justify-start border-b border-border px-2"
+          className="h-12! w-full justify-start border-b border-border px-2"
           data-testid="playground-tabs"
         >
           <TabsTrigger value="chat" data-testid="tab-chat">

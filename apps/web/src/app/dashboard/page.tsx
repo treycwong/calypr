@@ -30,6 +30,7 @@ import {
   updateAgent,
   type WorkspaceList,
 } from "@/lib/api";
+import { ProjectArt } from "@/components/dashboard/ProjectArt";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
 import { relativeTime } from "@/lib/time";
 
@@ -73,7 +74,10 @@ export default function ProjectsPage() {
   }
 
   return (
-    <div className="w-full max-w-5xl px-10 py-8">
+    // Full width with matching side padding. `max-w-5xl` capped the content at 1024px, which on
+    // anything wider left the grid hugging the sidebar with a growing empty gutter on the right —
+    // the page looked mis-aligned rather than centred.
+    <div className="w-full px-10 py-8">
       <header className="flex items-center justify-between gap-4">
         <h1 className="font-heading text-2xl">Projects</h1>
         <div className="flex items-center gap-2">
@@ -124,20 +128,30 @@ export default function ProjectsPage() {
           </div>
         ) : (
           <div
-            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+            // Compact cards: more of them per row, and each one wider than it is tall. Square
+            // art at three-up made every card a poster — the grid is a list of projects, and the
+            // art is there to make a row scannable, not to be looked at.
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
             data-testid="project-grid"
           >
             {filtered.map((a) => (
               <div
                 key={a.id}
-                className="group relative rounded-lg border border-border bg-card p-4 transition hover:border-foreground/20"
+                className="group relative"
                 data-testid="project-card"
                 data-locked={a.locked ? "true" : "false"}
               >
                 {/* Locked projects still open. You can read them, copy out of them, and delete
                     them — locking takes back capacity, not access. */}
                 <Link href={`/canvas?agent=${a.id}`} className="block">
-                  <div className="flex items-center gap-1.5 pr-6">
+                  {/* Generative art keyed to the project id, not a drawing of its graph: most
+                      graphs are a short line of dots, so drawing them made every card look the
+                      same. This carries no information, which is exactly what frees it to be
+                      distinctive enough to find a project by. */}
+                  <div className="aspect-[16/10] overflow-hidden rounded-lg border border-border transition group-hover:border-foreground/20">
+                    <ProjectArt seed={a.id} />
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 pr-6">
                     <span className="truncate text-sm font-medium">{a.name}</span>
                     {a.locked ? (
                       <span
@@ -149,7 +163,7 @@ export default function ProjectsPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
+                  <div className="mt-0.5 text-xs text-muted-foreground">
                     Edited {relativeTime(a.updated_at)}
                   </div>
                 </Link>
@@ -158,7 +172,7 @@ export default function ProjectsPage() {
                     <DropdownMenuTrigger
                       aria-label="Project actions"
                       data-testid="project-menu"
-                      className="rounded-md p-1 text-muted-foreground opacity-0 transition hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
+                      className="rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 transition hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </DropdownMenuTrigger>

@@ -2,15 +2,69 @@
 
 import type { GraphSpec } from "@calypr/dsl";
 import type { Edge, Node } from "@xyflow/react";
-import { Check, Loader2, RotateCcw, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { Check, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { track } from "@/lib/analytics";
 import { API_KEYS_HREF, PROVIDER_KEY_REJECTED } from "@/lib/errors";
-import { assistAgent } from "@/lib/api";
+import { assistAgent, getWorkspace, listAssistantModels } from "@/lib/api";
 import type { NodeData } from "@/lib/graph";
+
+/** Openers for a blank assistant. Written as finished instructions rather than topics, because
+ *  they are sent verbatim — each one has to be a prompt that actually produces a good graph, and
+ *  each exercises a different corner of the block set (retrieval, image, tools, voice). */
+const EXAMPLE_PROMPTS = [
+  "Create a RAG chatbot for my website",
+  "Build targeted image posts for social media",
+  "Research a topic with web search and write a report",
+  "Turn an article into a narrated audio summary",
+];
+
+/** The blank state of the assistant: what it is, and four ways to start.
+ *
+ * It replaced a grey paragraph pinned to the top of an otherwise empty panel, which read as a
+ * disclaimer rather than an invitation. Centring it and making the examples pressable means the
+ * first prompt costs one click instead of composing a sentence from nothing. */
+function AssistantIntro({
+  busy,
+  onPick,
+}: {
+  busy: boolean;
+  onPick: (prompt: string) => void;
+}) {
+  return (
+    <div
+      className="flex h-full flex-col items-center justify-center px-1 text-center"
+      data-testid="assistant-intro"
+    >
+      <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03]">
+        <Sparkles className="h-5 w-5" />
+      </div>
+      <p className="mt-3 text-sm font-medium">Describe the agent you want</p>
+      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+        Tell me what it should do and I&apos;ll draft it live on the canvas — you approve before
+        anything sticks.
+      </p>
+      <div className="mt-4 flex w-full flex-col gap-1.5">
+        {EXAMPLE_PROMPTS.map((p) => (
+          <button
+            key={p}
+            type="button"
+            disabled={busy}
+            onClick={() => onPick(p)}
+            data-testid="assistant-example"
+            className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-xs leading-snug transition hover:border-white/25 hover:bg-white/[0.07] disabled:pointer-events-none disabled:opacity-50"
+          >
+            {p}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 /** A snapshot of the canvas taken just before a proposed graph is previewed (single-level undo). */
 export type CanvasSnapshot = {
@@ -68,7 +122,28 @@ export function AssistantPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Which model is about to answer. Resolved here rather than passed down: this panel is the only
+  // thing that cares, so the two requests are paid for when the assistant is opened rather than
+  // on every canvas load. Stays `null` on failure — a composer that names the wrong model is
+  // worse than one that names none.
+  const [modelLabel, setModelLabel] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getWorkspace(), listAssistantModels()])
+      .then(([ws, options]) => {
+        if (cancelled) return;
+        // `""` is the "inherit the server default" sentinel, and the options list carries its
+        // label ("Server default") like any other choice — so there is no special case here.
+        const chosen = options.find((o) => o.value === (ws.assistant_model ?? ""));
+        setModelLabel(chosen?.label ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const patch = useCallback((id: string, next: Partial<ChatMessage>) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...next } : m)));
@@ -80,67 +155,72 @@ export function AssistantPanel({
     );
   }, []);
 
-  const send = useCallback(async () => {
-    const text = input.trim();
-    if (!text || busy) return;
+  // `override` lets the empty-state example prompts send their text directly, without a round
+  // trip through `input` state that would need an effect to fire afterwards.
+  const send = useCallback(
+    async (override?: string) => {
+      const text = (override ?? input).trim();
+      if (!text || busy) return;
 
-    const history = [
-      ...messages
-        .filter((m) => m.content && !m.error)
-        .map((m) => ({ role: m.role, content: m.content })),
-      { role: "user" as const, content: text },
-    ];
-    const userMsg: ChatMessage = { id: nextId(), role: "user", content: text };
-    const botId = nextId();
-    setMessages((prev) => [
-      ...prev,
-      userMsg,
-      { id: botId, role: "assistant", content: "", thinking: true },
-    ]);
-    setInput("");
-    setBusy(true);
-    track("assistant_prompted", { chars: text.length });
+      const history = [
+        ...messages
+          .filter((m) => m.content && !m.error)
+          .map((m) => ({ role: m.role, content: m.content })),
+        { role: "user" as const, content: text },
+      ];
+      const userMsg: ChatMessage = { id: nextId(), role: "user", content: text };
+      const botId = nextId();
+      setMessages((prev) => [
+        ...prev,
+        userMsg,
+        { id: botId, role: "assistant", content: "", thinking: true },
+      ]);
+      setInput("");
+      setBusy(true);
+      track("assistant_prompted", { chars: text.length });
 
-    const current = getCurrentGraph();
-    try {
-      for await (const ev of assistAgent(history, current)) {
-        if (ev.type === "notice") {
-          // Held separately from `content`: the `note` event below replaces content wholesale,
-          // and the substitution warning must survive that.
-          patch(botId, { notice: ev.message });
-          track("assistant_model_substituted");
-        } else if (ev.type === "note") {
-          patch(botId, { content: ev.text });
-        } else if (ev.type === "graph") {
-          // Preview immediately on the canvas so the user sees the change before approving;
-          // snapshot first so Discard/Undo restores exactly what was there.
-          const snap = snapshot();
-          applyGraph(ev.spec);
-          patch(botId, { spec: ev.spec, snapshot: snap, proposal: "preview" });
-        } else if (ev.type === "error") {
-          patch(botId, {
-            thinking: false,
-            error: true,
-            keyRejected: ev.code === PROVIDER_KEY_REJECTED,
-            content: ev.message || "The assistant hit a problem. Please try again.",
-          });
-          track("assistant_error", { message: ev.message });
+      const current = getCurrentGraph();
+      try {
+        for await (const ev of assistAgent(history, current)) {
+          if (ev.type === "notice") {
+            // Held separately from `content`: the `note` event below replaces content wholesale,
+            // and the substitution warning must survive that.
+            patch(botId, { notice: ev.message });
+            track("assistant_model_substituted");
+          } else if (ev.type === "note") {
+            patch(botId, { content: ev.text });
+          } else if (ev.type === "graph") {
+            // Preview immediately on the canvas so the user sees the change before approving;
+            // snapshot first so Discard/Undo restores exactly what was there.
+            const snap = snapshot();
+            applyGraph(ev.spec);
+            patch(botId, { spec: ev.spec, snapshot: snap, proposal: "preview" });
+          } else if (ev.type === "error") {
+            patch(botId, {
+              thinking: false,
+              error: true,
+              keyRejected: ev.code === PROVIDER_KEY_REJECTED,
+              content: ev.message || "The assistant hit a problem. Please try again.",
+            });
+            track("assistant_error", { message: ev.message });
+          }
+          // `status` events just keep the shimmer alive; nothing to render per-phase.
         }
-        // `status` events just keep the shimmer alive; nothing to render per-phase.
+      } catch {
+        patch(botId, {
+          thinking: false,
+          error: true,
+          content: "The assistant is unavailable right now.",
+        });
+        track("assistant_error", { message: "stream failed" });
+      } finally {
+        patch(botId, { thinking: false });
+        setBusy(false);
+        scrollToEnd();
       }
-    } catch {
-      patch(botId, {
-        thinking: false,
-        error: true,
-        content: "The assistant is unavailable right now.",
-      });
-      track("assistant_error", { message: "stream failed" });
-    } finally {
-      patch(botId, { thinking: false });
-      setBusy(false);
-      scrollToEnd();
-    }
-  }, [input, busy, messages, getCurrentGraph, snapshot, applyGraph, patch, scrollToEnd]);
+    },
+    [input, busy, messages, getCurrentGraph, snapshot, applyGraph, patch, scrollToEnd],
+  );
 
   const onApply = useCallback(
     (m: ChatMessage) => {
@@ -184,12 +264,7 @@ export function AssistantPanel({
       {/* No title here — the left-panel shell in app/canvas/page.tsx renders one header for
           every rail tab. */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {messages.length === 0 ? (
-          <div className="rounded-lg border border-border bg-card p-3 text-xs text-muted-foreground">
-            Describe the agent you want — e.g. “I would like a RAG chatbot for my website” —
-            and I’ll draft it live on the canvas for you to approve.
-          </div>
-        ) : null}
+        {messages.length === 0 ? <AssistantIntro busy={busy} onPick={send} /> : null}
 
         {messages.map((m) =>
           m.role === "user" ? (
@@ -294,21 +369,41 @@ export function AssistantPanel({
         )}
       </div>
 
-      <div className="border-t border-border p-3">
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Describe your agent…"
-            value={input}
-            disabled={busy}
-            data-testid="assistant-input"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
+      {/* A textarea, not a single-line input: describing an agent is a paragraph, and a one-line
+          field scrolled the start of the sentence out of sight while you were still writing it.
+          Enter still sends and Shift+Enter still breaks the line — the same contract the
+          Playground composer uses, so the two chat boxes behave alike. */}
+      <div className="flex flex-col gap-2 border-t border-border p-3">
+        <Textarea
+          rows={3}
+          placeholder="Describe your agent…"
+          value={input}
+          disabled={busy}
+          data-testid="assistant-input"
+          className="max-h-40 min-h-20 resize-none"
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <div className="flex items-center justify-between gap-2">
+          {/* Naming the model here answers the question you have while typing — "what is about
+              to read this?" — and links to the one place it can be changed. */}
+          {modelLabel ? (
+            <Link
+              href={API_KEYS_HREF}
+              title="Change the assistant model in Settings → Workspace"
+              className="min-w-0 truncate text-[11px] text-muted-foreground transition hover:text-foreground"
+              data-testid="assistant-model"
+            >
+              {modelLabel}
+            </Link>
+          ) : (
+            <span />
+          )}
           <Button
             size="sm"
             disabled={busy || !input.trim()}

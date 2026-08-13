@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // Phase 9 gate (AI-ASSISTANT-SPEC.md §10): open the canvas, ask the AI assistant for a RAG
 // chatbot. The proposed graph previews live on the canvas (wired Input → Retriever → Agent →
@@ -11,7 +11,7 @@ import { signInAt } from "./helpers";
 test("prompt the assistant to build a RAG chatbot, approve, then undo", async ({ page }) => {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
   // Open the AI assistant rail panel and send a prompt.
   await page.getByTestId("toggle-assistant").click();
@@ -43,7 +43,7 @@ test("prompt the assistant to build a RAG chatbot, approve, then undo", async ({
 
   // Stop the playground and open the Code tab: the generated Python grounds on a retriever.
   await page.getByTestId("toggle-playground").click();
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   await expect(page.getByTestId("code-output")).toContainText("retriev", {
     timeout: 15_000,
   });

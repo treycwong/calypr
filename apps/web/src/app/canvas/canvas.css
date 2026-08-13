@@ -20,23 +20,27 @@
   box-shadow: none;
 }
 
-/* Zoom / fit controls — the library default renders a near-white button whose icons
-   vanish against our dark canvas. Re-theme them so the icons are clearly visible. */
-.react-flow__controls {
-  border-radius: 0.5rem;
-  overflow: hidden;
-  box-shadow: 0 1px 4px rgb(0 0 0 / 0.3);
+/* The rail panels scroll, but their scrollbar must not take layout width: it is what made the
+   Blocks and Templates grids different sizes — whichever panel happened to overflow lost ~15px
+   to the gutter, so its two tile columns came out narrower than the other's. Overlay scrolling
+   keeps the tile grid identical in every panel; the content still scrolls, and the wheel/trackpad
+   is the affordance. */
+.rail-scroll {
+  scrollbar-width: none; /* Firefox */
 }
-.react-flow__controls-button {
-  background: var(--card);
-  border-bottom: 1px solid var(--border);
-  color: var(--foreground);
+.rail-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 0;
 }
-.react-flow__controls-button:hover {
-  background: var(--muted);
+
+/* Hand tool: the pane itself is what you're grabbing, so the cursor has to say so. React Flow
+   sets `.dragging` on the pane for the duration of the drag. Only the pane changes — nodes keep
+   their own cursor, and they aren't draggable in this mode anyway. */
+.canvas-pan .react-flow__pane {
+  cursor: grab;
 }
-.react-flow__controls-button svg {
-  fill: var(--foreground);
+.canvas-pan .react-flow__pane.dragging {
+  cursor: grabbing;
 }
 
 /* Active-node glow while a run executes: the neon-blue (brand cyan) ring set inline in nodes.tsx
