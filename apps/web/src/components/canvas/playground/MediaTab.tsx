@@ -1,9 +1,14 @@
 "use client";
 
-import { AudioLines, Download, ExternalLink, Trash2 } from "lucide-react";
+import { AudioLines, Download, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-import { ChatAudio } from "@/components/ChatAudio";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
@@ -76,9 +81,6 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
     void load();
   }
 
-  const images = (items ?? []).filter((a) => a.kind === "image");
-  const audio = (items ?? []).filter((a) => a.kind !== "image");
-
   return (
     <div className="flex h-full flex-col">
       {/* No header here — the left-panel shell in app/canvas/page.tsx renders one for every rail
@@ -129,109 +131,15 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
             ) : null}
           </div>
         ) : (
-          <>
-            {images.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
-                {images.map((a) => (
-                  <figure
-                    key={a.id}
-                    data-testid="media-item"
-                    className="group relative overflow-hidden rounded-md border border-border"
-                  >
-                    {/* A plain <img>, not <ChatImage>: that component is built for a chat
-                        bubble (its own download affordance, intrinsic sizing) and fights a
-                        fixed-ratio grid cell. Not `next/image` either — these are arbitrary
-                        blob URLs, which the optimizer would need `remotePatterns` for, and
-                        `ChatImage` made the same call for the same reason. */}
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={a.url}
-                      alt={a.caption}
-                      loading="lazy"
-                      className="aspect-square w-full bg-muted object-cover"
-                    />
-                    <figcaption className="truncate px-2 py-1 text-xs text-muted-foreground">
-                      {a.caption || "Untitled"}
-                    </figcaption>
-                    <div className="absolute top-1 right-1 flex gap-1 opacity-0 transition group-hover:opacity-100">
-                      <IconButton
-                        label="Download"
-                        testId="media-download"
-                        onClick={() =>
-                          void downloadUrl(a.url, filenameFrom(a.caption, extFor(a)))
-                        }
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                      </IconButton>
-                      <IconButton
-                        label="Open in new tab"
-                        testId="media-open"
-                        onClick={() => window.open(a.url, "_blank", "noopener")}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </IconButton>
-                      <IconButton
-                        label="Delete"
-                        testId="media-delete"
-                        onClick={() => setDeleting(a)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </IconButton>
-                    </div>
-                  </figure>
-                ))}
-              </div>
-            ) : null}
-
-            {/* Audio leads with text, images don't. A thumbnail identifies itself at a glance;
-                a row of identical player pills does not, and once a few pile up there is nothing
-                to tell them apart. The caption is the opening of what was actually spoken, which
-                is the cheapest true description available without transcribing anything. */}
-            {audio.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
-                {audio.map((a) => (
-                  <div
-                    key={a.id}
-                    data-testid="media-item"
-                    className="group relative flex flex-col overflow-hidden rounded-md border border-border"
-                  >
-                    {/* The cell an image fills with a thumbnail, audio fills with the waveform
-                        glyph and its caption — same footprint, so the two kinds tile together
-                        instead of the grid breaking into a list halfway down. */}
-                    <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-muted/40 px-2 text-center">
-                      <AudioLines className="h-6 w-6 text-muted-foreground" />
-                      <p
-                        className="line-clamp-3 text-[11px] leading-snug text-muted-foreground"
-                        // The stored caption is capped, so hovering is the only way to see a
-                        // long line in full.
-                        title={a.caption || undefined}
-                        data-testid="media-caption"
-                      >
-                        {a.caption || "Untitled audio"}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground/70">
-                        {[relativeTime(a.created_at), a.model].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                    {/* The compact player, reused as-is — it already carries its own download
-                        control and looks identical to the one in the transcript. */}
-                    <div className="px-1.5 py-1.5">
-                      <ChatAudio src={a.url} label={a.caption || "audio"} />
-                    </div>
-                    <div className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100">
-                      <IconButton
-                        label="Delete"
-                        testId="media-delete"
-                        onClick={() => setDeleting(a)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </IconButton>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-          </>
+          // **One grid over `items`, not one per kind.** Images and audio used to render in two
+          // stacked grids, so audio always began on a fresh row and the panel visibly broke in
+          // half — even though both cells are the same size. Rendering the list in the order the
+          // API returned it keeps newest-first meaningful across both kinds.
+          <div className="grid grid-cols-2 gap-2">
+            {items.map((a) => (
+              <MediaCell key={a.id} asset={a} onDelete={() => setDeleting(a)} />
+            ))}
+          </div>
         )}
       </div>
 
@@ -251,27 +159,83 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-function IconButton({
-  label,
-  testId,
-  onClick,
-  children,
-}: {
-  label: string;
-  testId: string;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+/**
+ * One tile in the media grid — an image thumbnail or an audio card, in the same footprint so the
+ * two kinds tile together instead of the grid breaking into sections.
+ *
+ * **Audio has no inline player.** A row of identical player pills told you nothing and ate the
+ * space the caption needed; the caption — the opening of what was actually spoken — is the only
+ * thing that tells two clips apart. Playing a clip is Open, one item down the menu, which hands
+ * it to the browser's own player.
+ */
+function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => void }) {
+  const isImage = asset.kind === "image";
+  const caption = asset.caption || (isImage ? "Untitled" : "Untitled audio");
+  // Time and model moved off the face of the tile and into its tooltip: at this size they were a
+  // third line of grey text competing with the one line that identifies the clip.
+  const meta = [relativeTime(asset.created_at), asset.model].filter(Boolean).join(" · ");
+
   return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      data-testid={testId}
-      onClick={onClick}
-      className="rounded bg-background/90 p-1 text-muted-foreground shadow-sm hover:text-foreground"
+    <figure
+      data-testid="media-item"
+      className="group relative overflow-hidden rounded-md border border-border"
     >
-      {children}
-    </button>
+      {isImage ? (
+        /* A plain <img>, not <ChatImage>: that component is built for a chat bubble (its own
+           download affordance, intrinsic sizing) and fights a fixed-ratio grid cell. Not
+           `next/image` either — these are arbitrary blob URLs, which the optimizer would need
+           `remotePatterns` for, and `ChatImage` made the same call for the same reason. */
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={asset.url}
+          alt={asset.caption}
+          loading="lazy"
+          className="aspect-square w-full bg-muted object-cover"
+        />
+      ) : (
+        <div className="flex aspect-square w-full items-center justify-center bg-muted/40">
+          <AudioLines className="h-7 w-7 text-muted-foreground" />
+        </div>
+      )}
+
+      <figcaption
+        className="truncate px-2 py-1 text-xs text-muted-foreground"
+        // The stored caption is capped, so hovering is the only way to see a long line in full.
+        title={[caption, meta].filter(Boolean).join(" — ")}
+        data-testid="media-caption"
+      >
+        {caption}
+      </figcaption>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label="File actions"
+          data-testid="media-menu"
+          className="absolute top-1 right-1 rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 shadow-sm transition group-hover:opacity-100 hover:text-foreground data-[popup-open]:opacity-100"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-auto min-w-36">
+          <DropdownMenuItem
+            data-testid="media-download"
+            onClick={() =>
+              void downloadUrl(asset.url, filenameFrom(asset.caption, extFor(asset)))
+            }
+          >
+            <Download className="h-3.5 w-3.5" /> Download
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            data-testid="media-open"
+            onClick={() => window.open(asset.url, "_blank", "noopener")}
+          >
+            <ExternalLink className="h-3.5 w-3.5" /> Open
+          </DropdownMenuItem>
+          <DropdownMenuItem variant="destructive" data-testid="media-delete" onClick={onDelete}>
+            <Trash2 className="h-3.5 w-3.5" /> Delete
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </figure>
   );
 }
+

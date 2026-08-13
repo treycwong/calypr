@@ -7,28 +7,24 @@ import { buildChain, openCanvas, signInAt } from "./helpers";
 // tiled images, and wires take the colour of the block they leave. These cover the behaviour of
 // each; the panels' underlying CRUD is covered by the API tests and phase-settings.
 
-/** Serve a fixed media library, so the grid renders without a database behind it. */
+/** Serve a mixed media library, so the grid renders without a database behind it.
+ *
+ *  Deliberately alternating kinds: images and audio used to render in two stacked grids, so the
+ *  bug only shows when both are present and the API's order interleaves them.
+ */
+const PIXEL =
+  "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
 async function withAssets(page: Page) {
+  const at = new Date().toISOString();
   await page.route("**/api/assets*", async (route) => {
     await route.fulfill({
       json: {
         items: [
-          {
-            id: "a1",
-            kind: "audio",
-            url: "data:audio/mpeg;base64,SUQzAw==",
-            caption: "In a quaint village, nestled between two hills",
-            model: "gpt-4o-mini-tts",
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: "a2",
-            kind: "audio",
-            url: "data:audio/mpeg;base64,SUQzAw==",
-            caption: "The second recording",
-            model: "gpt-4o-mini-tts",
-            created_at: new Date().toISOString(),
-          },
+          { id: "i1", kind: "image", url: PIXEL, caption: "Create a kodak street", model: "gpt-image-2", created_at: at },
+          { id: "a1", kind: "audio", url: "data:audio/mpeg;base64,SUQzAw==", caption: "In a quaint village, nestled between two hills", model: "gpt-4o-mini-tts", created_at: at },
+          { id: "i2", kind: "image", url: PIXEL, caption: "Create a film street", model: "gpt-image-2", created_at: at },
+          { id: "a2", kind: "audio", url: "data:audio/mpeg;base64,SUQzAw==", caption: "The second recording", model: "gpt-4o-mini-tts", created_at: at },
         ],
         next_cursor: null,
       },
@@ -36,24 +32,53 @@ async function withAssets(page: Page) {
   });
 }
 
-test("audio is tiled in the same grid as images", async ({ page }) => {
+test("images and audio share one grid, in API order", async ({ page }) => {
   await withAssets(page);
   await signInAt(page, "/canvas");
   await page.getByTestId("toggle-media").click();
 
   const items = page.getByTestId("media-item");
-  await expect(items).toHaveCount(2);
-  // Both tiles sit on one row — the whole point of the change. A stacked list would put the
-  // second below the first.
-  const first = await items.nth(0).boundingBox();
-  const second = await items.nth(1).boundingBox();
-  expect(first).not.toBeNull();
-  expect(second).not.toBeNull();
-  expect(Math.abs(first!.y - second!.y)).toBeLessThan(4);
-  expect(second!.x).toBeGreaterThan(first!.x);
+  await expect(items).toHaveCount(4);
 
-  // The caption still identifies the clip — it is the only thing telling two players apart.
-  await expect(page.getByTestId("media-caption").first()).toContainText("quaint village");
+  const boxes = await items.evaluateAll((els) =>
+    els.map((e) => {
+      const r = e.getBoundingClientRect();
+      return { x: r.x, y: r.y, w: r.width, h: r.height };
+    }),
+  );
+
+  // Every cell is the same size regardless of kind — that is what lets them tile together.
+  for (const b of boxes) {
+    expect(Math.abs(b.w - boxes[0].w)).toBeLessThan(1);
+    expect(Math.abs(b.h - boxes[0].h)).toBeLessThan(1);
+  }
+  // An image and an audio clip share the first row, and the next pair sits below. Two stacked
+  // grids put every audio item below every image, which is the break this fixed.
+  expect(Math.abs(boxes[0].y - boxes[1].y)).toBeLessThan(2);
+  expect(boxes[1].x).toBeGreaterThan(boxes[0].x);
+  expect(boxes[2].y).toBeGreaterThan(boxes[0].y);
+
+  // The caption identifies the clip — for audio it is the only thing telling two apart.
+  await expect(page.getByTestId("media-caption").nth(1)).toContainText("quaint village");
+});
+
+test("every media tile has one menu carrying Download, Open and Delete", async ({ page }) => {
+  await withAssets(page);
+  await signInAt(page, "/canvas");
+  await page.getByTestId("toggle-media").click();
+
+  // One menu per tile, and no loose icon row: the three actions used to sit on the face of every
+  // image thumbnail, and audio had only Delete.
+  await expect(page.getByTestId("media-menu")).toHaveCount(4);
+
+  // The audio tile has no inline player any more — Open hands it to the browser instead.
+  await expect(page.locator("audio")).toHaveCount(0);
+
+  // Same menu on an audio tile as on an image one.
+  await page.getByTestId("media-menu").nth(1).click();
+  await expect(page.getByTestId("media-download")).toBeVisible();
+  await expect(page.getByTestId("media-open")).toBeVisible();
+  await expect(page.getByTestId("media-delete")).toBeVisible();
 });
 
 test("the assistant opens on an intro with example prompts", async ({ page }) => {
