@@ -464,7 +464,9 @@ A day of design work bringing the canvas and dashboard toward the weavy.ai langu
   graphs are a short line of dots, so every card looked the same, and finding a project at a
   glance is the one thing a dashboard has to do. The art carries no information, which is exactly
   what frees it to be distinctive. (`preview` came out of the API with it: an unread field on a
-  list endpoint is just payload.)
+  list endpoint is just payload.) Cards are 16:10 and six-up at the widest breakpoint — square
+  art at three-up made each one a poster. The composition is colour fields only; an earlier pass
+  drew pale strokes over them, which at card size read as scratches on the glass.
 - **Browser tab is named after the project**, and follows a rename as you type.
 - Selected node is a solid grey card with a white-grey border (cyan means *running*), and the
   right panel now follows the selection.
@@ -519,6 +521,9 @@ A day of design work bringing the canvas and dashboard toward the weavy.ai langu
   reverted — it could only support 16/32/48 without upscaling.
 - **The right panel's reopen control lives on the canvas edge**, not the header. It is the only
   route back to the Code tab with nothing selected, so it cannot be dropped without replacing it.
+- **`TabsList` pins `h-8` through a `group-data-horizontal/tabs:` variant**, which out-specifies a
+  plain height utility — so the Media/Playground tab strips need `h-12!` to breathe. Padding alone
+  did the opposite of what it looked like it would: the strip stayed 32px and the labels squeezed.
 
 ---
 

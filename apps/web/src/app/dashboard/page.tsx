@@ -128,9 +128,10 @@ export default function ProjectsPage() {
           </div>
         ) : (
           <div
-            // More columns as the page widens, now that it uses the full width — three square
-            // cards stretched across a large monitor would be posters, not thumbnails.
-            className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+            // Compact cards: more of them per row, and each one wider than it is tall. Square
+            // art at three-up made every card a poster — the grid is a list of projects, and the
+            // art is there to make a row scannable, not to be looked at.
+            className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6"
             data-testid="project-grid"
           >
             {filtered.map((a) => (
@@ -147,7 +148,7 @@ export default function ProjectsPage() {
                       graphs are a short line of dots, so drawing them made every card look the
                       same. This carries no information, which is exactly what frees it to be
                       distinctive enough to find a project by. */}
-                  <div className="aspect-square overflow-hidden rounded-lg border border-border transition group-hover:border-foreground/20">
+                  <div className="aspect-[16/10] overflow-hidden rounded-lg border border-border transition group-hover:border-foreground/20">
                     <ProjectArt seed={a.id} />
                   </div>
                   <div className="mt-2 flex items-center gap-1.5 pr-6">

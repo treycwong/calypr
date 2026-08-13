@@ -3,13 +3,14 @@
 import type { GraphSpec } from "@calypr/dsl";
 import type { Edge, Node } from "@xyflow/react";
 import { Check, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { track } from "@/lib/analytics";
 import { API_KEYS_HREF, PROVIDER_KEY_REJECTED } from "@/lib/errors";
-import { assistAgent } from "@/lib/api";
+import { assistAgent, getWorkspace, listAssistantModels } from "@/lib/api";
 import type { NodeData } from "@/lib/graph";
 
 /** Openers for a blank assistant. Written as finished instructions rather than topics, because
@@ -121,7 +122,28 @@ export function AssistantPanel({
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
+  // Which model is about to answer. Resolved here rather than passed down: this panel is the only
+  // thing that cares, so the two requests are paid for when the assistant is opened rather than
+  // on every canvas load. Stays `null` on failure — a composer that names the wrong model is
+  // worse than one that names none.
+  const [modelLabel, setModelLabel] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getWorkspace(), listAssistantModels()])
+      .then(([ws, options]) => {
+        if (cancelled) return;
+        // `""` is the "inherit the server default" sentinel, and the options list carries its
+        // label ("Server default") like any other choice — so there is no special case here.
+        const chosen = options.find((o) => o.value === (ws.assistant_model ?? ""));
+        setModelLabel(chosen?.label ?? null);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const patch = useCallback((id: string, next: Partial<ChatMessage>) => {
     setMessages((prev) => prev.map((m) => (m.id === id ? { ...m, ...next } : m)));
@@ -367,15 +389,30 @@ export function AssistantPanel({
             }
           }}
         />
-        <Button
-          size="sm"
-          className="self-end"
-          disabled={busy || !input.trim()}
-          onClick={() => void send()}
-          data-testid="assistant-send"
-        >
-          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
-        </Button>
+        <div className="flex items-center justify-between gap-2">
+          {/* Naming the model here answers the question you have while typing — "what is about
+              to read this?" — and links to the one place it can be changed. */}
+          {modelLabel ? (
+            <Link
+              href={API_KEYS_HREF}
+              title="Change the assistant model in Settings → Workspace"
+              className="min-w-0 truncate text-[11px] text-muted-foreground transition hover:text-foreground"
+              data-testid="assistant-model"
+            >
+              {modelLabel}
+            </Link>
+          ) : (
+            <span />
+          )}
+          <Button
+            size="sm"
+            disabled={busy || !input.trim()}
+            onClick={() => void send()}
+            data-testid="assistant-send"
+          >
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
+          </Button>
+        </div>
       </div>
     </div>
   );

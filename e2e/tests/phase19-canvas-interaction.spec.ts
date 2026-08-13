@@ -152,9 +152,11 @@ test("project cards carry distinct, stable generative art", async ({ page }) => 
   const art = page.getByTestId("project-art");
   await expect(art).toHaveCount(2);
 
-  // Square, and the card's main surface — the name reads underneath it.
+  // Wider than tall (16:10) and compact — square art made every card a poster, and the grid is a
+  // list of projects rather than a gallery.
   const box = await art.first().boundingBox();
-  expect(Math.abs(box!.width - box!.height)).toBeLessThan(2);
+  expect(box!.width / box!.height).toBeGreaterThan(1.4);
+  expect(box!.width / box!.height).toBeLessThan(1.8);
 
   // The whole point is that two projects look nothing alike. Seeded by id, so this is a property
   // of the art rather than luck about these two particular names.
@@ -229,4 +231,20 @@ test("the rail panel is 240px, and Templates headings match the Connectors ones"
     .locator("div", { hasText: /^Frameworks$/ })
     .first();
   await expect(heading).toHaveCSS("text-transform", "uppercase");
+});
+
+test("the assistant composer names the model that will answer", async ({ page }) => {
+  await page.route("**/api/workspace", async (route) => {
+    if (route.request().method() !== "GET") return route.fallback();
+    await route.fulfill({ json: { id: "w1", name: "calypr", plan: "free", assistant_model: "gpt-4o" } });
+  });
+  await openCanvas(page);
+  await page.getByTestId("toggle-assistant").click();
+
+  // The label comes from the API's own option list, so the picker and this line can never
+  // disagree about what a model is called.
+  const model = page.getByTestId("assistant-model");
+  await expect(model).toHaveText("OpenAI · gpt-4o");
+  // It links to the one place the choice can be changed.
+  await expect(model).toHaveAttribute("href", "/dashboard/settings");
 });

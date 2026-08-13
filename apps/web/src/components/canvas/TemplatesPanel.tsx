@@ -128,7 +128,7 @@ export function TemplatesPanel({
                 <DialogHeader>
                   <DialogTitle className="flex items-center gap-2">
                     {preview.name}
-                    <span className="rounded-full border border-border px-2 py-0.5 text-[10px] font-normal text-muted-foreground capitalize">
+                    <span className="rounded-full border border-border px-2 py-0.5 font-sans text-[10px] font-normal text-muted-foreground capitalize">
                       {preview.kind}
                     </span>
                   </DialogTitle>

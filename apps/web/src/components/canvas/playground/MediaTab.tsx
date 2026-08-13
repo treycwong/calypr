@@ -87,9 +87,11 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
       <Tabs value={kind} onValueChange={(v) => setKind(v as string)}>
         <TabsList
           variant="line"
-          // The strip sat flush against the panel header's bottom border, so the two rules read
-          // as one thick line and the tabs looked wedged between them.
-          className="w-full justify-start border-b border-border px-2 pt-4"
+          // `h-12!` — the important modifier is load-bearing. `TabsList` sets `h-8` through a
+          // `group-data-horizontal/tabs:` variant, which out-specifies a plain `h-12`, so the
+          // strip stayed 32px and any padding just squeezed the labels tighter. At 32px the tabs
+          // sat wedged between the panel header's border and their own.
+          className="h-12! w-full justify-start border-b border-border px-2"
           data-testid="media-kinds"
         >
           {KINDS.map((k) => (
