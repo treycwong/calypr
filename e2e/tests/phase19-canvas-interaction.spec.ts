@@ -137,105 +137,35 @@ test("the AI assistant rail icon is a robot, and no divider precedes it", async 
   await expect(page.locator("aside .bg-border")).toHaveCount(0);
 });
 
-test("project cards show the shape of their graph", async ({ page }) => {
-  // Served, so the card's rendering is tested rather than whatever the dev workspace happens to
-  // hold. `preview` is the compact projection the list endpoint adds — types, positions, edges.
+test("project cards carry distinct, stable generative art", async ({ page }) => {
+  const agents = [
+    { id: "a1", name: "Street Photography", updated_at: new Date().toISOString() },
+    { id: "a2", name: "Github Notion", updated_at: new Date().toISOString() },
+  ];
   await page.route("**/api/agents", async (route) => {
     if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: [
-        {
-          id: "a1",
-          name: "Street Photography",
-          updated_at: new Date().toISOString(),
-          preview: {
-            nodes: [
-              { type: "input", x: 0, y: 0 },
-              { type: "image", x: 240, y: 0 },
-              { type: "output", x: 480, y: 0 },
-            ],
-            edges: [
-              [0, 1],
-              [1, 2],
-            ],
-          },
-        },
-        { id: "a2", name: "Blank", updated_at: new Date().toISOString(), preview: null },
-      ],
-    });
+    await route.fulfill({ json: agents });
   });
   await signInAt(page, "/dashboard");
 
-  const cards = page.getByTestId("project-card");
-  await expect(cards).toHaveCount(2);
+  await expect(page.getByTestId("project-card")).toHaveCount(2);
+  const art = page.getByTestId("project-art");
+  await expect(art).toHaveCount(2);
 
-  // Square, per the reference — the thumbnail is the card's main surface, name underneath.
-  const thumb = page.getByTestId("graph-thumb").first();
-  const box = await thumb.boundingBox();
+  // Square, and the card's main surface — the name reads underneath it.
+  const box = await art.first().boundingBox();
   expect(Math.abs(box!.width - box!.height)).toBeLessThan(2);
 
-  // Two wires, coloured by the block they leave: sky out of Input, pink out of Image.
-  const strokes = await page
-    .getByTestId("graph-thumb")
-    .first()
-    .locator("line")
-    .evaluateAll((els) => els.map((e) => e.getAttribute("stroke")));
-  expect(strokes).toEqual(["#0ea5e9", "#ec4899"]);
+  // The whole point is that two projects look nothing alike. Seeded by id, so this is a property
+  // of the art rather than luck about these two particular names.
+  const render = () => art.evaluateAll((els) => els.map((e) => e.innerHTML));
+  const [first, second] = await render();
+  expect(first).not.toEqual(second);
 
-  // The nodes are the blocks themselves — a chip per block carrying its own icon — not dots.
-  const types = await page
-    .getByTestId("graph-thumb")
-    .first()
-    .locator("[data-node-type]")
-    .evaluateAll((els) => els.map((e) => e.getAttribute("data-node-type")));
-  expect(types).toEqual(["input", "image", "output"]);
-
-  // A project saved with an empty canvas says so rather than rendering a blank square.
-  await expect(page.getByTestId("graph-thumb-empty")).toBeVisible();
-});
-
-test("a thumbnail keeps the graph's proportions", async ({ page }) => {
-  // A wide, shallow graph — the common shape. Scaling each axis to fill the square independently
-  // turned this 74px rise across a 500px span into a mountain; the thumbnail has to be the same
-  // shape as the canvas it stands for.
-  await page.route("**/api/agents", async (route) => {
-    if (route.request().method() !== "GET") return route.fallback();
-    await route.fulfill({
-      json: [
-        {
-          id: "a1",
-          name: "Wide and shallow",
-          updated_at: new Date().toISOString(),
-          preview: {
-            nodes: [
-              { type: "input", x: 68, y: 334 },
-              { type: "image", x: 304, y: 260 },
-              { type: "output", x: 565, y: 334 },
-            ],
-            edges: [
-              [0, 1],
-              [1, 2],
-            ],
-          },
-        },
-      ],
-    });
-  });
-  await signInAt(page, "/dashboard");
-
-  const chips = page.getByTestId("graph-thumb").first().locator("[data-node-type]");
-  const boxes = await chips.evaluateAll((els) =>
-    els.map((e) => {
-      const r = e.getBoundingClientRect();
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
-    }),
-  );
-
-  // The rise must stay a small fraction of the run, as it is in the source graph (74 / 497).
-  const run = Math.abs(boxes[2].x - boxes[0].x);
-  const rise = Math.abs(boxes[0].y - boxes[1].y);
-  expect(run).toBeGreaterThan(0);
-  expect(rise / run).toBeLessThan(0.35);
+  // ...and a project's art never changes under it.
+  await page.reload();
+  await expect(art).toHaveCount(2);
+  expect((await render())[0]).toEqual(first);
 });
 
 test("the right panel follows the selection", async ({ page }) => {

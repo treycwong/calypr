@@ -87,9 +87,9 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
       <Tabs value={kind} onValueChange={(v) => setKind(v as string)}>
         <TabsList
           variant="line"
-          // `pt-2`: the strip sat flush against the panel header's bottom border, so the two
-          // rules read as one thick line and the tabs looked wedged between them.
-          className="w-full justify-start border-b border-border px-2 pt-2"
+          // The strip sat flush against the panel header's bottom border, so the two rules read
+          // as one thick line and the tabs looked wedged between them.
+          className="w-full justify-start border-b border-border px-2 pt-4"
           data-testid="media-kinds"
         >
           {KINDS.map((k) => (

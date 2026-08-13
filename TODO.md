@@ -458,9 +458,13 @@ A day of design work bringing the canvas and dashboard toward the weavy.ai langu
 - **Wires take the colour of the block they leave** (`NODE_STYLE.edge`), saturated `-500`s. Run
   state still wins, so the tint is *withheld* rather than overridden — an inline `stroke` would
   beat the CSS class and the cyan run glow would never show.
-- **Dashboard**: full width, square cards showing a real thumbnail of each graph. `AgentSummary`
-  gained a compact `preview` (types, positions, edges-as-indices) — deliberately not the
-  `GraphSpec`, which would ship every project's prompts and model config to render 120px.
+- **Dashboard**: full width, square cards carrying **deterministic generative art** seeded by the
+  project id. A first pass drew each project's actual graph, backed by a new compact `preview`
+  field on `AgentSummary`; both were removed. Drawing the graph was accurate and unhelpful — most
+  graphs are a short line of dots, so every card looked the same, and finding a project at a
+  glance is the one thing a dashboard has to do. The art carries no information, which is exactly
+  what frees it to be distinctive. (`preview` came out of the API with it: an unread field on a
+  list endpoint is just payload.)
 - **Browser tab is named after the project**, and follows a rename as you type.
 - Selected node is a solid grey card with a white-grey border (cyan means *running*), and the
   right panel now follows the selection.
@@ -513,6 +517,8 @@ A day of design work bringing the canvas and dashboard toward the weavy.ai langu
   per agent, given runs resolve keys per workspace today.
 - **The favicon is cut from the vector mark** at 16–256px. A supplied 50px PNG was tried and
   reverted — it could only support 16/32/48 without upscaling.
+- **The right panel's reopen control lives on the canvas edge**, not the header. It is the only
+  route back to the Code tab with nothing selected, so it cannot be dropped without replacing it.
 
 ---
 

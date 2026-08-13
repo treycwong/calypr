@@ -26,7 +26,6 @@ import {
   type LucideIcon,
   MessageSquare,
   PanelLeftClose,
-  PanelRightClose,
   PanelRightOpen,
   Share2,
 } from "lucide-react";
@@ -160,7 +159,7 @@ function CanvasInner() {
   // The persistent right panel switches between node Properties and generated Code.
   const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
   // Closed until something is selected. A node click opens it; a click on empty canvas puts it
-  // away again. The header toggle is the way back to Code with nothing selected.
+  // away again. The canvas-edge toggle is the way back to Code with nothing selected.
   const [rightOpen, setRightOpen] = useState(false);
   // Entitlement tier from the API (`free|beta|plus`); `free` until it loads, so a beta-only
   // surface never flashes for someone who isn't entitled to it.
@@ -701,23 +700,6 @@ function CanvasInner() {
           ) : null}
           {/* Undo/Redo used to sit here. They live in the canvas toolbar now — next to the tool
               and zoom controls they belong with, and within reach of the canvas you're editing. */}
-          {/* The right panel now opens on a node click and closes on a canvas click, so this is
-              the way back to it — and the only way to reach the Code tab with nothing selected. */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setRightOpen((o) => !o)}
-            aria-label={rightOpen ? "Hide properties panel" : "Show properties panel"}
-            aria-pressed={rightOpen}
-            title={rightOpen ? "Hide properties panel" : "Show properties panel"}
-            data-testid="toggle-right-panel"
-          >
-            {rightOpen ? (
-              <PanelRightClose className="h-4 w-4" />
-            ) : (
-              <PanelRightOpen className="h-4 w-4" />
-            )}
-          </Button>
           <Button variant="outline" size="sm" onClick={onSave} data-testid="save-agent">
             Save
           </Button>
@@ -949,6 +931,24 @@ function CanvasInner() {
             {/* Replaces React Flow's stock <Controls /> and <MiniMap />: one horizontal bar
                 carrying the tool switch, history and zoom. Centred on the bottom edge rather than
                 cornered, so it stays equidistant from both side panels as they open and close. */}
+            {/* Reopen the right panel from the canvas edge rather than the header: it is canvas
+                chrome, and it belongs beside the thing it opens. Only rendered while the panel is
+                closed — when it is open, its own tab strip is the way around. This is also the
+                only route back to the Code tab with nothing selected. */}
+            {!rightOpen && !showPlayground ? (
+              <Panel position="top-right">
+                <button
+                  type="button"
+                  onClick={() => setRightOpen(true)}
+                  aria-label="Show properties panel"
+                  title="Show properties panel"
+                  data-testid="toggle-right-panel"
+                  className="flex h-8 w-8 items-center justify-center rounded-md border border-border bg-popover text-muted-foreground shadow-md transition hover:text-foreground"
+                >
+                  <PanelRightOpen className="h-4 w-4" />
+                </button>
+              </Panel>
+            ) : null}
             <Panel position="bottom-center">
               <CanvasToolbar
                 tool={tool}

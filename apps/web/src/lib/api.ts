@@ -215,22 +215,12 @@ export async function getAgent(id: string): Promise<AgentDetail> {
 }
 
 /** A saved agent in the dashboard list (no graph). */
-/** Just enough of a graph to draw its shape on a dashboard card — types, positions, and which
- *  node feeds which. Never the config: the list would carry every project's prompts and model
- *  choices to render a thumbnail. `edges` holds `[sourceIndex, targetIndex]` into `nodes`. */
-export type GraphPreview = {
-  nodes: { type: string; x: number; y: number }[];
-  edges: [number, number][];
-};
-
 export type AgentSummary = {
   id: string;
   name: string;
   updated_at: string;
   /** Beyond the plan's project cap, or inside a locked workspace. Read-only either way. */
   locked?: boolean;
-  /** `null` for a project saved with an empty canvas. */
-  preview?: GraphPreview | null;
 };
 
 /** The current user's saved agents ("projects"), most-recently-edited first. */

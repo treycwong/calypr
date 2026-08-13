@@ -30,7 +30,7 @@ import {
   updateAgent,
   type WorkspaceList,
 } from "@/lib/api";
-import { GraphThumb } from "@/components/dashboard/GraphThumb";
+import { ProjectArt } from "@/components/dashboard/ProjectArt";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
 import { relativeTime } from "@/lib/time";
 
@@ -143,11 +143,12 @@ export default function ProjectsPage() {
                 {/* Locked projects still open. You can read them, copy out of them, and delete
                     them — locking takes back capacity, not access. */}
                 <Link href={`/canvas?agent=${a.id}`} className="block">
-                  {/* A square preview of the graph above the name: at a glance you recognise a
-                      project by its shape, which is how you think about it on the canvas — the
-                      name is how you searched for it. */}
-                  <div className="aspect-square overflow-hidden rounded-lg border border-border bg-card p-3 transition group-hover:border-foreground/20">
-                    <GraphThumb preview={a.preview} />
+                  {/* Generative art keyed to the project id, not a drawing of its graph: most
+                      graphs are a short line of dots, so drawing them made every card look the
+                      same. This carries no information, which is exactly what frees it to be
+                      distinctive enough to find a project by. */}
+                  <div className="aspect-square overflow-hidden rounded-lg border border-border transition group-hover:border-foreground/20">
+                    <ProjectArt seed={a.id} />
                   </div>
                   <div className="mt-2 flex items-center gap-1.5 pr-6">
                     <span className="truncate text-sm font-medium">{a.name}</span>

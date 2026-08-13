@@ -6,7 +6,7 @@ import { Check, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { track } from "@/lib/analytics";
 import { API_KEYS_HREF, PROVIDER_KEY_REJECTED } from "@/lib/errors";
 import { assistAgent } from "@/lib/api";
@@ -347,30 +347,35 @@ export function AssistantPanel({
         )}
       </div>
 
-      <div className="border-t border-border p-3">
-        <div className="flex items-center gap-2">
-          <Input
-            placeholder="Describe your agent…"
-            value={input}
-            disabled={busy}
-            data-testid="assistant-input"
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                void send();
-              }
-            }}
-          />
-          <Button
-            size="sm"
-            disabled={busy || !input.trim()}
-            onClick={() => void send()}
-            data-testid="assistant-send"
-          >
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
-          </Button>
-        </div>
+      {/* A textarea, not a single-line input: describing an agent is a paragraph, and a one-line
+          field scrolled the start of the sentence out of sight while you were still writing it.
+          Enter still sends and Shift+Enter still breaks the line — the same contract the
+          Playground composer uses, so the two chat boxes behave alike. */}
+      <div className="flex flex-col gap-2 border-t border-border p-3">
+        <Textarea
+          rows={3}
+          placeholder="Describe your agent…"
+          value={input}
+          disabled={busy}
+          data-testid="assistant-input"
+          className="max-h-40 min-h-20 resize-none"
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              void send();
+            }
+          }}
+        />
+        <Button
+          size="sm"
+          className="self-end"
+          disabled={busy || !input.trim()}
+          onClick={() => void send()}
+          data-testid="assistant-send"
+        >
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send"}
+        </Button>
       </div>
     </div>
   );
