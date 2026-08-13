@@ -99,6 +99,29 @@ class AgentUpdate(BaseModel):
     graph: GraphSpec | None = None
 
 
+class GraphPreviewNode(BaseModel):
+    """One dot in a project card's thumbnail: what kind of block, and where it sat."""
+
+    type: str
+    x: float
+    y: float
+
+
+class GraphPreview(BaseModel):
+    """Just enough of a graph to draw its *shape* on a dashboard card.
+
+    Deliberately not the `GraphSpec`. The dashboard lists every project at once, and a spec
+    carries system prompts, model choices and API-key-shaped config — none of which a thumbnail
+    needs, all of which would multiply the payload and put secrets-adjacent fields in a response
+    that exists to render 120×120 pixels. Types and positions are the whole of what gets drawn.
+    """
+
+    nodes: list[GraphPreviewNode]
+    #: `[source_index, target_index]` into `nodes`. Indices rather than ids, because the ids are
+    #: only meaningful next to the config this preview deliberately omits.
+    edges: list[tuple[int, int]]
+
+
 class AgentSummary(BaseModel):
     id: str
     name: str
@@ -106,6 +129,8 @@ class AgentSummary(BaseModel):
     #: Beyond the plan's project cap after a downgrade — readable and deletable, but read-only.
     #: Decided by the API (`locking.py`), never re-derived in the browser.
     locked: bool = False
+    #: `None` for a project saved with no nodes, which the card renders as its empty state.
+    preview: GraphPreview | None = None
 
 
 class AgentDetail(BaseModel):
@@ -437,10 +462,16 @@ PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash
 
 
 class ProviderKeyInfo(BaseModel):
-    """Whether a workspace has a BYO key on file for a provider. Never carries the key."""
+    """Whether a workspace has a BYO key on file for a provider. Never carries the key.
+
+    `key_hint` is the key's last 4 characters, stored in the clear at write time (see migration
+    `0020`) so that identifying which key is on file never requires decrypting the real one.
+    `None` means either no key, or a key saved before that migration — both render as a plain
+    "key on file" with nothing to disambiguate."""
 
     provider: Literal["openai", "anthropic", "moonshot", "tavily", "unsplash"]
     has_key: bool
+    key_hint: str | None = None
 
 
 class AccountDeleted(BaseModel):

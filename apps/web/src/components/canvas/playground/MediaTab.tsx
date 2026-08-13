@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ExternalLink, Trash2 } from "lucide-react";
+import { AudioLines, Download, ExternalLink, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { ChatAudio } from "@/components/ChatAudio";
@@ -87,7 +87,9 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
       <Tabs value={kind} onValueChange={(v) => setKind(v as string)}>
         <TabsList
           variant="line"
-          className="w-full justify-start border-b border-border px-2"
+          // `pt-2`: the strip sat flush against the panel header's bottom border, so the two
+          // rules read as one thick line and the tabs looked wedged between them.
+          className="w-full justify-start border-b border-border px-2 pt-2"
           data-testid="media-kinds"
         >
           {KINDS.map((k) => (
@@ -183,44 +185,50 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
                 a row of identical player pills does not, and once a few pile up there is nothing
                 to tell them apart. The caption is the opening of what was actually spoken, which
                 is the cheapest true description available without transcribing anything. */}
-            {audio.map((a) => (
-              <div
-                key={a.id}
-                data-testid="media-item"
-                className="group rounded-md border border-border p-2"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p
-                      className="truncate text-sm"
-                      // The stored caption is capped, so hovering is the only way to see a
-                      // long line in full.
-                      title={a.caption || undefined}
-                      data-testid="media-caption"
-                    >
-                      {a.caption || "Untitled audio"}
-                    </p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      {[relativeTime(a.created_at), a.model].filter(Boolean).join(" · ")}
-                    </p>
+            {audio.length > 0 ? (
+              <div className="grid grid-cols-2 gap-2">
+                {audio.map((a) => (
+                  <div
+                    key={a.id}
+                    data-testid="media-item"
+                    className="group relative flex flex-col overflow-hidden rounded-md border border-border"
+                  >
+                    {/* The cell an image fills with a thumbnail, audio fills with the waveform
+                        glyph and its caption — same footprint, so the two kinds tile together
+                        instead of the grid breaking into a list halfway down. */}
+                    <div className="flex aspect-square w-full flex-col items-center justify-center gap-2 bg-muted/40 px-2 text-center">
+                      <AudioLines className="h-6 w-6 text-muted-foreground" />
+                      <p
+                        className="line-clamp-3 text-[11px] leading-snug text-muted-foreground"
+                        // The stored caption is capped, so hovering is the only way to see a
+                        // long line in full.
+                        title={a.caption || undefined}
+                        data-testid="media-caption"
+                      >
+                        {a.caption || "Untitled audio"}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground/70">
+                        {[relativeTime(a.created_at), a.model].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    {/* The compact player, reused as-is — it already carries its own download
+                        control and looks identical to the one in the transcript. */}
+                    <div className="px-1.5 py-1.5">
+                      <ChatAudio src={a.url} label={a.caption || "audio"} />
+                    </div>
+                    <div className="absolute top-1 right-1 opacity-0 transition group-hover:opacity-100">
+                      <IconButton
+                        label="Delete"
+                        testId="media-delete"
+                        onClick={() => setDeleting(a)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </IconButton>
+                    </div>
                   </div>
-                  <div className="shrink-0 opacity-0 transition group-hover:opacity-100">
-                    <IconButton
-                      label="Delete"
-                      testId="media-delete"
-                      onClick={() => setDeleting(a)}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </IconButton>
-                  </div>
-                </div>
-                {/* The compact player, reused as-is — it already carries its own download
-                    control and looks identical to the one in the transcript. */}
-                <div className="mt-1.5">
-                  <ChatAudio src={a.url} label={a.caption || "audio"} />
-                </div>
+                ))}
               </div>
-            ))}
+            ) : null}
           </>
         )}
       </div>

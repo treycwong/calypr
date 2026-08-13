@@ -215,12 +215,22 @@ export async function getAgent(id: string): Promise<AgentDetail> {
 }
 
 /** A saved agent in the dashboard list (no graph). */
+/** Just enough of a graph to draw its shape on a dashboard card — types, positions, and which
+ *  node feeds which. Never the config: the list would carry every project's prompts and model
+ *  choices to render a thumbnail. `edges` holds `[sourceIndex, targetIndex]` into `nodes`. */
+export type GraphPreview = {
+  nodes: { type: string; x: number; y: number }[];
+  edges: [number, number][];
+};
+
 export type AgentSummary = {
   id: string;
   name: string;
   updated_at: string;
   /** Beyond the plan's project cap, or inside a locked workspace. Read-only either way. */
   locked?: boolean;
+  /** `null` for a project saved with an empty canvas. */
+  preview?: GraphPreview | null;
 };
 
 /** The current user's saved agents ("projects"), most-recently-edited first. */
@@ -320,7 +330,14 @@ export async function notionConnectUrl(): Promise<string> {
 }
 
 /** A model provider's BYO-key state ({has_key}) — the value is never returned. */
-export type ProviderKeyInfo = { provider: string; has_key: boolean };
+/** `key_hint` is the key's last 4 characters, stored in the clear at write time so the UI can say
+ *  *which* key is on file without the real one ever leaving the server. `null` means no key, or a
+ *  key saved before migration `0020`. */
+export type ProviderKeyInfo = {
+  provider: string;
+  has_key: boolean;
+  key_hint?: string | null;
+};
 
 /** Which providers have a workspace BYO key on file (the Settings "API Keys" section). */
 export async function listProviderKeys(): Promise<ProviderKeyInfo[]> {

@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // Phase 2c: the config panel lets you reach what the engine can actually do.
 //
@@ -12,7 +12,7 @@ import { signInAt } from "./helpers";
 
 async function canvasWithAgent(page: Page) {
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
   await page.getByTestId("add-input").click();
   await page.getByTestId("add-agent").click();
   await page.getByTestId("add-output").click();
@@ -46,7 +46,7 @@ test("the agent type reaches the generated code", async ({ page }) => {
   await page.getByTestId("cfg-agent-type").selectOption("goal_based");
   await page.getByTestId("cfg-goal").fill("Refund the customer");
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   await expect(page.getByTestId("code-output")).toContainText("Refund the customer", {
     timeout: 15_000,
   });
@@ -74,7 +74,7 @@ test("a custom code block can declare its imports", async ({ page }) => {
   // Without this the escape hatch couldn't reach the standard library: the engine honoured
   // `imports` and there was no way to set it.
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
   await page.getByTestId("add-input").click();
   await page.getByTestId("add-code").click();
   await page.getByTestId("add-output").click();
@@ -83,7 +83,7 @@ test("a custom code block can declare its imports", async ({ page }) => {
   await page.getByTestId("cfg-imports").fill("import json\nfrom datetime import datetime");
   await page.getByTestId("cfg-code").fill("return {'output': json.dumps({'ok': True})}");
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("import json", { timeout: 15_000 });
   await expect(code).toContainText("from datetime import datetime");

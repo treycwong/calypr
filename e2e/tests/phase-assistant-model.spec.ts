@@ -128,15 +128,15 @@ test("a Coming Soon provider never shows key controls, even with a key on file",
   await expect(page.getByTestId("ws-key-google")).toBeDisabled();
 });
 
-test("Moonshot is no longer offered in the canvas API-keys panel", async ({ page }) => {
+test("Moonshot is no longer offered in the canvas Models panel", async ({ page }) => {
   await signInAt(page, "/canvas");
   await page.getByTestId("tab-connectors").click();
 
   // Moved to Dashboard → Settings → Workspace, so there is exactly one place to manage it.
-  const options = page.getByTestId("key-provider").locator("option");
-  await expect(options.filter({ hasText: "Moonshot" })).toHaveCount(0);
+  // The providers are tiles now, not a dropdown's options.
+  await expect(page.getByTestId("key-provider-moonshot")).toHaveCount(0);
   // The other providers still live here.
-  await expect(options.filter({ hasText: "OpenAI" })).toHaveCount(1);
+  await expect(page.getByTestId("key-provider-openai")).toBeVisible();
 });
 
 test("choosing a non-frontier model persists across a reload", async ({ page }) => {
@@ -169,7 +169,7 @@ test("a run on an unkeyed frontier model falls back and says so", async ({ page 
   });
 
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
   await addNode(page, "input");
   await addNode(page, "agent");
@@ -202,7 +202,7 @@ test("a rejected provider key shows a Fix it link into Settings", async ({ page 
   });
 
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
   await addNode(page, "input");
   await addNode(page, "agent");
 
@@ -227,7 +227,7 @@ test("an ordinary run error shows no Fix it link", async ({ page }) => {
   });
 
   await signInAt(page, "/canvas");
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
   await addNode(page, "input");
   await addNode(page, "agent");
 

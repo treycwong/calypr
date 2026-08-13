@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { openCode, signInAt } from "./helpers";
 
 // Phase 5a gate: tools reach the canvas. The ReAct template projects to the canonical
 // LangGraph tool loop (`ToolNode` + `tools_condition`); the Tool node exposes a provider
@@ -10,7 +10,7 @@ import { signInAt } from "./helpers";
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 // Templates moved from a header dropdown to the left icon-rail's Templates panel.
@@ -34,7 +34,7 @@ test("the ReAct template projects to the canonical ToolNode + tools_condition lo
   await expect(page.getByTestId("node-agent")).toBeVisible();
   await expect(page.getByTestId("node-tool")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("ToolNode");
@@ -87,7 +87,7 @@ test("the Reflexion template projects its Responder/Revisor bounded loop into co
   await expect(page.getByTestId("node-responder")).toBeVisible();
   await expect(page.getByTestId("node-revisor")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("def node_responder");
@@ -103,7 +103,7 @@ test("a use-case template loads a multi-agent pipeline and projects to code", as
   await loadTemplate(page, "Market research report");
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   // a Knowledge node grounds the research agent, then the specialists each become a function
@@ -124,7 +124,7 @@ test("the RAG framework loads a Knowledge node and projects to a vector-store re
   await expect(page.getByTestId("node-retriever")).toBeVisible();
   await expect(page.getByTestId("node-agent")).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   // the default Knowledge source is pgvector → owned PGVector + OpenAI embeddings
@@ -164,7 +164,7 @@ test("the Summarize-or-translate template loads an LLM router and projects to a 
   await expect(page.getByTestId("node-router")).toBeVisible();
   await expect(page.getByTestId("node-agent").first()).toBeVisible();
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   await expect(code).toContainText("init_chat_model");
@@ -210,7 +210,7 @@ test("the Trip-itinerary template fans out to parallel workers and a synthesizer
   const sb = await synthesizer.boundingBox();
   expect(ob && sb && ob.x < sb.x).toBeTruthy(); // orchestrator sits left of the synthesizer
 
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   const code = page.getByTestId("code-output");
   await expect(code).toContainText("def build_graph():", { timeout: 15_000 });
   // each specialist + the synthesizer becomes its own function
@@ -275,7 +275,7 @@ test("the right panel toggles Properties/Code; the rail AI panel is single-selec
   await openCanvas(page);
 
   // The right panel switches between the Code view and node Properties.
-  await page.getByTestId("toggle-code").click();
+  await openCode(page);
   await expect(page.getByTestId("code-panel")).toBeVisible();
   await page.getByTestId("tab-properties").click();
   await expect(page.getByTestId("code-panel")).toHaveCount(0);

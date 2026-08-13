@@ -38,6 +38,8 @@ from calypr_api.schemas import (
     AgentCreate,
     AgentDetail,
     AgentSummary,
+    GraphPreview,
+    GraphPreviewNode,
     AgentUpdate,
     CodegenResponse,
     CompileResponse,
@@ -199,9 +201,61 @@ def list_agents(t: Tenant = Depends(tenant)) -> list[AgentSummary]:
             name=a.name,
             updated_at=a.updated_at,
             locked=a.id in locked.agents or t.workspace_id in locked.workspaces,
+            preview=_preview_of(a.graph_spec),
         )
         for a in rows
     ]
+
+
+#: Enough of a graph to read its shape on a 120px card; beyond this the dots overlap anyway.
+#: A cap matters because this runs for *every* project in the list.
+_PREVIEW_MAX_NODES = 40
+
+
+def _preview_of(spec: object) -> GraphPreview | None:
+    """Project a saved graph down to types + positions + edges, for a dashboard thumbnail.
+
+    Reads the stored JSON directly rather than validating it into a `GraphSpec`: this runs once
+    per project on every dashboard load, and a thumbnail must not be the thing that 500s a list
+    because one old graph no longer validates. Anything unreadable degrades to `None`, which the
+    card renders as its empty state.
+    """
+    if not isinstance(spec, dict):
+        return None
+    raw_nodes = spec.get("nodes")
+    if not isinstance(raw_nodes, list) or not raw_nodes:
+        return None
+
+    nodes: list[GraphPreviewNode] = []
+    index_of: dict[str, int] = {}
+    for n in raw_nodes[:_PREVIEW_MAX_NODES]:
+        if not isinstance(n, dict):
+            continue
+        node_id, node_type = n.get("id"), n.get("type")
+        if not isinstance(node_id, str) or not isinstance(node_type, str):
+            continue
+        pos = n.get("position") if isinstance(n.get("position"), dict) else {}
+        index_of[node_id] = len(nodes)
+        nodes.append(
+            GraphPreviewNode(
+                type=node_type,
+                # A graph saved before positions were persisted lays out as a column; the card
+                # still shows how many blocks it has, which beats showing nothing.
+                x=float(pos.get("x") or 0),
+                y=float(pos.get("y") or len(nodes) * 120),
+            )
+        )
+    if not nodes:
+        return None
+
+    edges: list[tuple[int, int]] = []
+    for e in spec.get("edges") or []:
+        if not isinstance(e, dict):
+            continue
+        s, tgt = index_of.get(e.get("source", "")), index_of.get(e.get("target", ""))
+        if s is not None and tgt is not None:
+            edges.append((s, tgt))
+    return GraphPreview(nodes=nodes, edges=edges)
 
 
 @router.get("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])

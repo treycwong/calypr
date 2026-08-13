@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signInAt } from "./helpers";
+import { buildChain, signInAt } from "./helpers";
 
 // Phase 2 gate (CLAUDE-PLAN.md §11): build Input → Agent → Output on the canvas,
 // configure the Agent, open the playground, send a message, and assert a streamed
@@ -10,16 +10,11 @@ test("build an agent on the canvas and chat with it", async ({ page }) => {
   // Dev sign-in, then land on the canvas.
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 
-  // Build the chain — adding a block links it after the previous one. Gate each add on
-  // the node mounting so no click is lost under parallel load.
-  await page.getByTestId("add-input").click();
-  await expect(page.getByTestId("node-input")).toBeVisible();
-  await page.getByTestId("add-agent").click();
-  await expect(page.getByTestId("node-agent")).toBeVisible();
-  await page.getByTestId("add-output").click();
-  await expect(page.getByTestId("node-output")).toBeVisible();
+  // Build the chain. Adding a block no longer wires it to anything — blocks can be dropped
+  // anywhere, so every connection is drawn by hand; `buildChain` does both.
+  await buildChain(page, ["input", "agent", "output"]);
 
   // Configure the Agent: select its node, switch to the keyless fake model (the default is now
   // gpt-4o-mini), set a prompt.

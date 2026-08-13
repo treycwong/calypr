@@ -11,7 +11,7 @@ import { signInAt } from "./helpers";
 async function openCanvas(page: Page) {
   await signInAt(page, "/canvas");
   await expect(page).toHaveURL(/\/canvas/);
-  await expect(page.locator(".react-flow__controls")).toBeVisible();
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
 }
 
 test("the Connectors tab opens the panel with all sections", async ({ page }) => {
@@ -38,11 +38,16 @@ test("the Connectors tab opens the panel with all sections", async ({ page }) =>
   await expect(page.getByTestId("mcp-add-open")).toHaveCount(0);
   await expect(page.getByTestId("mcp-url")).toHaveCount(0);
   await expect(page.getByTestId("mcp-name")).toHaveCount(0);
-  // API Keys: a provider dropdown; the key input appears only after a provider is picked.
-  await expect(page.getByTestId("key-provider")).toBeVisible();
+  // Models: a tile per provider (was a dropdown); picking one opens a key dialog, Cancel closes
+  // it without saving.
+  await expect(panel.getByText("Models")).toBeVisible();
+  await expect(page.getByTestId("key-providers")).toBeVisible();
   await expect(page.getByTestId("key-input")).toHaveCount(0);
-  await page.getByTestId("key-provider").selectOption("openai");
+  await page.getByTestId("key-provider-openai").click();
+  await expect(page.getByTestId("key-dialog")).toBeVisible();
   await expect(page.getByTestId("key-input")).toBeVisible();
+  await page.getByTestId("key-cancel").click();
+  await expect(page.getByTestId("key-dialog")).toHaveCount(0);
 });
 
 test("an MCP Tool node exposes a Connector dropdown", async ({ page }) => {

@@ -7,16 +7,26 @@
 //
 // Tier B ("paste your own MCP server URL") is deliberately not offered here — see the comment
 // above the `servers` section below. The backend route still exists and still works.
+import { Eye, EyeOff, MoreHorizontal, Plus } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { BrandMark } from "@/components/canvas/BrandMark";
+import { TILE_CLASS } from "@/components/canvas/Palette";
+import { DeleteConfirm } from "@/components/canvas/playground/DeleteConfirm";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/components/ui/toast";
@@ -81,6 +91,10 @@ export function SettingsPanel() {
   const [testing, setTesting] = useState<string | null>(null);
   const [providerKeys, setProviderKeys] = useState<ProviderKeyInfo[]>([]);
   const [githubOpen, setGithubOpen] = useState(false);
+  // The account awaiting a Disconnect confirmation. Disconnecting is one menu click from Test,
+  // and rebuilding an OAuth connection costs a round trip through the provider's consent screen,
+  // so it asks first.
+  const [disconnecting, setDisconnecting] = useState<Connector | null>(null);
 
   // Listing fails without a DB (local dev) — leave the panel empty, no error toast.
   const refresh = () => {
@@ -136,8 +150,16 @@ export function SettingsPanel() {
       await refresh();
     } catch {
       toast("Couldn't remove that connector.", "error");
+    } finally {
+      setDisconnecting(null);
     }
   };
+
+  // "API key" / "Reconnect" both land here: the API has no update endpoint for a connector, so
+  // changing the credential means running the original handshake again. For GitHub that is the
+  // PAT form (saving replaces the stored token); for Notion it is the OAuth redirect. Either way
+  // the user ends up re-authorising, which is what the menu item promises.
+  const reconnect = (c: Connector) => void connectApp(c.kind);
 
   const test = async (id: string) => {
     setTesting(id);
@@ -175,30 +197,42 @@ export function SettingsPanel() {
   return (
     <div className="flex flex-col gap-5" data-testid="connectors-panel">
       <section>
-        <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Connected accounts
-        </h3>
-        <div className="flex flex-col gap-2" data-testid="connected-accounts">
+        {/* Add lives on the header rather than as a tile in the grid: as a tile it was one more
+            card competing with the accounts, and it moved every time one was added or removed.
+            On the header it sits still, and the section title says what it adds. */}
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h3 className="font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            Connected accounts
+          </h3>
+          <button
+            type="button"
+            onClick={() => setConnectOpen(true)}
+            data-testid="connection-add-open"
+            aria-label="Add connection"
+            title="Add connection"
+            className="-my-1 shrink-0 rounded-md p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+        {/* The same two-column grid the Blocks and Templates panels use, so every sidebar panel
+            reads as one system. */}
+        <div className="grid grid-cols-2 gap-2" data-testid="connected-accounts">
           {accounts.map((c) => (
-            <ConnectorRow
+            <ConnectorCard
               key={c.id}
               connector={c}
               testing={testing === c.id}
               onTest={() => test(c.id)}
-              onRemove={() => remove(c.id)}
+              onRemove={() => setDisconnecting(c)}
+              onCredential={() => reconnect(c)}
             />
           ))}
-          {!loading && accounts.length === 0 ? (
-            <p className="text-xs text-muted-foreground">No accounts connected yet.</p>
-          ) : null}
         </div>
+        {!loading && accounts.length === 0 ? (
+          <p className="text-xs text-muted-foreground">No accounts connected yet.</p>
+        ) : null}
         <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
-          <DialogTrigger
-            render={<Button size="sm" variant="outline" className="mt-3 w-full" />}
-            data-testid="connection-add-open"
-          >
-            Add Connection
-          </DialogTrigger>
           <DialogContent data-testid="connection-dialog">
             <DialogHeader>
               <DialogTitle>Add a connection</DialogTitle>
@@ -265,14 +299,16 @@ export function SettingsPanel() {
             Adding new servers is paused while we focus on app connections. Your existing servers
             keep working.
           </p>
-          <div className="flex flex-col gap-2" data-testid="mcp-servers">
+          <div className="grid grid-cols-2 gap-2" data-testid="mcp-servers">
             {servers.map((c) => (
-              <ConnectorRow
+              <ConnectorCard
                 key={c.id}
                 connector={c}
                 testing={testing === c.id}
                 onTest={() => test(c.id)}
-                onRemove={() => remove(c.id)}
+                // No `onCredential`: a pasted MCP endpoint has no handshake to re-run — it is a
+                // URL someone typed, and there is no add form for these any more.
+                onRemove={() => setDisconnecting(c)}
               />
             ))}
           </div>
@@ -283,6 +319,20 @@ export function SettingsPanel() {
         providerKeys={providerKeys}
         onSave={saveKey}
         onRemove={removeKey}
+      />
+
+      <DeleteConfirm
+        open={disconnecting !== null}
+        testId="connector-disconnect-confirm"
+        title="Disconnect this account?"
+        confirmLabel="Continue"
+        description={
+          `Calypr will forget its credential for ${disconnecting?.name ?? "this account"}. ` +
+          "Agents using it will stop working until you connect again — and connecting again means " +
+          "authorising through the provider."
+        }
+        onConfirm={() => disconnecting && void remove(disconnecting.id)}
+        onOpenChange={(o) => !o && setDisconnecting(null)}
       />
     </div>
   );
@@ -297,80 +347,165 @@ function ApiKeysSection({
   onSave: (provider: string, key: string) => void;
   onRemove: (provider: string) => void;
 }) {
+  // `""` = no dialog open. A tile opens the dialog for that provider.
   const [provider, setProvider] = useState("");
-  const [value, setValue] = useState("");
-  const hasKey = providerKeys.find((p) => p.provider === provider)?.has_key ?? false;
+  const info = providerKeys.find((p) => p.provider === provider) ?? null;
   return (
     <section>
       <h3 className="mb-2 font-mono text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        API keys
+        Models
       </h3>
       <p className="mb-2 text-xs text-muted-foreground">
         Bring your own provider keys. Stored encrypted; overrides the server key for your runs.
       </p>
-      <select
-        data-testid="key-provider"
-        value={provider}
-        onChange={(e) => {
-          setProvider(e.target.value);
-          setValue("");
-        }}
-        className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm"
-      >
-        <option value="">Select a provider…</option>
+      {/* A tile per provider rather than a dropdown: four options behind a `<select>` hid which
+          ones already had a key, which is the only thing you come to this section to find out.
+          Only the ones that *do* say so — a "No key" caption under every unkeyed provider was
+          three quarters of the grid repeating the absence of news. */}
+      <div className="grid grid-cols-2 gap-2" data-testid="key-providers">
         {Object.entries(PROVIDER_LABELS).map(([val, label]) => {
           const on = providerKeys.find((p) => p.provider === val)?.has_key;
           return (
-            <option key={val} value={val}>
-              {label}
-              {on ? " • key on file" : ""}
-            </option>
+            <button
+              key={val}
+              type="button"
+              data-testid={`key-provider-${val}`}
+              onClick={() => setProvider(val)}
+              className={TILE_CLASS}
+            >
+              <BrandMark kind={val} className="h-5 w-5" />
+              <span className="w-full truncate text-xs font-medium">{label}</span>
+              {on ? (
+                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <span
+                    className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                    data-testid={`key-onfile-${val}`}
+                  />
+                  Key on file
+                </span>
+              ) : null}
+            </button>
           );
         })}
-      </select>
-      {provider ? (
-        <div className="mt-2 flex flex-col gap-2 rounded-md border border-border p-2">
-          {hasKey ? (
-            <div className="flex items-center justify-between">
-              <span
-                className="font-mono text-sm tracking-widest text-muted-foreground"
-                data-testid="key-masked"
-              >
-                ••••••••••••
-              </span>
-              <button
-                type="button"
-                className="text-xs underline hover:text-foreground"
-                onClick={() => onRemove(provider)}
-                data-testid="key-remove"
-              >
-                remove
-              </button>
-            </div>
-          ) : null}
-          <div className="flex gap-2">
+      </div>
+
+      <ProviderKeyDialog
+        provider={provider}
+        info={info}
+        onOpenChange={(open) => !open && setProvider("")}
+        onSave={onSave}
+        onRemove={onRemove}
+      />
+    </section>
+  );
+}
+
+/** Add, replace or remove one provider's BYO key.
+ *
+ * **The saved key is never shown, because the server has never been able to send it.** It is
+ * Fernet ciphertext decrypted only at run time, and `ProviderKeySet` is documented write-only.
+ * What is shown instead is `key_hint` — the last 4 characters, stored in the clear at write time
+ * (migration `0020`) — which answers the question people actually have here: *is the key on file
+ * the one I think it is?* The eye toggle reveals what **you are typing**, so you can check a
+ * paste before saving; there is nothing to un-hide about the stored one. */
+function ProviderKeyDialog({
+  provider,
+  info,
+  onOpenChange,
+  onSave,
+  onRemove,
+}: {
+  provider: string;
+  info: ProviderKeyInfo | null;
+  onOpenChange: (open: boolean) => void;
+  onSave: (provider: string, key: string) => void;
+  onRemove: (provider: string) => void;
+}) {
+  const [value, setValue] = useState("");
+  const [reveal, setReveal] = useState(false);
+  const hasKey = info?.has_key ?? false;
+  const hint = info?.key_hint ?? null;
+  const label = PROVIDER_LABELS[provider] ?? provider;
+
+  const close = () => {
+    setValue("");
+    setReveal(false);
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={!!provider} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
+      <DialogContent data-testid="key-dialog">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <BrandMark kind={provider} className="h-5 w-5" />
+            {label} API key
+          </DialogTitle>
+          <DialogDescription>
+            {hasKey
+              ? "Saving replaces the key on file. Runs pick up the new one immediately."
+              : `Paste your ${label} key. It's encrypted on our server and never shown again.`}
+          </DialogDescription>
+        </DialogHeader>
+
+        {hasKey ? (
+          <div className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-2">
+            <span className="font-mono text-sm text-muted-foreground" data-testid="key-masked">
+              {/* The dots are a fixed-width mask, not the key's real length — that would leak
+                  something about the secret for nothing. */}
+              ••••••••••••{hint ? ` ${hint}` : ""}
+            </span>
+            <button
+              type="button"
+              className="shrink-0 text-xs text-muted-foreground underline hover:text-foreground"
+              onClick={() => onRemove(provider)}
+              data-testid="key-remove"
+            >
+              Remove
+            </button>
+          </div>
+        ) : null}
+
+        <div className="flex gap-2">
+          <div className="relative flex-1">
             <Input
               data-testid="key-input"
-              type="password"
+              type={reveal ? "text" : "password"}
+              className="pr-8"
               placeholder={hasKey ? "Replace key…" : "Paste key…"}
               value={value}
               onChange={(e) => setValue(e.target.value)}
             />
-            <Button
-              size="sm"
-              disabled={!value.trim()}
-              data-testid="key-save"
-              onClick={() => {
-                onSave(provider, value.trim());
-                setValue("");
-              }}
+            <button
+              type="button"
+              onClick={() => setReveal((r) => !r)}
+              aria-label={reveal ? "Hide key" : "Show key"}
+              title={reveal ? "Hide what you typed" : "Show what you typed"}
+              data-testid="key-reveal"
+              className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-muted-foreground transition hover:text-foreground"
             >
-              Save
-            </Button>
+              {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
           </div>
         </div>
-      ) : null}
-    </section>
+
+        <DialogFooter>
+          <Button variant="outline" onClick={close} data-testid="key-cancel">
+            Cancel
+          </Button>
+          <Button
+            disabled={!value.trim()}
+            data-testid="key-save"
+            onClick={() => {
+              onSave(provider, value.trim());
+              close();
+            }}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -467,32 +602,89 @@ function GithubConnectDialog({
   );
 }
 
-function ConnectorRow({
+/** A connected account, as a tile: the app's mark on top, its name, and a live status line.
+ *
+ * Test and Disconnect moved into a 3-dot menu. As bare buttons they sat at the same weight as the
+ * account name, which put "Remove" one mis-click from a connection that takes an OAuth round trip
+ * to rebuild — and Test, which most people press once, was permanently on screen. */
+function ConnectorCard({
   connector,
   testing,
   onTest,
   onRemove,
+  onCredential,
 }: {
   connector: Connector;
   testing: boolean;
   onTest: () => void;
   onRemove: () => void;
+  /** Re-run the handshake. Omitted for connectors that have none (a pasted MCP URL), which drops
+   *  the menu item rather than showing one that does nothing. */
+  onCredential?: () => void;
 }) {
   const host = connector.url ? safeHost(connector.url) : "";
+  // How this app was connected decides what "change the credential" can even mean. A token app
+  // (GitHub) can be handed a new PAT; an OAuth app (Notion) has no key to edit — the only way to
+  // change what we hold is to walk its consent screen again.
+  const auth = CONNECTOR_CATALOG.find((a) => a.kind === connector.kind)?.auth;
   return (
-    <div className="flex items-center justify-between gap-2 rounded-md border border-border px-2 py-1.5">
-      <div className="min-w-0">
-        <div className="truncate text-sm">{connector.name}</div>
-        {host ? <div className="truncate text-xs text-muted-foreground">{host}</div> : null}
+    <div
+      // The brand mark carries the identity, so the account name is a tooltip rather than a line
+      // of text: at tile width most names truncated anyway, and two lines of chrome above a
+      // one-word status made the card taller than everything it sits next to.
+      title={[connector.name, host].filter(Boolean).join(" · ")}
+      // The same tile the Blocks and Templates grids use, so a card here is the same shape and
+      // height as one two tabs over. Padding-sized boxes came out visibly squatter.
+      className={`${TILE_CLASS} relative`}
+      data-testid={`connector-card-${connector.kind}`}
+    >
+      <BrandMark kind={connector.kind} className="h-5 w-5" />
+      <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
+        {testing ? (
+          "Testing…"
+        ) : (
+          <>
+            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+            Connected
+          </>
+        )}
       </div>
-      <div className="flex shrink-0 gap-1">
-        <Button size="sm" variant="ghost" onClick={onTest} disabled={testing}>
-          {testing ? "…" : "Test"}
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onRemove}>
-          Remove
-        </Button>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          aria-label={`${connector.name} actions`}
+          data-testid={`connector-menu-${connector.kind}`}
+          className="absolute top-1 right-1 rounded-md p-1 text-muted-foreground transition hover:bg-white/10 hover:text-foreground data-[popup-open]:bg-white/10 data-[popup-open]:text-foreground"
+        >
+          <MoreHorizontal className="h-3.5 w-3.5" />
+        </DropdownMenuTrigger>
+        {/* Opens to the right of the card rather than below it: anchored under the trigger, the
+            menu covered the card's own mark and status, so you couldn't see which account you
+            were about to disconnect. */}
+        <DropdownMenuContent side="right" align="start" className="w-auto min-w-36">
+          <DropdownMenuItem
+            data-testid={`connector-test-${connector.kind}`}
+            onClick={onTest}
+            disabled={testing}
+          >
+            Test
+          </DropdownMenuItem>
+          {onCredential ? (
+            <DropdownMenuItem
+              data-testid={`connector-credential-${connector.kind}`}
+              onClick={onCredential}
+            >
+              {auth === "token" ? "API key" : "Reconnect"}
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem
+            variant="destructive"
+            data-testid={`connector-disconnect-${connector.kind}`}
+            onClick={onRemove}
+          >
+            Disconnect
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

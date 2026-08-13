@@ -48,18 +48,28 @@ def test_set_list_resolve_delete_never_leaks_the_key():
     try:
         # set
         r = client.put("/provider-keys/openai", json={"key": "sk-byo-secret"})
-        assert r.status_code == 200 and r.json() == {"provider": "openai", "has_key": True}
-        # list reports has_key but never the value
+        # `key_hint` is the last 4 characters, stored in the clear at write time so the UI can
+        # say *which* key is on file without anything decrypting the real one (migration 0020).
+        assert r.status_code == 200 and r.json() == {
+            "provider": "openai",
+            "has_key": True,
+            "key_hint": "cret",
+        }
+        # list reports has_key + the hint, but never the value
         listed = client.get("/provider-keys")
         assert listed.status_code == 200
         by_provider = {p["provider"]: p["has_key"] for p in listed.json()}
         assert by_provider["openai"] is True
         assert "sk-byo-secret" not in listed.text
+        hints = {p["provider"]: p["key_hint"] for p in listed.json()}
+        assert hints["openai"] == "cret"
         # resolve decrypts server-side
         assert resolve_model_keys(ws).get("openai") == "sk-byo-secret"
-        # upsert replaces
+        # upsert replaces — including the hint, so it never names a key that is no longer there
         client.put("/provider-keys/openai", json={"key": "sk-byo-rotated"})
         assert resolve_model_keys(ws)["openai"] == "sk-byo-rotated"
+        rotated = client.get("/provider-keys").json()
+        assert {p["provider"]: p["key_hint"] for p in rotated}["openai"] == "ated"
         # delete → gone (runs fall back to env)
         assert client.delete("/provider-keys/openai").status_code == 204
         assert "openai" not in resolve_model_keys(ws)
@@ -123,12 +133,32 @@ def test_unsplash_key_round_trips():
         pytest.skip("an Unsplash key is on file — refusing to overwrite/delete a real secret")
     try:
         r = client.put("/provider-keys/unsplash", json={"key": "unsplash-secret"})
-        assert r.status_code == 200 and r.json() == {"provider": "unsplash", "has_key": True}
+        assert r.status_code == 200 and r.json() == {
+            "provider": "unsplash",
+            "has_key": True,
+            "key_hint": "cret",
+        }
         graph = resolve_tool_keys(_unsplash_graph(), ws)
         assert graph.nodes[0].config["api_key"] == "unsplash-secret"
         assert client.delete("/provider-keys/unsplash").status_code == 204
     finally:
         client.delete("/provider-keys/unsplash")
+
+
+@pytest_db
+def test_a_short_key_gets_no_hint():
+    """The hint is safe because a provider key's entropy is in the middle of a long string. That
+    reasoning fails for a short key, where 4 trailing characters could be most of the secret — so
+    anything under 8 characters is stored with no hint at all rather than a revealing one."""
+    try:
+        r = client.put("/provider-keys/openai", json={"key": "sk-1234"})
+        assert r.status_code == 200
+        assert r.json()["has_key"] is True
+        assert r.json()["key_hint"] is None
+        listed = client.get("/provider-keys").json()
+        assert {p["provider"]: p["key_hint"] for p in listed}["openai"] is None
+    finally:
+        client.delete("/provider-keys/openai")
 
 
 @pytest_db

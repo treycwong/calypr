@@ -32,8 +32,15 @@ def list_provider_keys(t: Tenant = Depends(tenant)) -> list[ProviderKeyInfo]:
         .scalars()
         .all()
     )
-    on_file = {r.provider for r in rows}
-    return [ProviderKeyInfo(provider=p, has_key=p in on_file) for p in PROVIDER_KEY_PROVIDERS]
+    by_provider = {r.provider: r for r in rows}
+    return [
+        ProviderKeyInfo(
+            provider=p,
+            has_key=p in by_provider,
+            key_hint=by_provider[p].key_hint if p in by_provider else None,
+        )
+        for p in PROVIDER_KEY_PROVIDERS
+    ]
 
 
 @router.put("/provider-keys/{provider}", response_model=ProviderKeyInfo, tags=["provider-keys"])
@@ -53,23 +60,29 @@ def set_provider_key(
         .scalars()
         .first()
     )
+    # The hint is derived here, at the only point the plaintext is in hand. Short keys would make
+    # a 4-character suffix a large fraction of the secret, so anything under 8 gets no hint at
+    # all rather than a revealing one.
+    hint = body.key[-4:] if len(body.key) >= 8 else None
     if existing is None:
         t.session.add(
             ProviderKey(
                 workspace_id=t.workspace_id,
                 provider=provider,
                 key_encrypted=encrypt(body.key),
+                key_hint=hint,
             )
         )
     else:
         existing.key_encrypted = encrypt(body.key)
+        existing.key_hint = hint
     t.session.commit()
     posthog_client.capture(
         "provider_key_set",
         distinct_id=str(t.workspace_id),
         properties={"provider": provider},
     )
-    return ProviderKeyInfo(provider=provider, has_key=True)
+    return ProviderKeyInfo(provider=provider, has_key=True, key_hint=hint)
 
 
 @router.delete(
