@@ -108,6 +108,20 @@ test("Workflows and Usage are reachable from the sidebar", async ({ page }) => {
     "data-category",
     "Study & revision",
   );
+
+  // Covers are committed URLs, not a runtime search — asserted on the attribute, never on the
+  // pixels, so this gate does not depend on images.unsplash.com being reachable from CI.
+  const first = page.getByTestId("workflow-card").first();
+  await expect(first.locator("img")).toHaveAttribute("src", /images\.unsplash\.com/);
+  // The Unsplash licence asks for a photographer credit linking back, with referral params.
+  await expect(first.getByTestId("workflow-credit")).toHaveAttribute(
+    "href",
+    /unsplash\.com\/@.+utm_source=calypr/,
+  );
+  // The credit is a real link, so it must not be nested inside the card's button.
+  await expect(first.getByTestId("workflow-credit").locator("xpath=ancestor::button")).toHaveCount(
+    0,
+  );
   await expect(
     page.getByTestId("workflow-card").filter({ hasText: "Language flash cards" }),
   ).toBeVisible();
