@@ -1,8 +1,14 @@
 """Shared helper: run one streaming model call and collect the final text.
 
-Used by capability nodes (Evaluator, Memory summary) that make a single model call. The
-Agent node keeps its own loop-aware version. Tokens stream to the playground via the same
-custom stream writer the Agent uses."""
+Used by capability nodes (Evaluator, Memory summary, Router classify) that make a single model
+call. The Agent node keeps its own loop-aware version.
+
+**These calls are internal and do not stream to the chat.** None of their callers writes to
+`messages` — the Evaluator writes a score and a rationale, Memory writes a summary, the Router
+picks a branch — so their text is scaffolding, not the answer. Streaming it appended the judge's
+"SCORE: 5 …" straight onto the end of the reply the user was reading, with no separator and no
+way to tell whose voice it was. `usage` is emitted regardless: the call costs money whether or
+not anyone sees the words."""
 
 from __future__ import annotations
 
@@ -68,9 +74,11 @@ async def collect_text(
     messages: list[Msg],
     temperature: float = 0.0,
     max_tokens: int = 1024,
-    stream: bool = True,
+    stream: bool = False,
 ) -> str:
-    writer = safe_stream_writer() if stream else (lambda _payload: None)
+    """`stream=True` only for a single-shot call whose text *is* the user-facing answer. Every
+    current caller is internal, hence the default."""
+    writer = safe_stream_writer()
     text = ""
     async for ev in model.stream(
         model=model_id,
@@ -81,7 +89,10 @@ async def collect_text(
         max_tokens=max_tokens,
     ):
         if isinstance(ev, TextDelta):
-            writer({"type": "token", "text": ev.text})
+            # Gated on its own, never by silencing the writer: metering must not depend on
+            # whether the node's words happen to be shown.
+            if stream:
+                writer({"type": "token", "text": ev.text})
         elif isinstance(ev, Usage):
             writer(
                 {

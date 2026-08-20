@@ -11,6 +11,7 @@ import json
 from functools import lru_cache
 
 from calypr_compiler.templates import (
+    flashcards,
     image_generation,
     label_reader,
     market_research,
@@ -106,13 +107,37 @@ def _spoken_assistant() -> GraphSpec:
     )
 
 
+def _german_flashcards() -> GraphSpec:
+    """The flashcards template with the study subject filled in.
+
+    Paired with a request that *names* a subject, so it teaches the model to specialize. The
+    generic template prompt ("the learner names a topic") taught the opposite: given "flashcards
+    for learning German" the model reproduced the topic-agnostic wording verbatim, and the first
+    thing the finished app said was "what would you like to be quizzed on?" — to someone who had
+    already answered that. The fenced card specimens are copied through untouched; they teach the
+    format, and the format is the part that has to be byte-right."""
+    spec = flashcards()
+    for node in spec.nodes:
+        if node.type == "agent":
+            node.config["system_prompt"] = node.config["system_prompt"].replace(
+                "You are a study coach. The learner names a topic; you drill them on it "
+                "with flashcards, one small batch at a time, and adapt to what they miss.",
+                "You are a German tutor. Drill the learner on German vocabulary and phrases "
+                "with flashcards, one small batch at a time, and adapt to what they miss. "
+                "Start straight away with common beginner words — never ask them what to "
+                "study, they came here for German.",
+            )
+    return spec
+
+
 def few_shot_pairs() -> list[tuple[str, GraphSpec]]:
     """The (request, spec) pairs the prompt teaches from.
 
     Public so tests can hold them to the same bar as a shipped starter: a few-shot is the
     model's only picture of a correct graph, so an invalid one doesn't just fail — it teaches
     the mistake. Two of these (`_anime_image`, `_spoken_assistant`) are built here rather than
-    taken from `templates.py`, so nothing else covers them."""
+    taken from `templates.py`, so nothing else covers them (`_german_flashcards` derives from
+    one, but rewrites the part under test)."""
     return [
         ("I want a chatbot that answers questions from my documentation.", rag()),
         (
@@ -138,6 +163,12 @@ def few_shot_pairs() -> list[tuple[str, GraphSpec]]:
         # the ReAct loop instead — the Tool node hangs off the *agent*, with `tools`/`respond`
         # branches and an edge back.
         ("Make an assistant that can read my Notion workspace.", notion_assistant()),
+        # Study cards. Without this the model built a plausible-looking "flashcard system" whose
+        # agent emitted **bold** prose, so the UI had nothing to render and no way to keep score —
+        # the cards are a *prompt* contract, and the model can't invent a contract it has never
+        # seen. Carrying the whole `_CARD_PROTOCOL` into the few-shot is the point: it teaches the
+        # exact fence, which is the one part that has to be byte-right.
+        ("Create a flashcard system for learning German.", _german_flashcards()),
     ]
 
 
@@ -165,6 +196,16 @@ HARD RULES (a violation makes the output unusable):
 - Omit every `position` field — the canvas lays nodes out itself.
 - Use the "messages" state channel with the "append" reducer for conversation history.
 - Router out-edges must set a `condition` matching one of the router's branch names.
+- Take an example's SHAPE, not its subject. When the user names a domain ("German", "biology",
+  the AWS exam), the agent's `system_prompt` must name that domain and get to work on it — never
+  ask the learner what to study when they have already said. Any fenced block inside an example
+  prompt is a FORMAT specimen: reproduce it exactly, including its sample content, and change the
+  wording around it.
+- "evaluator" and "memory" are INTERNAL nodes: they write to their own channels (score /
+  rationale, memory) and never to "messages", so nothing they produce reaches the user. Add them
+  only when the user actually asks to score, grade, or remember — never as a quality flourish on
+  a graph that just needs to answer. An evaluator dropped into a chat app costs a second model
+  call per turn and shows the user nothing.
 - A "tool" node must be wired FROM the agent/responder/revisor that will call it, never from a
   router: edge agent -> tool with condition "tools", edge agent -> next with condition
   "respond", and an edge tool -> agent to close the loop. Only the LLM node wired to a tool

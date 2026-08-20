@@ -46,3 +46,26 @@ async def test_memory_summary_uses_the_model():
         {"messages": [HumanMessage(content="a"), AIMessage(content="b")]}
     )
     assert update["memory"] == ["A concise summary."]  # appended to the memory list
+
+
+async def test_internal_nodes_meter_but_do_not_speak(monkeypatch):
+    """The Evaluator judges; it never talks to the user.
+
+    Its text goes to the `rationale` channel, not to `messages` — but it used to be streamed as
+    `token` events all the same, so "SCORE: 5 …" was appended to the end of whatever the Agent had
+    just said, in the same bubble, with no separator. `usage` must still be emitted: the judge call
+    costs money whether or not anyone reads the words.
+    """
+    seen: list[dict] = []
+    monkeypatch.setattr(
+        "calypr_nodes._llm.safe_stream_writer", lambda: seen.append, raising=True
+    )
+
+    ctx = NodeContext(model=FakeModelClient(reply="SCORE: 5\nAccurate and useful."))
+    run = EvaluatorNode.compile(EvaluatorConfig(model="x", scale_max=5), ctx)
+    update = await run({"messages": [AIMessage(content="Apfel — apple")]})
+
+    assert update["score"] == 5.0
+    assert "Accurate and useful." in update["rationale"]
+    assert [e for e in seen if e.get("type") == "token"] == []
+    assert [e for e in seen if e.get("type") == "usage"], "metering must survive the silence"
