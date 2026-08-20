@@ -234,6 +234,11 @@ class WorkspaceList(BaseModel):
     workspaces: list[WorkspaceSummary]
     plan: str
     can_create: bool
+    #: Whether `create_agent` would be allowed right now — the project cap's affordance, answered
+    #: by the same predicate that enforces it (`project_slots_left`). Same reasoning as
+    #: `can_create`: a browser deriving this from a plan name and a row count predicts refusals
+    #: the server would not make, because caps are not enforced without an internal key.
+    can_create_project: bool = True
 
 
 class WorkspaceCreate(BaseModel):

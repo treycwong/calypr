@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ProjectArt } from "@/components/dashboard/ProjectArt";
+import { type CapDetail, UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
 import { track } from "@/lib/analytics";
-import { createAgent, listTemplates, type Template } from "@/lib/api";
+import { CapReachedError, createAgent, listTemplates, type Template } from "@/lib/api";
 
 import { UNSPLASH_UTM, WORKFLOW_PHOTOS } from "./photos";
 
@@ -95,6 +96,7 @@ function PhotoCredits({ templates }: { templates: Template[] }) {
 export function WorkflowGallery() {
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [capped, setCapped] = useState<CapDetail | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -112,8 +114,13 @@ export function WorkflowGallery() {
       // nodes are already wired when it paints — no "apply a template" step to remember.
       const { id } = await createAgent(t.name, t.graph);
       router.push(`/canvas?agent=${id}`);
-    } catch {
+    } catch (err) {
       setBusy(null);
+      // Out of project slots is an answer, not a failure — say what they hit and what passes it.
+      if (err instanceof CapReachedError) {
+        track("project_cap_hit", { from: "workflows" });
+        setCapped({ limit: err.limit, message: err.message });
+      }
     }
   }
 
@@ -171,6 +178,12 @@ export function WorkflowGallery() {
       )}
 
       {templates?.length ? <PhotoCredits templates={templates} /> : null}
+
+      <UpgradeDialog
+        open={capped !== null}
+        onOpenChange={(next) => !next && setCapped(null)}
+        detail={capped ?? undefined}
+      />
     </div>
   );
 }

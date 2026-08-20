@@ -32,6 +32,10 @@ import {
 } from "@/lib/api";
 import { ProjectArt } from "@/components/dashboard/ProjectArt";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
+import { UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
+import { track } from "@/lib/analytics";
+import { PLAN_LIMITS } from "@/lib/plans";
+
 import { relativeTime } from "@/lib/time";
 
 export default function ProjectsPage() {
@@ -44,6 +48,7 @@ export default function ProjectsPage() {
   // Only this page needs it, so it isn't paid for on every dashboard route: the switcher's list
   // carries `locked` and the plan, which is everything the banner has to say.
   const [ws, setWs] = useState<WorkspaceList | null>(null);
+  const [capped, setCapped] = useState(false);
 
   const load = () =>
     listAgents()
@@ -55,6 +60,22 @@ export default function ProjectsPage() {
       .then(setWs)
       .catch(() => setWs(null));
   }, []);
+
+  /** Whether New Project would be refused — the API's answer, not ours.
+   *
+   *  This started out counting rows against `PLAN_LIMITS` here, which was wrong in a way worth
+   *  recording: caps are not enforced without an internal key, so in dev and CI the browser
+   *  predicted a refusal the server would never make, and the dialog blocked the create flow for
+   *  every spec that had already made three projects. The affordance now rides along with the
+   *  workspace list the page already fetches, decided by the same predicate that enforces it. */
+  const atProjectCap = ws?.can_create_project === false;
+
+  function newProject(e: React.MouseEvent) {
+    if (!atProjectCap) return;
+    e.preventDefault();
+    track("project_cap_hit", { from: "dashboard" });
+    setCapped(true);
+  }
 
   const filtered = (agents ?? []).filter((a) =>
     a.name.toLowerCase().includes(query.toLowerCase()),
@@ -92,6 +113,7 @@ export default function ProjectsPage() {
             href="/dashboard/new"
             className={buttonVariants({ size: "sm" })}
             data-testid="new-project"
+            onClick={newProject}
           >
             <Plus className="h-4 w-4" /> New Project
           </Link>
@@ -101,7 +123,14 @@ export default function ProjectsPage() {
       <div className="mt-6">
         {/* Counts the *whole* account, not the filtered view — a search that hides every locked
             project must not make the banner claim there are none. */}
-        <LockedBanner
+        <UpgradeDialog
+        open={capped}
+        onOpenChange={setCapped}
+        // Display copy only — `PLAN_LIMITS` is the promise made on /pricing, and the decision to
+        // show this at all came from the API above.
+        detail={{ limit: PLAN_LIMITS[ws?.plan === "free" ? "free" : "plus"].projects }}
+      />
+      <LockedBanner
           workspaces={(ws?.workspaces ?? []).filter((w) => w.locked).length}
           projects={(agents ?? []).filter((a) => a.locked).length}
           plan={ws?.plan ?? "free"}
@@ -122,6 +151,7 @@ export default function ProjectsPage() {
             <Link
               href="/dashboard/new"
               className={`mt-4 ${buttonVariants({ size: "sm" })}`}
+              onClick={newProject}
             >
               <Plus className="h-4 w-4" /> New Project
             </Link>

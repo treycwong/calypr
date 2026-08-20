@@ -189,6 +189,18 @@ export async function createAgent(name: string, graph: GraphSpec): Promise<Agent
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, graph }),
   });
+  // A plan cap is an answer, not a failure. The API has always sent the reason, the limit and
+  // what's used; this used to throw `save failed (402)` and drop all of it on the floor, at the
+  // exact moment someone was trying to start work.
+  if (res.status === 402) {
+    const detail = (await res.json().catch(() => ({}))).detail ?? {};
+    throw new CapReachedError(
+      detail.reason ?? "project_cap",
+      detail.message ?? "You've reached your plan's project limit.",
+      detail.limit,
+      detail.used,
+    );
+  }
   if (!res.ok) throw new Error(`save failed (${res.status})`);
   return res.json();
 }
@@ -407,6 +419,9 @@ export type WorkspaceList = {
   workspaces: WorkspaceSummary[];
   plan: string;
   can_create: boolean;
+  /** Whether creating another project would be allowed. Answered by the API from the same
+   *  predicate that enforces the cap — never derived here from a plan name and a row count. */
+  can_create_project: boolean;
 };
 
 /** A choice in the Settings assistant-model picker. `byo_provider` set ⇒ frontier: usable only
@@ -548,6 +563,8 @@ export class CapReachedError extends Error {
     readonly reason: string,
     message: string,
     readonly limit?: number,
+    /** How many are already in use, pooled across the account's workspaces. */
+    readonly used?: number,
   ) {
     super(message);
     this.name = "CapReachedError";
