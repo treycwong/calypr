@@ -25,6 +25,7 @@ export default async function SignUpPage({ searchParams }: Props) {
       next={next}
       enabled={betterAuthEnabled()}
       error={error}
+      navAction={{ label: "Log in", href: "/sign-in" }}
       footer={
         <>
           Already have an account?{" "}

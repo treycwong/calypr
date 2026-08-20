@@ -2,7 +2,8 @@ import Link from "next/link";
 
 import { AuthField } from "@/components/auth/AuthField";
 import { SocialSignIn } from "@/components/auth/social-sign-in";
-import { Button } from "@/components/ui/button";
+import { SiteLogo } from "@/components/site/Logo";
+import { Button, buttonVariants } from "@/components/ui/button";
 
 /**
  * The shared shell behind `/sign-in` and `/sign-up`. Both pages post to the same Better Auth
@@ -32,6 +33,32 @@ function errorMessage(code: string): string {
   return ERROR_COPY[code] ?? "Something went wrong signing you in. Please try again.";
 }
 
+/**
+ * The auth pages' own header: the wordmark, and the one link the other page needs.
+ *
+ * Not `SiteHeader` — that carries the full marketing nav and a "Get Started" CTA pointing at
+ * `/sign-in`, which from `/sign-in` is a link to itself. Someone here is mid-sign-in; the only
+ * navigation worth offering is the other half of the pair.
+ */
+function AuthNav({ action }: { action: { label: string; href: string } }) {
+  return (
+    <header className="absolute inset-x-0 top-0 z-20 border-b border-white/10">
+      <div className="flex h-16 w-full items-center justify-between gap-4 px-6">
+        <Link href="/" aria-label="Calypr home" className="shrink-0">
+          <SiteLogo className="h-5 w-auto" />
+        </Link>
+        <Link
+          href={action.href}
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+          data-testid="auth-nav-action"
+        >
+          {action.label}
+        </Link>
+      </div>
+    </header>
+  );
+}
+
 function Notice({ children, testId }: { children: React.ReactNode; testId: string }) {
   return (
     <div
@@ -51,6 +78,7 @@ export function AuthPanel({
   error,
   children,
   footer,
+  navAction,
 }: {
   title: string;
   subtitle: string;
@@ -61,24 +89,16 @@ export function AuthPanel({
   /** Extra notices above the card — today only the account-deleted message on `/sign-in`. */
   children?: React.ReactNode;
   footer: React.ReactNode;
+  /** The other auth page, for the top-right nav button. */
+  navAction: { label: string; href: string };
 }) {
   const devAction = `/api/auth/dev${next ? `?next=${encodeURIComponent(next)}` : ""}`;
 
   return (
     <main className="relative flex min-h-full flex-1 items-center justify-center overflow-hidden bg-[#04060a] p-6 text-white">
       <AuthField />
+      <AuthNav action={navAction} />
       <div className="relative z-10 flex w-full max-w-sm flex-col items-center">
-        <Link href="/" className="mb-8 flex items-center gap-2">
-          <svg width="22" height="22" viewBox="0 0 20 20" aria-hidden className="text-brand">
-            <line x1="5" y1="5" x2="5" y2="15" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-            <line x1="5" y1="5" x2="15" y2="15" stroke="currentColor" strokeWidth="1" opacity="0.4" />
-            <circle cx="5" cy="5" r="2.4" fill="currentColor" />
-            <circle cx="5" cy="15" r="2.4" fill="currentColor" opacity="0.55" />
-            <circle cx="15" cy="15" r="2.4" fill="currentColor" opacity="0.8" />
-          </svg>
-          <span className="font-sans text-sm font-medium tracking-tight text-white">calypr</span>
-        </Link>
-
         {children}
         {error ? <Notice testId="auth-error-notice">{errorMessage(error)}</Notice> : null}
 
@@ -89,9 +109,11 @@ export function AuthPanel({
           </p>
           <div className="mt-5">
             {enabled ? (
+              // One visual weight for every provider. Making one of them the filled button
+              // recommends it, and we have no basis for that — either is a first-class way in.
               <div className="flex flex-col gap-2">
                 <SocialSignIn provider="github" next={next} />
-                <SocialSignIn provider="google" next={next} variant="outline" />
+                <SocialSignIn provider="google" next={next} />
               </div>
             ) : (
               <form method="post" action={devAction}>
@@ -101,10 +123,10 @@ export function AuthPanel({
               </form>
             )}
           </div>
-          <p className="mt-5 text-center text-xs text-white/50">{footer}</p>
+          <p className="mt-5 text-center text-xs text-white/50" data-testid="auth-footer">
+            {footer}
+          </p>
         </div>
-
-        <p className="mt-6 font-mono text-[11px] text-white/40">prompt → canvas → code</p>
       </div>
     </main>
   );
