@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-13.
+> record — what shipped and why. Updated 2026-08-20.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -427,6 +427,69 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, Chroma provider,
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
+
+---
+
+## 🟢 Google sign-in, auth pages, provider disconnect — DONE (2026-08-20), merged + live
+
+Three PRs in a day: Google as a second sign-in provider (#81), then disconnect/unlink plus an
+auth-page pass (#82), then the icon-and-tooltip refinement (#83). All merged to `main`, deployed,
+and confirmed working in production against a real GitHub + Google pair.
+
+### What shipped
+
+- **Google OAuth.** `socialProviders.google` beside `github` in `apps/web/src/lib/auth-server.ts`.
+  That is the entire exchange-side change — Better Auth owns the OAuth flow inside Next, and the
+  Python API only ever sees an opaque user id, so **the backend was untouched**.
+- **`/sign-up` as its own route**, sharing one server-rendered `AuthPanel` with `/sign-in`.
+  Mechanically identical (social sign-in creates the user on first use); separate so the heading,
+  copy and URL can speak to someone who has never been here.
+- **A WebGL backdrop** (`components/auth/AuthField.tsx`) on `@paper-design/shaders-react`, which
+  was already a dependency and imported nowhere. Deliberately *not* the share page's `AsciiField`.
+- **A real auth header** — wordmark left, the other auth page right. Not `SiteHeader`: its
+  "Get Started" CTA points at `/sign-in`, which from `/sign-in` is a link to itself.
+- **Disconnect per provider**, an icon + tooltip behind a confirm dialog, with the last provider
+  dimmed and explained rather than removed.
+- **`--color-brand`** promoted into `@theme inline`; cyan previously existed only as literals in
+  the share route.
+
+### The constraint that governs any future auth change
+
+`billing_account.owner_user_id` **is** the Better Auth `user.id` (migration 0016 /
+`resolve_account`). A duplicate user row means a duplicate billing account — a second plan, a
+second credit balance, and the person's own agents invisible to them.
+
+Better Auth's **defaults** already prevent that (`accountLinking.enabled`, implicit linking on,
+`requireLocalEmailVerified` on), and both providers report verification honestly. So
+`auth-server.ts` carries **no `accountLinking` block on purpose**, with a comment saying why.
+**Never add `trustedProviders` to "fix" a refused link** — that reopens pre-registration takeover,
+which given beta-invite matching on `x-calypr-user-email` hands out a paid feature.
+
+Verified live: same-email GitHub → Google folded into one account, plan and workspaces intact.
+
+### Two traps worth remembering
+
+- **`session.freshAge: 0`** (set so GitHub users can complete account deletion) makes Better
+  Auth's `freshSessionMiddleware` a **no-op on every endpoint relying on it**, including
+  `/unlink-account`. Confirm dialogs are the only friction; middleware freshness buys nothing.
+- **Per-frame shader props swallow clicks.** Driving the backdrop's `offsetX`/`offsetY` from React
+  state re-renders the WebGL layer every frame and saturates the main thread hard enough that
+  **links stop navigating with no error anywhere** — it took out 13 unrelated E2E specs that
+  merely pass *through* `/sign-in`. Found only by running the suite on stashed `main` as a
+  control. The parallax is now a `translate3d` mutated from the rAF loop; the shader's props never
+  change.
+- Related: **Tailwind v4 prunes a `@theme inline` entry pointing at a non-theme `var()`**, so the
+  utility silently renders as `inherit`. Use literals. And the Next dev server serves stale CSS
+  across branch switches — confirm against the production build before concluding anything.
+
+### Still open on this work
+
+- `phase19-canvas-interaction.spec.ts:202` flakes ~1-in-6 **on `main`** (a 6px layout tolerance).
+  Pre-existing, not caused by this work, not fixed.
+- `/dashboard/settings` throws an unhandled `BetterAuthError: You are using the default secret` on
+  the dev-auth path. Reproducible on untouched `main` via `phase-settings.spec.ts`. Pre-existing.
+- The unlink round-trip has **no E2E coverage** and structurally cannot have any: the dev-auth
+  session has no Better Auth `account` rows. Verified by hand in production instead.
 
 ---
 
