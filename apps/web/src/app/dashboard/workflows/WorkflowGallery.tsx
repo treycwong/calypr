@@ -20,13 +20,18 @@ function WorkflowThumb({ template }: { template: Template }) {
   return (
     <div className="aspect-[16/10] w-full overflow-hidden bg-muted">
       {photo ? (
-        // eslint-disable-next-line @next/next/no-img-element -- next/image would add a
-        // remotePatterns entry and route eighteen covers through the Vercel optimizer (billed
-        // per transformation) to re-derive what imgix already did: these URLs are pinned to the
-        // exact display size, webp, q80. The optimizer has nothing left to optimize.
+        /* next/image would add a remotePatterns entry and route eighteen covers through the
+           Vercel optimizer (billed per transformation) to re-derive what imgix already did:
+           these URLs are pinned to the exact display size, webp, q80. Nothing left to optimize.
+           The directive has to be the line directly above the element — with the rationale
+           inline it pointed at its own continuation comment and silently did nothing. */
+        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={photo.src}
           alt={photo.alt}
+          // A native tooltip, not an overlay: it names the photographer on hover without putting
+          // a second click target on a card whose whole job is to be one.
+          title={`Photo by ${photo.by} on Unsplash`}
           loading="lazy"
           decoding="async"
           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
@@ -37,6 +42,53 @@ function WorkflowThumb({ template }: { template: Template }) {
         <ProjectArt seed={template.id} />
       )}
     </div>
+  );
+}
+
+/** Photographer credits for the covers on screen.
+ *
+ *  Unsplash's API guidelines ask that every displayed photo credit its photographer with a link
+ *  to their profile. That credit used to sit on the card itself, which meant the most inviting
+ *  part of a card — the photo — opened unsplash.com instead of the workflow. Collecting the
+ *  credits here keeps the obligation and gives the cards back their whole surface.
+ *
+ *  Deduplicated and sorted: one photographer shooting two covers should be thanked once. */
+function PhotoCredits({ templates }: { templates: Template[] }) {
+  const people = new Map<string, string>();
+  for (const t of templates) {
+    const photo = WORKFLOW_PHOTOS[t.id];
+    if (photo) people.set(photo.by, photo.href);
+  }
+  if (people.size === 0) return null;
+  const credits = [...people.entries()].sort(([a], [b]) => a.localeCompare(b));
+
+  return (
+    <p className="mt-10 text-[11px] leading-relaxed text-muted-foreground" data-testid="photo-credits">
+      Cover photos by{" "}
+      {credits.map(([name, href], i) => (
+        <span key={name}>
+          {i > 0 ? (i === credits.length - 1 ? " and " : ", ") : null}
+          <a
+            href={`${href}${UNSPLASH_UTM}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            {name}
+          </a>
+        </span>
+      ))}{" "}
+      on{" "}
+      <a
+        href={`https://unsplash.com${UNSPLASH_UTM}`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="underline underline-offset-2 hover:text-foreground"
+      >
+        Unsplash
+      </a>
+      .
+    </p>
   );
 }
 
@@ -89,55 +141,36 @@ export function WorkflowGallery() {
           className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4"
           data-testid="workflow-grid"
         >
-          {templates.map((t) => {
-            const photo = WORKFLOW_PHOTOS[t.id];
-            return (
-              // The card is a container, not a button: the photographer credit has to be a real
-              // link, and a link inside a button is invalid and unreachable by keyboard. Instead
-              // the button is stretched over the card and the credit sits above it.
-              <div
-                key={t.id}
-                data-testid="workflow-card"
-                data-category={t.category}
-                className="group relative overflow-hidden rounded-lg border border-border bg-card transition hover:border-foreground/25"
-              >
-                <WorkflowThumb template={t} />
-                <div className="p-3">
-                  <div className="truncate text-[13px] font-medium">
-                    {busy === t.id ? "Opening…" : t.name}
-                  </div>
-                  <div className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
-                    {t.description}
-                  </div>
+          {/* The whole card is one button. An earlier version floated the photographer credit
+              over the corner, which made a link out of the one place a cover photo invites you to
+              click — the credit now lives under the grid, where it can be a real link without
+              taking a bite out of the card. */}
+          {templates.map((t) => (
+            <button
+              type="button"
+              key={t.id}
+              onClick={() => void start(t)}
+              disabled={busy !== null}
+              data-testid="workflow-card"
+              data-category={t.category}
+              aria-label={t.name}
+              className="group overflow-hidden rounded-lg border border-border bg-card text-left transition hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
+            >
+              <WorkflowThumb template={t} />
+              <div className="p-3">
+                <div className="truncate text-[13px] font-medium">
+                  {busy === t.id ? "Opening…" : t.name}
                 </div>
-
-                <button
-                  type="button"
-                  onClick={() => void start(t)}
-                  disabled={busy !== null}
-                  aria-label={t.name}
-                  data-testid="workflow-open"
-                  className="absolute inset-0 rounded-lg focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-default"
-                />
-
-                {photo ? (
-                  // Above the stretched button so it stays clickable. Hidden until hover so the
-                  // grid stays clean, but always in the DOM and reachable by keyboard.
-                  <a
-                    href={`${photo.href}${UNSPLASH_UTM}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    data-testid="workflow-credit"
-                    className="absolute right-1.5 top-1.5 z-10 rounded bg-black/55 px-1.5 py-0.5 text-[10px] text-white/85 opacity-0 backdrop-blur-sm transition group-hover:opacity-100 focus-visible:opacity-100 hover:text-white"
-                  >
-                    {photo.by}
-                  </a>
-                ) : null}
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-relaxed text-muted-foreground">
+                  {t.description}
+                </div>
               </div>
-            );
-          })}
+            </button>
+          ))}
         </div>
       )}
+
+      {templates?.length ? <PhotoCredits templates={templates} /> : null}
     </div>
   );
 }
