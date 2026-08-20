@@ -855,7 +855,7 @@ def flashcards() -> GraphSpec:
     the UI keeps score. Runs with no setup."""
     return GraphSpec(
         id="tpl-flashcards",
-        name="Flashcards",
+        name="Language flash cards",
         description="Drill any topic as flip cards — language characters, vocabulary, "
         "definitions. The UI tracks what you get right.",
         state=_BASE_STATE,
@@ -881,7 +881,7 @@ def quiz_me() -> GraphSpec:
     """Multiple-choice quizzing on any topic, scored by the UI. Runs with no setup."""
     return GraphSpec(
         id="tpl-quiz-me",
-        name="Quiz me",
+        name="Quiz me on anything",
         description="Get quizzed on any topic with multiple-choice questions, scored as you go.",
         state=_BASE_STATE,
         nodes=[
@@ -910,7 +910,7 @@ def study_notes() -> GraphSpec:
     `rag()` — the keyless `demo` source lets it run on the canvas before you connect a DB."""
     return GraphSpec(
         id="tpl-study-notes",
-        name="Study my notes",
+        name="Quiz me on my notes",
         description="Quiz yourself on your own notes. The Knowledge node retrieves the material; "
         "switch its source to pgvector to use your own knowledge base.",
         state=_RAG_STATE,
@@ -939,7 +939,7 @@ def study_notion() -> GraphSpec:
     pages and turns them into cards."""
     return GraphSpec(
         id="tpl-study-notion",
-        name="Study my Notion",
+        name="Notion study quiz",
         description="Turn your Notion pages into a scored drill. Connect Notion in Settings, "
         "then pick your connector on the Tools node.",
         state=_BASE_STATE,
@@ -971,6 +971,33 @@ def study_notion() -> GraphSpec:
             EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
         ],
         entry="in",
+    )
+
+
+def street_photography() -> GraphSpec:
+    """Image generation with the look pinned in the Image node's `style`, so every prompt comes
+    back in the same film stock. Same shape as `image_generation`; the whole difference is the
+    style string, which is what that field is for."""
+    spec = image_generation()
+    for node in spec.nodes:
+        if node.type == "image":
+            node.config |= {
+                "style": (
+                    "film photography style, kodak Gold 200, grain, nostalgic and "
+                    "street photography."
+                ),
+                "size": "1024x1536",
+                "quality": "medium",
+            }
+    return GraphSpec(
+        id="tpl-street-photography",
+        name="Street film photography",
+        description="Describe a scene; get it back as a grainy Kodak Gold 200 street photo. "
+        "Edit the Image block's style to pin a different look.",
+        state=spec.state,
+        nodes=spec.nodes,
+        edges=spec.edges,
+        entry=spec.entry,
     )
 
 
@@ -1008,7 +1035,44 @@ TEMPLATES: list[GraphSpec] = [
     quiz_me(),
     study_notes(),
     study_notion(),
+    street_photography(),
 ]
 
 # Everything the canvas gallery offers.
 STARTERS: list[GraphSpec] = [*FRAMEWORKS, *TEMPLATES]
+
+# Gallery categories — how the Workflows page groups the use-case templates. Frameworks are
+# deliberately absent: they are the architecture an agent is built *on* (ReAct, RAG, reflection),
+# chosen while building on the canvas, not a job someone browses for.
+#
+# Kept as an id → category map rather than a field on GraphSpec: a category is how we merchandise
+# a starter, not something the compiler or an exported file has any business knowing. A meta-test
+# fails if a template is added without one, so the two can't drift.
+CATEGORY_ORDER: list[str] = [
+    "Study & revision",
+    "Images & audio",
+    "Research & analysis",
+    "Support & routing",
+    "Connected apps",
+]
+
+TEMPLATE_CATEGORIES: dict[str, str] = {
+    "tpl-flashcards": "Study & revision",
+    "tpl-quiz-me": "Study & revision",
+    "tpl-study-notes": "Study & revision",
+    "tpl-study-notion": "Study & revision",
+    "tpl-image-generation": "Images & audio",
+    "tpl-street-photography": "Images & audio",
+    "tpl-image-finder": "Images & audio",
+    "tpl-alt-text": "Images & audio",
+    "tpl-label-reader": "Images & audio",
+    "tpl-text-to-speech": "Images & audio",
+    "tpl-translate-speak": "Images & audio",
+    "tpl-market-research": "Research & analysis",
+    "tpl-contract-review": "Research & analysis",
+    "tpl-trip-planner": "Research & analysis",
+    "tpl-customer-support": "Support & routing",
+    "tpl-routing": "Support & routing",
+    "tpl-notion-assistant": "Connected apps",
+    "tpl-github-notion": "Connected apps",
+}

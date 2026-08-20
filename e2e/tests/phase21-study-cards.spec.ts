@@ -151,7 +151,7 @@ test("Share warns when the canvas holds changes the link would not run", async (
   await page.getByTestId("tab-templates").click();
   await page
     .getByTestId("templates-panel")
-    .getByRole("button", { name: "Flashcards", exact: true })
+    .getByRole("button", { name: "Language flash cards", exact: true })
     .click();
   await page.getByTestId("template-apply").click();
   // The header still reads the project's own name, which is exactly why the warning is needed.

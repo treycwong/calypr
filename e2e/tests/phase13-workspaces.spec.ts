@@ -94,11 +94,25 @@ test("hitting the workspace cap is answered in place, not thrown", async ({ page
   await expect(page.getByTestId("ws-new-name")).toBeVisible();
 });
 
-test("Templates and Usage are reachable from the sidebar", async ({ page }) => {
+test("Workflows and Usage are reachable from the sidebar", async ({ page }) => {
   await signIn(page);
 
-  await page.getByTestId("nav-templates").click();
-  await expect(page.getByTestId("templates-empty")).toBeVisible();
+  // The workflow library: real starters, grouped by the job they do. Frameworks are excluded by
+  // design — they live on the canvas rail, next to the wiring they describe.
+  await page.getByTestId("nav-workflows").click();
+  await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+  await expect(page.getByTestId("workflow-group").first()).toBeVisible();
+  // Study first: CATEGORY_ORDER decides, and the API ships the templates already in it.
+  await expect(page.getByRole("heading", { name: "Study & revision" })).toBeVisible();
+  await expect(page.getByTestId("workflow-group").first()).toHaveAttribute(
+    "data-category",
+    "Study & revision",
+  );
+  await expect(
+    page.getByTestId("workflow-card").filter({ hasText: "Language flash cards" }),
+  ).toBeVisible();
+  // A framework must not appear in a gallery of jobs to do.
+  await expect(page.getByTestId("workflow-card").filter({ hasText: "ReAct" })).toHaveCount(0);
 
   await page.getByTestId("nav-usage").click();
   await expect(page.getByRole("heading", { name: "Usage" })).toBeVisible();

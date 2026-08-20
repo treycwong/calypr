@@ -43,7 +43,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/dashboard", label: "Projects", icon: LayoutGrid },
-  { href: "/dashboard/templates", label: "Templates", icon: LayoutTemplate },
+  { href: "/dashboard/workflows", label: "Workflows", icon: LayoutTemplate },
   { href: "/dashboard/usage", label: "Usage", icon: Gauge },
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ] as const;

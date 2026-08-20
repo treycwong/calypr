@@ -49,6 +49,7 @@ def test_use_case_templates_present():
         "tpl-quiz-me",
         "tpl-study-notes",
         "tpl-study-notion",
+        "tpl-street-photography",
     ]
 
 
@@ -177,3 +178,22 @@ def test_card_specimen_teaches_shape_without_teaching_a_subject():
         "the specimen's own answer index must point at the slot named right, or it teaches "
         "the index wrong"
     )
+
+
+def test_every_workflow_has_a_gallery_category():
+    """A template with no category is invisible in the Workflows gallery — it renders in no group
+    at all. Adding one is easy to forget, so the omission fails here rather than shipping a
+    starter nobody can find."""
+    from calypr_compiler.templates import CATEGORY_ORDER, TEMPLATE_CATEGORIES, TEMPLATES
+
+    uncategorized = [t.id for t in TEMPLATES if t.id not in TEMPLATE_CATEGORIES]
+    assert not uncategorized, f"no gallery category for: {uncategorized}"
+
+    unknown = {c for c in TEMPLATE_CATEGORIES.values() if c not in CATEGORY_ORDER}
+    assert not unknown, f"category missing from CATEGORY_ORDER (so it renders last, unordered): {unknown}"
+
+    stale = set(TEMPLATE_CATEGORIES) - {t.id for t in TEMPLATES}
+    assert not stale, f"category for a template that no longer exists: {stale}"
+
+    empty = [c for c in CATEGORY_ORDER if c not in set(TEMPLATE_CATEGORIES.values())]
+    assert not empty, f"category with nothing in it renders as an empty heading: {empty}"

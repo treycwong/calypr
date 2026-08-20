@@ -339,6 +339,9 @@ class TemplateInfo(BaseModel):
     name: str
     description: str
     kind: Literal["framework", "template"]
+    #: Gallery grouping for the Workflows page. Empty for frameworks, which are chosen while
+    #: building on the canvas rather than browsed as jobs to do.
+    category: str = ""
     graph: GraphSpec
 
 

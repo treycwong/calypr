@@ -155,11 +155,20 @@ def test_templates_lists_frameworks_and_use_case_templates():
     assert by_kind["tpl-notion-assistant"] == "template"
     assert by_kind["tpl-image-finder"] == "template"
     assert by_kind["tpl-github-notion"] == "template"
-    assert len(starters) == 23  # 10 frameworks + 13 templates
+    # Derived, not a hand-counted literal: the assertion worth making is "the endpoint returns
+    # every starter", and a hardcoded total only ever failed because someone shipped a template.
+    from calypr_compiler import FRAMEWORKS, TEMPLATES
+
+    assert len(starters) == len(FRAMEWORKS) + len(TEMPLATES)
     # each carries a full, compilable graph
     first = starters[0]
     assert first["graph"]["entry"]
     assert first["description"]
+    # Use-case templates carry a gallery category; frameworks deliberately do not — they are
+    # picked while building on the canvas, not browsed as a job to do.
+    by_id = {t["id"]: t for t in starters}
+    assert by_id["tpl-flashcards"]["category"] == "Study & revision"
+    assert by_id["tpl-react"]["category"] == ""
 
 
 @pytest.mark.skipif(not _db_available(), reason="Postgres not available")

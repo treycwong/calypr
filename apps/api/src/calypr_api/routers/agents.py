@@ -11,7 +11,13 @@ import secrets
 import uuid
 
 from calypr_codegen import generate_python
-from calypr_compiler import FRAMEWORKS, TEMPLATES, validate_graph
+from calypr_compiler import (
+    CATEGORY_ORDER,
+    FRAMEWORKS,
+    TEMPLATE_CATEGORIES,
+    TEMPLATES,
+    validate_graph,
+)
 from calypr_dsl import GraphSpec
 from calypr_roundtrip import parse_python
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
@@ -139,9 +145,28 @@ def parse_code(body: ParseRequest) -> ParseResponse:
 @router.get("/templates", response_model=list[TemplateInfo], tags=["engine"])
 def list_templates() -> list[TemplateInfo]:
     """The canvas starter gallery: frameworks (agent patterns) + templates (use cases)."""
+    # Use-case templates go out in gallery order, so the client can group by first appearance and
+    # get CATEGORY_ORDER for free — no second ordering field on the wire, and no chance of the
+    # page ordering categories differently from the taxonomy that defines them. Frameworks keep
+    # their own order: it is the Russell & Norvig ladder, simple→complex, and means something.
+    ordered = sorted(
+        TEMPLATES,
+        key=lambda t: (
+            CATEGORY_ORDER.index(TEMPLATE_CATEGORIES[t.id])
+            if TEMPLATE_CATEGORIES.get(t.id) in CATEGORY_ORDER
+            else len(CATEGORY_ORDER)
+        ),
+    )
     return [
-        TemplateInfo(id=t.id, name=t.name, description=t.description or "", kind=kind, graph=t)
-        for kind, group in (("framework", FRAMEWORKS), ("template", TEMPLATES))
+        TemplateInfo(
+            id=t.id,
+            name=t.name,
+            description=t.description or "",
+            kind=kind,
+            category=TEMPLATE_CATEGORIES.get(t.id, ""),
+            graph=t,
+        )
+        for kind, group in (("framework", FRAMEWORKS), ("template", ordered))
         for t in group
     ]
 
