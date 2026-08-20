@@ -124,3 +124,44 @@ test("a project without cards still renders as a plain chat", async ({ page, bro
 
   await anon.close();
 });
+
+// The trap that made study mode look broken over a share link: a template applied to an existing
+// project keeps that project's *name*, so nothing on screen contradicts you — but Share mints
+// against the saved agent, and the link runs the previous graph. A project shared this way
+// streams whatever the old graph does, which is not what the canvas shows.
+test("Share warns when the canvas holds changes the link would not run", async ({ page }) => {
+  await signInAt(page, "/canvas");
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
+
+  // A saved baseline project.
+  await buildChain(page, ["input", "agent", "output"]);
+  await page.getByTestId("node-agent").click();
+  await page.getByTestId("cfg-model").selectOption("fake");
+  await page.getByTestId("agent-name").fill("Existing Project");
+  await page.getByTestId("save-agent").click();
+  await expect(page.getByTestId("save-msg")).toContainText("Saved");
+
+  // Freshly saved: nothing to warn about.
+  await page.getByTestId("share-agent").click();
+  await expect(page.getByTestId("share-panel")).toBeVisible();
+  await expect(page.getByTestId("share-stale")).toBeHidden();
+  await page.getByTestId("share-agent").click();
+
+  // Now apply a template over it — and don't save.
+  await page.getByTestId("tab-templates").click();
+  await page
+    .getByTestId("templates-panel")
+    .getByRole("button", { name: "Flashcards", exact: true })
+    .click();
+  await page.getByTestId("template-apply").click();
+  // The header still reads the project's own name, which is exactly why the warning is needed.
+  await expect(page.getByTestId("agent-name")).toHaveValue("Existing Project");
+
+  await page.getByTestId("share-agent").click();
+  await expect(page.getByTestId("share-stale")).toBeVisible();
+
+  // Saving from inside the panel clears it.
+  await page.getByTestId("share-save").click();
+  await expect(page.getByTestId("save-msg")).toContainText("Saved");
+  await expect(page.getByTestId("share-stale")).toBeHidden();
+});

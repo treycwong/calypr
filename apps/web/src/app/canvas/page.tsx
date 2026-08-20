@@ -143,6 +143,10 @@ function CanvasInner() {
   const { zoomIn, zoomOut, screenToFlowPosition, getViewport, setViewport } = useReactFlow();
   const [showPlayground, setShowPlayground] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
+  /** The graph as it was last persisted, serialized. Compared against the live canvas to tell
+   *  whether Share would hand out a link to something other than what is on screen. Null until
+   *  the project has been saved or loaded once (a blank canvas can't be stale). */
+  const [savedGraph, setSavedGraph] = useState<string | null>(null);
   const { toast } = useToast();
   const [templates, setTemplates] = useState<Template[]>([]);
   // The single rail-driven left panel — one tab at a time (or null = closed). Clicking the
@@ -280,6 +284,11 @@ function CanvasInner() {
         lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
         setAgentId(a.id);
         setName(a.name);
+        // Built through the same pipeline `getGraph` uses, so the baseline is comparable to the
+        // live canvas without waiting for the state above to settle.
+        setSavedGraph(
+          JSON.stringify(buildGraphSpec(canvas.nodes, canvas.edges, a.name)),
+        );
       })
       .catch(() => {
         setSaveMsg("Couldn't load that agent");
@@ -396,6 +405,18 @@ function CanvasInner() {
     [nodes, edges, name],
   );
 
+  /** The canvas holds changes the share link would not run.
+   *
+   *  A share link is minted against the *saved* agent and always runs its latest saved graph, so
+   *  loading a template (or any edit) and then hitting Share hands out a link to the previous
+   *  version — with nothing on screen to say so, because applying a template keeps the project's
+   *  own name. That silence is the whole problem: you share what you are looking at, someone
+   *  opens it, and it runs something else. */
+  const shareIsStale = useMemo(
+    () => savedGraph !== null && savedGraph !== JSON.stringify(getGraph()),
+    [savedGraph, getGraph],
+  );
+
   // --- AI assistant wiring ---------------------------------------------------
   // Refine context: the canvas is the source of truth, so hand-edits between prompts are
   // respected. Empty canvas → null (first prompt is a fresh generate, not a refine).
@@ -507,14 +528,19 @@ function CanvasInner() {
     setSaveMsg("Saving…");
     try {
       const agentName = name.trim() || "Untitled Agent";
+      // Serialized once and reused as the baseline: comparing against a *second* `getGraph()`
+      // call would race a drag that landed mid-request and leave the canvas looking dirty
+      // immediately after a successful save.
+      const graph = getGraph();
       if (agentId) {
-        await updateAgent(agentId, { name: agentName, graph: getGraph() });
+        await updateAgent(agentId, { name: agentName, graph });
       } else {
-        const created = await createAgent(agentName, getGraph());
+        const created = await createAgent(agentName, graph);
         setAgentId(created.id);
         // Reflect the saved agent in the URL so a refresh reopens it.
         window.history.replaceState(null, "", `/canvas?agent=${created.id}`);
       }
+      setSavedGraph(JSON.stringify(graph));
       setSaveMsg("Saved ✓");
     } catch {
       setSaveMsg("Save failed");
@@ -724,6 +750,29 @@ function CanvasInner() {
                   <p className="mt-1 text-xs text-muted-foreground">
                     Anyone with the link can run it — they won&apos;t see your canvas.
                   </p>
+                  {shareIsStale ? (
+                    // Warn, never auto-save: the canvas may be a template someone is trying on
+                    // top of a project they want to keep, and silently overwriting it to make a
+                    // link accurate would be a worse surprise than the stale link.
+                    <div
+                      className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5"
+                      data-testid="share-stale"
+                    >
+                      <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                        This link runs your last saved version. The canvas has changes that
+                        aren&apos;t saved yet.
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2"
+                        onClick={onSave}
+                        data-testid="share-save"
+                      >
+                        Save changes
+                      </Button>
+                    </div>
+                  ) : null}
                   {shareError ? (
                     <p className="mt-3 text-sm text-destructive" data-testid="share-error">
                       Couldn&apos;t create a link. Try again.
