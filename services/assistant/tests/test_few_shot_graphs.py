@@ -77,3 +77,24 @@ def test_every_few_shot_request_reaches_the_prompt():
     prompt = system_prompt()
     for request_text, _ in PAIRS:
         assert request_text in prompt
+
+
+def test_the_study_few_shot_specializes_its_subject_and_keeps_the_fence():
+    """A few-shot whose request names a subject must answer it with a prompt that names it too.
+
+    Pairing "flashcards for learning German" with the *generic* template prompt ("the learner
+    names a topic") taught the model to reproduce that wording verbatim, so the first thing the
+    generated app said was "what would you like to be quizzed on?" — to someone who had already
+    said German. The fenced specimen has to survive the rewrite untouched: it is what teaches the
+    card format, and the format is the part that has to be byte-right.
+    """
+    prompts = {
+        request: " ".join(
+            (n.config or {}).get("system_prompt", "") for n in spec.nodes
+        )
+        for request, spec in PAIRS
+    }
+    german = next(p for r, p in prompts.items() if "German" in r)
+    assert "German" in german, "the subject in the request must appear in the prompt"
+    assert "The learner names a topic" not in german, "generic wording teaches the model to ask"
+    assert "```calypr-card" in german, "the card format specimen must survive specialization"

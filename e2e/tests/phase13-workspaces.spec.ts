@@ -94,11 +94,38 @@ test("hitting the workspace cap is answered in place, not thrown", async ({ page
   await expect(page.getByTestId("ws-new-name")).toBeVisible();
 });
 
-test("Templates and Usage are reachable from the sidebar", async ({ page }) => {
+test("Workflows and Usage are reachable from the sidebar", async ({ page }) => {
   await signIn(page);
 
-  await page.getByTestId("nav-templates").click();
-  await expect(page.getByTestId("templates-empty")).toBeVisible();
+  // The workflow library: real starters, grouped by the job they do. Frameworks are excluded by
+  // design — they live on the canvas rail, next to the wiring they describe.
+  await page.getByTestId("nav-workflows").click();
+  await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
+  await expect(page.getByTestId("workflow-grid")).toBeVisible();
+  // One flat grid — no category headings. The order still comes from CATEGORY_ORDER, so study
+  // leads; the grouping survives as sequence, which is what a filter will key off later.
+  await expect(page.getByTestId("workflow-card").first()).toHaveAttribute(
+    "data-category",
+    "Study & revision",
+  );
+
+  // Covers are committed URLs, not a runtime search — asserted on the attribute, never on the
+  // pixels, so this gate does not depend on images.unsplash.com being reachable from CI.
+  const first = page.getByTestId("workflow-card").first();
+  await expect(first.locator("img")).toHaveAttribute("src", /images\.unsplash\.com/);
+  // Nothing may sit on top of a card: the photo is the most inviting thing to click, and it has
+  // to open the workflow. Attribution lives under the grid instead, where it can still be a real
+  // link — which Unsplash's API guidelines require.
+  await expect(first.locator("a")).toHaveCount(0);
+  await expect(page.getByTestId("photo-credits").locator("a").first()).toHaveAttribute(
+    "href",
+    /unsplash\.com\/@.+utm_source=calypr/,
+  );
+  await expect(
+    page.getByTestId("workflow-card").filter({ hasText: "Language flash cards" }),
+  ).toBeVisible();
+  // A framework must not appear in a gallery of jobs to do.
+  await expect(page.getByTestId("workflow-card").filter({ hasText: "ReAct" })).toHaveCount(0);
 
   await page.getByTestId("nav-usage").click();
   await expect(page.getByRole("heading", { name: "Usage" })).toBeVisible();

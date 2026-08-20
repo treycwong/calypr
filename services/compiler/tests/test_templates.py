@@ -45,6 +45,11 @@ def test_use_case_templates_present():
         "tpl-notion-assistant",
         "tpl-github-notion",
         "tpl-image-finder",
+        "tpl-flashcards",
+        "tpl-quiz-me",
+        "tpl-study-notes",
+        "tpl-study-notion",
+        "tpl-street-photography",
     ]
 
 
@@ -144,3 +149,53 @@ def test_no_starter_ships_the_fake_model(graph):
         n.id for n in graph.nodes if isinstance(n.config, dict) and n.config.get("model") == "fake"
     ]
     assert fakes == [], f"{graph.id} ships the fake model on {fakes}"
+
+
+def test_card_specimen_teaches_shape_without_teaching_a_subject():
+    """The card specimen must carry no subject matter of its own.
+
+    It used to quiz 火 = fire. Asked for a German deck, gpt-4o-mini copied the kanji along with
+    the shape and produced a "German" quiz asking what 木 and 水 mean — content-copying beats
+    instruction-following at that size, so the only safe specimen is one with nothing to copy.
+    The slot names also carry the `answer`-index lesson, which is why they are checked here: if
+    someone renames them, the index must still line up.
+    """
+    import json
+    import re
+
+    from calypr_compiler.templates import _CARD_PROTOCOL
+
+    assert not re.search(r"[぀-ヿ㐀-鿿]", _CARD_PROTOCOL), (
+        "no CJK in the specimen — a subject-free specimen has no language at all"
+    )
+
+    blocks = re.findall(r"```calypr-card\n(.+?)\n```", _CARD_PROTOCOL, re.S)
+    assert len(blocks) == 2, "one quiz specimen and one flashcard specimen"
+    cards = [json.loads(b) for b in blocks]  # the specimen must itself be valid JSON
+
+    quiz = next(c for c in cards if c["kind"] == "quiz")
+    assert quiz["choices"][quiz["answer"]] == "RIGHT", (
+        "the specimen's own answer index must point at the slot named right, or it teaches "
+        "the index wrong"
+    )
+
+
+def test_every_workflow_has_a_gallery_category():
+    """A template with no category is invisible in the Workflows gallery — it renders in no group
+    at all. Adding one is easy to forget, so the omission fails here rather than shipping a
+    starter nobody can find."""
+    from calypr_compiler.templates import CATEGORY_ORDER, TEMPLATE_CATEGORIES, TEMPLATES
+
+    uncategorized = [t.id for t in TEMPLATES if t.id not in TEMPLATE_CATEGORIES]
+    assert not uncategorized, f"no gallery category for: {uncategorized}"
+
+    unknown = {c for c in TEMPLATE_CATEGORIES.values() if c not in CATEGORY_ORDER}
+    assert not unknown, (
+        f"category missing from CATEGORY_ORDER (so it renders last, unordered): {unknown}"
+    )
+
+    stale = set(TEMPLATE_CATEGORIES) - {t.id for t in TEMPLATES}
+    assert not stale, f"category for a template that no longer exists: {stale}"
+
+    empty = [c for c in CATEGORY_ORDER if c not in set(TEMPLATE_CATEGORIES.values())]
+    assert not empty, f"category with nothing in it renders as an empty heading: {empty}"

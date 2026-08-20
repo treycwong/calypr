@@ -1,21 +1,7 @@
-import type { Metadata } from "next";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Templates — Calypr" };
-
-// A placeholder on purpose. The starter gallery already exists on the canvas (`GET /templates`);
-// this tab is where saved, workspace-owned templates will live, and shipping the nav entry now
-// keeps the sidebar stable rather than moving under people later.
+// Renamed to /dashboard/workflows. Kept as a redirect rather than deleted: the nav entry has
+// shipped, so this path is in browser histories and bookmarks.
 export default function TemplatesPage() {
-  return (
-    <div className="w-full max-w-3xl px-10 py-8">
-      <h1 className="font-heading text-2xl">Templates</h1>
-      <p className="mt-4 text-sm text-muted-foreground" data-testid="templates-empty">
-        Saved templates are coming soon. For now, start from a template on the{" "}
-        <a href="/canvas" className="underline">
-          canvas
-        </a>
-        .
-      </p>
-    </div>
-  );
+  permanentRedirect("/dashboard/workflows");
 }

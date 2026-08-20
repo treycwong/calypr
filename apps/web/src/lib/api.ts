@@ -606,6 +606,8 @@ export type Template = {
   name: string;
   description: string;
   kind: "framework" | "template";
+  /** Gallery grouping for the Workflows page. Empty for frameworks, which aren't listed there. */
+  category: string;
   graph: GraphSpec;
 };
 

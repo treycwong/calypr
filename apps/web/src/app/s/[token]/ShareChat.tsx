@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp } from "lucide-react";
 
 import {
@@ -9,12 +9,17 @@ import {
   SentImages,
   useAttachment,
 } from "@/components/AttachImage";
+import { ScoreStrip } from "@/components/cards/ScoreStrip";
+import { hasCards, useStudy } from "@/components/cards/useStudy";
 import { Markdown } from "@/components/Markdown";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
 import { runShare, uploadShareImage } from "@/lib/api";
 
 type ChatMsg = { role: "user" | "assistant"; text: string; images?: string[] };
+
+/** Quick follow-ups offered once a drill is running — ordinary sends, so no new run path. */
+const INTENTS = ["Next", "Harder", "Explain that"];
 
 // The refined, public-facing chat for a shared agent. Spec-free by design: it streams through
 // `runShare(token, …)` and never touches the graph. Styled as a floating glass terminal over
@@ -30,6 +35,12 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
   const [threadId, setThreadId] = useState<string | undefined>(undefined);
   const logRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
+  // Scoped to the conversation, not the link: two visitors on the same public token are strangers
+  // and must not share a tally. Before the server mints the id there is nothing to grade yet.
+  const study = useStudy(`share:${token}:${threadId ?? "new"}`, "glass");
+  // A study project announces itself by emitting cards. Nothing here reads the project's config —
+  // the GraphSpec never reaches this page by design, and it doesn't need to.
+  const studying = useMemo(() => hasCards(messages.map((m) => m.text)), [messages]);
   const attach = useAttachment(
     (file) => uploadShareImage(token, file),
     (msg) => toast(msg, "error"),
@@ -40,8 +51,10 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
-  async function send() {
-    const text = input.trim();
+  /** `override` lets a study intent button ("Next", "Harder") send without typing. It is an
+   *  ordinary turn in every other respect — same stream, same thread, same tally. */
+  async function send(override?: string) {
+    const text = (override ?? input).trim();
     if (!text || busy) return;
     const images = attach.pending ? [attach.pending] : [];
     attach.clear();
@@ -94,6 +107,8 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
         </div>
       </div>
 
+      {studying ? <ScoreStrip score={study.score} variant="glass" /> : null}
+
       {/* Messages */}
       <div ref={logRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5" data-testid="chat-log">
         {empty ? (
@@ -107,19 +122,30 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
             </p>
           </div>
         ) : (
-          messages.map((m, i) => (
-            <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
+          messages.map((m, i) => {
+            // A turn carrying a card breaks out of the bubble and spans the panel — the single
+            // change that stops a drill from reading as a chat with widgets in it.
+            const carded = m.role === "assistant" && hasCards([m.text]);
+            return (
+            <div
+              key={i}
+              className={
+                carded ? "block" : m.role === "user" ? "flex justify-end" : "flex justify-start"
+              }
+            >
               <div
                 data-testid={`msg-${m.role}`}
                 className={
-                  m.role === "user"
-                    ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-cyan-400/20 bg-cyan-500/15 px-3.5 py-2 text-sm text-cyan-50"
-                    : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm leading-relaxed text-white/90"
+                  carded
+                    ? "w-full text-sm leading-relaxed text-white/90"
+                    : m.role === "user"
+                      ? "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-sm border border-cyan-400/20 bg-cyan-500/15 px-3.5 py-2 text-sm text-cyan-50"
+                      : "max-w-[85%] rounded-2xl rounded-bl-sm border border-white/10 bg-white/[0.04] px-3.5 py-2 text-sm leading-relaxed text-white/90"
                 }
               >
                 {m.role === "assistant" ? (
                   m.text ? (
-                    <Markdown text={m.text} />
+                    <Markdown text={m.text} cards={study.cards} />
                   ) : (
                     <span className="inline-block animate-pulse text-cyan-300/80">▋</span>
                   )
@@ -131,7 +157,8 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
                 )}
               </div>
             </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -146,6 +173,20 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
         {attach.pending ? (
           <div className="mb-2">
             <AttachmentChip url={attach.pending} onRemove={attach.clear} />
+          </div>
+        ) : null}
+        {studying && !busy ? (
+          <div className="mb-2 flex flex-wrap gap-1.5" data-testid="study-intents">
+            {INTENTS.map((intent) => (
+              <button
+                key={intent}
+                type="button"
+                onClick={() => void send(intent)}
+                className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/70 transition hover:border-cyan-400/40 hover:text-white"
+              >
+                {intent}
+              </button>
+            ))}
           </div>
         ) : null}
         <div className="flex items-center gap-2">

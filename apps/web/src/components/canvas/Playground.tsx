@@ -228,6 +228,7 @@ export function Playground({
           <PlaygroundChat
             messages={messages}
             busy={busy}
+            scope={threadId}
             memoryExpired={loaded !== null && !loaded.hasState}
             onSend={send}
             onStop={stop}
