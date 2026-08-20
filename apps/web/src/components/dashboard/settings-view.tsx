@@ -418,7 +418,7 @@ export function SettingsView({
               {email}
             </p>
             <p className="mt-1 text-xs text-muted-foreground">
-              Your email comes from GitHub and can&rsquo;t be changed here.
+              Your email comes from your sign-in provider and can&rsquo;t be changed here.
             </p>
 
             <Separator className="my-4" />
