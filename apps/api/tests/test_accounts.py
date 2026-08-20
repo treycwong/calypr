@@ -169,6 +169,13 @@ def test_the_project_cap_pools_across_workspaces(user):
     assert detail["limit"] == 3
     assert "3 of 3" in detail["message"]
 
+    # The affordance and the enforcement are the same predicate, so the dashboard's New Project
+    # button cannot offer what `create_agent` would refuse. The browser used to work this out for
+    # itself from a plan name and a row count, and got it wrong wherever caps aren't enforced.
+    listing = client.get("/workspaces", headers=_hdr(user, second_id))
+    assert listing.status_code == 200
+    assert listing.json()["can_create_project"] is False
+
 
 @requires_db
 def test_the_workspace_cap_matches_the_plan(user):

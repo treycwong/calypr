@@ -19,6 +19,12 @@ export type AnalyticsEvent =
   // Paired with the server's `graph_codegen_requested {truncated: true}`, this is the
   // conversion rate of the code tab — the reason export is the paid feature at all.
   | "code_upgrade_clicked"
+  // The other paywall a user actually meets: a free account out of project slots, refused at the
+  // moment it tried to start work. Paired with the server's 402 this is the conversion rate of
+  // the project cap — kept distinct from `code_upgrade_clicked` because the two paywalls sell
+  // different things and folding them together would hide which one converts.
+  | "project_cap_hit"
+  | "project_cap_upgrade_clicked"
   // playground runs
   | "run_started"
   | "run_completed"

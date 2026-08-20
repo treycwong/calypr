@@ -106,6 +106,7 @@ def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> WorkspaceL
             # internal key, so reporting `false` here would hide an affordance that does in fact
             # work locally — and would take the e2e coverage of the create flow with it.
             can_create=True,
+            can_create_project=True,
         )
     rows = t.session.execute(
         text("SELECT id, name, created_at FROM list_account_workspaces(:uid)"),
@@ -131,6 +132,9 @@ def list_workspaces(request: Request, t: Tenant = Depends(tenant)) -> WorkspaceL
         workspaces=summaries,
         plan=plan,
         can_create=len(summaries) < entitlements.limits(plan).workspaces,
+        # Rides along with the list the dashboard already fetches, so the New Project button can
+        # answer without a second request — and without the browser deciding for itself.
+        can_create_project=project_slots_left(t),
     )
 
 
@@ -301,6 +305,22 @@ def get_usage(t: Tenant = Depends(tenant)) -> WorkspaceInfo:
 _UNCAPPED = {DEV_WORKSPACE_ID}
 
 
+def project_slots_left(t: Tenant) -> bool:
+    """Whether `create_agent` would be allowed right now.
+
+    Extracted so the affordance and the enforcement read the same code. The browser must never
+    work this out for itself: the dev/CI carve-out below means a client counting rows against
+    `LIMITS` predicts a refusal the server would not make, and a preemptive dialog built that way
+    blocked the create flow for every e2e spec that had already made three projects."""
+    if not settings.internal_key or str(t.workspace_id) in _UNCAPPED:
+        return True
+    account = accounts.account_for_workspace(t.session, t.workspace_id)
+    if account is None:
+        return True
+    lim = entitlements.limits(account.plan)
+    return accounts.project_count(t.session, account.id) < lim.projects
+
+
 def enforce_project_cap(t: Tenant) -> None:
     """402 if this account has no project slots left. Called by `create_agent`.
 
@@ -309,15 +329,12 @@ def enforce_project_cap(t: Tenant) -> None:
 
     Same bounded race as the workspace cap — two concurrent creates can both pass. One project
     over is not worth serialising every create."""
-    if not settings.internal_key or str(t.workspace_id) in _UNCAPPED:
+    if project_slots_left(t):
         return
     account = accounts.account_for_workspace(t.session, t.workspace_id)
-    if account is None:
-        return
+    assert account is not None  # project_slots_left returns True when there is no account
     lim = entitlements.limits(account.plan)
     used = accounts.project_count(t.session, account.id)
-    if used < lim.projects:
-        return
     raise HTTPException(
         status_code=402,
         detail={

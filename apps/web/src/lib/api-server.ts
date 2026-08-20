@@ -34,11 +34,18 @@ async function get<T>(path: string, fallback: T): Promise<T> {
  *
  *  The fail-soft fallback claims `can_create: false`. With the API unreachable we cannot know the
  *  plan, and offering a create that will fail is worse than omitting an affordance for the length
- *  of an outage. */
+ *  of an outage.
+ *
+ *  `can_create_project` falls the other way, and the asymmetry is deliberate. A missing "New
+ *  workspace" item is a quiet omission; a `false` here pops a paywall that tells someone they are
+ *  out of projects when in fact the API is down. Accusing a paying customer of hitting a limit
+ *  they haven't hit is the worse failure, so an outage lets the click through — where it fails
+ *  visibly, as an outage should. */
 export function fetchWorkspaces(): Promise<WorkspaceList> {
   return get<WorkspaceList>("/workspaces", {
     workspaces: [],
     plan: "free",
     can_create: false,
+    can_create_project: true,
   });
 }

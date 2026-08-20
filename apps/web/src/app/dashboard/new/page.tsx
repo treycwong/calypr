@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { type CapDetail, UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
+import { track } from "@/lib/analytics";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { createAgent, listTemplates, type Template } from "@/lib/api";
+import { CapReachedError, createAgent, listTemplates, type Template } from "@/lib/api";
 import { DEFAULT_CONFIG } from "@/lib/graph";
 
 // A minimal Input → Agent → Output starter for a "blank" project.
@@ -48,6 +50,7 @@ export default function NewProjectPage() {
   const [name, setName] = useState("Untitled Agent");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [busy, setBusy] = useState(false);
+  const [capped, setCapped] = useState<CapDetail | null>(null);
 
   useEffect(() => {
     listTemplates()
@@ -61,8 +64,12 @@ export default function NewProjectPage() {
     try {
       const { id } = await createAgent(name.trim() || fallbackName, graph);
       router.push(`/canvas?agent=${id}`);
-    } catch {
+    } catch (err) {
       setBusy(false);
+      if (err instanceof CapReachedError) {
+        track("project_cap_hit", { from: "new" });
+        setCapped({ limit: err.limit, message: err.message });
+      }
     }
   }
 
@@ -141,6 +148,12 @@ export default function NewProjectPage() {
           </section>
         ) : null,
       )}
+
+      <UpgradeDialog
+        open={capped !== null}
+        onOpenChange={(next) => !next && setCapped(null)}
+        detail={capped ?? undefined}
+      />
     </div>
   );
 }
