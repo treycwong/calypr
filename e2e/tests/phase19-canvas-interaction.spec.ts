@@ -1,6 +1,25 @@
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 import { openCanvas, openCode, signInAt } from "./helpers";
+
+/** Wait until React Flow's viewport transform stops changing.
+ *
+ *  Adding a block can leave a fit/zoom still animating, and the canvas renders at scale(2) — so a
+ *  position sampled mid-settle is off by twice the graph-space error. Measuring a node before the
+ *  transform is final compares one animation frame against a settled one, which makes any test
+ *  that does it hostage to unrelated timing (the templates fetch resolving a beat later was
+ *  enough to flip it). */
+async function viewportSettled(page: Page) {
+  const transform = () =>
+    page.evaluate(
+      () => (document.querySelector(".react-flow__viewport") as HTMLElement | null)?.style.transform,
+    );
+  await expect(async () => {
+    const first = await transform();
+    await page.waitForTimeout(120);
+    expect(await transform()).toBe(first);
+  }).toPass({ timeout: 5_000 });
+}
 
 // Blocks are dragged onto the canvas and wired by hand; the browser tab is named after the
 // project; and a selected node reads as selected rather than as running.
@@ -203,6 +222,7 @@ test("hiding the left panel leaves the graph where it was", async ({ page }) => 
   await openCanvas(page);
   await page.getByTestId("add-input").click();
   const node = page.getByTestId("node-input");
+  await viewportSettled(page);
   const before = await node.boundingBox();
 
   // The canvas is a flex child, so collapsing the panel widens it leftwards — without the

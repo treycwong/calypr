@@ -1,7 +1,7 @@
 "use client";
 
 import { Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
   AttachButton,
@@ -9,6 +9,8 @@ import {
   SentImages,
   useAttachment,
 } from "@/components/AttachImage";
+import { ScoreStrip } from "@/components/cards/ScoreStrip";
+import { hasCards, useStudy } from "@/components/cards/useStudy";
 import { Markdown } from "@/components/Markdown";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,17 +31,24 @@ export type ChatMsg = {
   keyRejected?: boolean;
 };
 
+/** Quick follow-ups offered once a drill is running. They are ordinary sends — the agent decides
+ *  what "harder" means — which is why study mode needs no new run path. */
+const INTENTS = ["Next", "Harder", "Explain that"];
+
 /** The transcript and composer. Deliberately stateless about the *run*: everything a send needs
  *  lives in `Playground`, because base-ui unmounts this panel when another tab is selected. */
 export function PlaygroundChat({
   messages,
   busy,
+  scope,
   memoryExpired,
   onSend,
   onStop,
 }: {
   messages: ChatMsg[];
   busy: boolean;
+  /** Identifies the conversation, so each thread keeps its own tally. */
+  scope: string;
   /** The transcript was reopened but its checkpoint has aged out — the agent has no memory of
    *  what is on screen. Surfaced rather than hidden: the alternative is the user asking a
    *  follow-up and getting a baffling answer. */
@@ -52,6 +61,10 @@ export function PlaygroundChat({
   const { toast } = useToast();
   const attach = useAttachment(uploadImage, (msg) => toast(msg, "error"));
   const logRef = useRef<HTMLDivElement>(null);
+  const study = useStudy(scope, "panel");
+  // Study chrome is driven by what the agent has actually emitted, so the creator sees the real
+  // learner experience here before publishing — no preview toggle to get out of sync.
+  const studying = useMemo(() => hasCards(messages.map((m) => m.text)), [messages]);
 
   // Follow the stream. rAF so the scroll runs after the browser has laid the new text out.
   useEffect(() => {
@@ -74,23 +87,32 @@ export function PlaygroundChat({
 
   return (
     <div className="flex h-full flex-col">
+      {studying ? <ScoreStrip score={study.score} variant="panel" /> : null}
       <div ref={logRef} className="flex-1 space-y-3 overflow-auto p-3" data-testid="chat-log">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">Send a message to test your agent.</p>
         ) : null}
-        {messages.map((m) => (
+        {messages.map((m) => {
+          // A turn carrying a card breaks out of the bubble and spans the panel. That single
+          // change is most of what stops a drill from reading as a chat with widgets in it.
+          const carded = m.role === "assistant" && hasCards([m.text]);
+          return (
           <div key={m.id} className={m.role === "user" ? "text-right" : "text-left"}>
             <div
               data-testid={`msg-${m.role}`}
-              className={`inline-block max-w-[90%] rounded-lg px-3 py-2 text-left text-sm ${
-                m.role === "user"
-                  ? "whitespace-pre-wrap bg-primary text-primary-foreground"
-                  : "bg-muted leading-relaxed"
-              }`}
+              className={
+                carded
+                  ? "block w-full text-left text-sm"
+                  : `inline-block max-w-[90%] rounded-lg px-3 py-2 text-left text-sm ${
+                      m.role === "user"
+                        ? "whitespace-pre-wrap bg-primary text-primary-foreground"
+                        : "bg-muted leading-relaxed"
+                    }`
+              }
             >
               {m.role === "assistant" ? (
                 m.text ? (
-                  <Markdown text={m.text} />
+                  <Markdown text={m.text} cards={study.cards} />
                 ) : busy ? (
                   "…"
                 ) : (
@@ -119,7 +141,8 @@ export function PlaygroundChat({
               </div>
             ) : null}
           </div>
-        ))}
+          );
+        })}
       </div>
       {memoryExpired ? (
         <p
@@ -143,6 +166,21 @@ export function PlaygroundChat({
         {attach.pending ? (
           <div className="mb-2">
             <AttachmentChip url={attach.pending} onRemove={attach.clear} />
+          </div>
+        ) : null}
+        {studying && !busy ? (
+          <div className="mb-2 flex flex-wrap gap-1.5" data-testid="study-intents">
+            {INTENTS.map((intent) => (
+              <Button
+                key={intent}
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onSend(intent, [])}
+              >
+                {intent}
+              </Button>
+            ))}
           </div>
         ) : null}
         <div className="flex gap-2">

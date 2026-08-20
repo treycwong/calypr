@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 
+import { type Card, parseCard } from "@/components/cards/parseCards";
 import { ChatAudio } from "@/components/ChatAudio";
 import { ChatImage } from "@/components/ChatImage";
 
@@ -64,10 +65,20 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
   return nodes;
 }
 
-export function Markdown({ text }: { text: string }) {
+/** How a surface renders a `calypr-card` fence. Passed in rather than imported here so this
+ *  renderer stays free of scoring logic — the share page and the canvas playground grade into
+ *  different tallies, and a plain transcript (no handler) still renders the fence as code. */
+export type CardRenderer = {
+  render: (card: Card) => ReactNode;
+  /** The fence has opened but its closing ``` hasn't streamed in yet. */
+  skeleton: () => ReactNode;
+};
+
+export function Markdown({ text, cards }: { text: string; cards?: CardRenderer }) {
   const blocks: ReactNode[] = [];
   let para: string[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
+  let fence: { lang: string; lines: string[] } | null = null;
   let key = 0;
 
   const flushPara = () => {
@@ -104,7 +115,52 @@ export function Markdown({ text }: { text: string }) {
     list = null;
   };
 
+  // `open` means the closing ``` never arrived — the reply is still streaming. A half-written
+  // card is shown as a skeleton rather than as raw braces, which is what keeps a drill from
+  // flickering JSON at the learner on every token.
+  const flushFence = (open: boolean) => {
+    if (!fence) return;
+    const cur = fence;
+    fence = null;
+    const body = cur.lines.join("\n");
+    if (cur.lang === "calypr-card" && cards) {
+      if (open) {
+        blocks.push(<Fragment key={key++}>{cards.skeleton()}</Fragment>);
+        return;
+      }
+      const card = parseCard(body);
+      // A model that emits slightly wrong JSON degrades to a visible code block. Never a crash,
+      // and never a silently swallowed card.
+      if (card) {
+        blocks.push(<Fragment key={key++}>{cards.render(card)}</Fragment>);
+        return;
+      }
+    }
+    blocks.push(
+      <pre
+        key={key++}
+        className="overflow-x-auto rounded-lg bg-white/[0.06] p-3 font-mono text-xs leading-relaxed"
+      >
+        {body}
+      </pre>,
+    );
+  };
+
   for (const line of text.split("\n")) {
+    // Fences first: everything between them is literal, so no inline or list rule may run here.
+    if (fence) {
+      if (/^\s*```\s*$/.test(line)) flushFence(false);
+      else fence.lines.push(line);
+      continue;
+    }
+    const opening = /^\s*```([\w-]*)\s*$/.exec(line);
+    if (opening) {
+      flushPara();
+      flushList();
+      fence = { lang: opening[1], lines: [] };
+      continue;
+    }
+
     // #### and deeper matter: models reach for h4 inside a numbered outline without being asked,
     // and anything unmatched here falls through to a paragraph and prints its own `#` marks.
     const heading = /^(#{1,6})\s+(.*)$/.exec(line);
@@ -146,6 +202,7 @@ export function Markdown({ text }: { text: string }) {
   }
   flushPara();
   flushList();
+  flushFence(true);
 
   return <div className="space-y-2">{blocks}</div>;
 }

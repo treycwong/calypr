@@ -45,6 +45,10 @@ def test_use_case_templates_present():
         "tpl-notion-assistant",
         "tpl-github-notion",
         "tpl-image-finder",
+        "tpl-flashcards",
+        "tpl-quiz-me",
+        "tpl-study-notes",
+        "tpl-study-notion",
     ]
 
 

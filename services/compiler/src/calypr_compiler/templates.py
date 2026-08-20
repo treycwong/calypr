@@ -84,6 +84,36 @@ def _chain(*node_ids: str) -> list[EdgeSpec]:
     ]
 
 
+# The study-card protocol. Agents emit cards as fenced ```calypr-card blocks holding one JSON
+# object each; the web UI renders them as interactive cards and keeps score, and any other reader
+# sees an ordinary code block. Teaching it by exemplar is the same trick `image_finder` uses for
+# its markdown image — models copy an exact shape far more reliably than they follow a
+# description of one.
+#
+# Crucially this lives in the *text the agent emits*, not on Calypr's wire, so an exported
+# project keeps working: the generated Python emits the same blocks, and its owner's own UI can
+# parse them. Nothing here depends on running inside Calypr.
+_CARD_PROTOCOL = """
+Present material as study cards. Emit each card as its own fenced block, exactly like this:
+
+```calypr-card
+{"kind":"quiz","q":"What does 火 mean?","choices":["water","fire","tree"],"answer":1,"explain":"火 = fire (hi / ka)."}
+```
+
+```calypr-card
+{"kind":"flashcard","front":"火","back":"fire (hi / ka)"}
+```
+
+Rules:
+- The `calypr-card` tag on the opening fence is required — without it the card renders as raw text.
+- One JSON object per block, valid JSON, no trailing commas, no comments.
+- `answer` is the zero-based index into `choices`. Give 3-4 choices, with only one correct.
+- Use `quiz` when the learner should be tested, `flashcard` for recall practice.
+- Emit 1-3 cards per turn, not a whole deck at once — the learner answers before continuing.
+- One short sentence of framing before the cards is fine. Never explain the format itself.
+"""
+
+
 def simple_reflex() -> GraphSpec:
     return GraphSpec(
         id="tpl-simple-reflex",
@@ -810,6 +840,130 @@ def trip_planner() -> GraphSpec:
     )
 
 
+def flashcards() -> GraphSpec:
+    """Turn any topic into flip cards. The agent picks what is worth memorising and drills it;
+    the UI keeps score. Runs with no setup."""
+    return GraphSpec(
+        id="tpl-flashcards",
+        name="Flashcards",
+        description="Drill any topic as flip cards — language characters, vocabulary, "
+        "definitions. The UI tracks what you get right.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are a study coach. The learner names a topic; you drill them on it "
+                    "with flashcards, one small batch at a time, and adapt to what they miss.\n\n"
+                    "Prefer `flashcard` cards. Keep the front short — a single character, term, "
+                    "or question — and put the full answer on the back.\n" + _CARD_PROTOCOL
+                ),
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "agent", "out"),
+        entry="in",
+    )
+
+
+def quiz_me() -> GraphSpec:
+    """Multiple-choice quizzing on any topic, scored by the UI. Runs with no setup."""
+    return GraphSpec(
+        id="tpl-quiz-me",
+        name="Quiz me",
+        description="Get quizzed on any topic with multiple-choice questions, scored as you go.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are a quizmaster. The learner names a topic; you test them on it with "
+                    "multiple-choice questions, one small batch at a time.\n\n"
+                    "Use `quiz` cards. Make the wrong choices plausible — a question whose "
+                    "distractors are obviously wrong teaches nothing. Always fill in `explain` "
+                    "with one sentence on why the answer is right. If the learner asks for "
+                    "harder questions, go deeper rather than more obscure.\n" + _CARD_PROTOCOL
+                ),
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "agent", "out"),
+        entry="in",
+    )
+
+
+def study_notes() -> GraphSpec:
+    """Study *your own* material: the Knowledge node retrieves from the knowledge base and the
+    agent builds cards only from what it found. Retrieve-then-generate, the same shape as
+    `rag()` — the keyless `demo` source lets it run on the canvas before you connect a DB."""
+    return GraphSpec(
+        id="tpl-study-notes",
+        name="Study my notes",
+        description="Quiz yourself on your own notes. The Knowledge node retrieves the material; "
+        "switch its source to pgvector to use your own knowledge base.",
+        state=_RAG_STATE,
+        nodes=[
+            _input(),
+            _knowledge(),
+            _role_agent(
+                "agent",
+                "You are a study coach working from the learner's own notes. Build cards "
+                "**only** from the retrieved context below — never from general knowledge, and "
+                "never invent material the notes do not contain. If the context does not cover "
+                "what they asked about, say so plainly and drill what it does cover.\n\n"
+                "Mix `quiz` and `flashcard` cards.\n"
+                + _CARD_PROTOCOL
+                + "\nContext:\n{{ state.context }}",
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "knowledge", "agent", "out"),
+        entry="in",
+    )
+
+
+def study_notion() -> GraphSpec:
+    """Study from Notion: a ReAct loop over the user's Notion MCP connector that reads their
+    pages and turns them into cards."""
+    return GraphSpec(
+        id="tpl-study-notion",
+        name="Study my Notion",
+        description="Turn your Notion pages into a scored drill. Connect Notion in Settings, "
+        "then pick your connector on the Tools node.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You are a study coach with access to the learner's Notion workspace "
+                    "through MCP tools. Search to find the pages they want to study, read "
+                    "them, then drill them on what those pages actually say.\n\n"
+                    "Never ask for a page ID or URL — search instead. Name the page each batch "
+                    "of cards came from. Build cards only from what you read.\n" + _CARD_PROTOCOL
+                ),
+            ),
+            NodeSpec(
+                id="tools",
+                type="tool",
+                # Empty connector_ref: connectors are per-workspace, so the user picks their own
+                # saved Notion connector on the Tool node after loading the template.
+                config={"provider": "mcp", "mcp_connector_ref": ""},
+            ),
+            _output(),
+        ],
+        edges=[
+            EdgeSpec(id="e1", source="in", target="agent"),
+            EdgeSpec(id="e2", source="agent", target="tools", condition="tools"),
+            EdgeSpec(id="e3", source="agent", target="out", condition="respond"),
+            EdgeSpec(id="e4", source="tools", target="agent"),  # the ReAct loop
+        ],
+        entry="in",
+    )
+
+
 # Frameworks — the agent-architecture patterns (the Russell & Norvig ladder + ReAct/Reflexion),
 # ordered simple→complex. Start here to choose *how* an agent thinks.
 FRAMEWORKS: list[GraphSpec] = [
@@ -840,6 +994,10 @@ TEMPLATES: list[GraphSpec] = [
     notion_assistant(),
     github_notion(),
     image_finder(),
+    flashcards(),
+    quiz_me(),
+    study_notes(),
+    study_notion(),
 ]
 
 # Everything the canvas gallery offers.

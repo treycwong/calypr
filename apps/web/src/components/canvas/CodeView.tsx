@@ -293,6 +293,19 @@ export function CodeView({
         </pre>
       )}
 
+      {code.includes("calypr-card") && !locked ? (
+        // Study projects carry their card format in the agent's own prompt, so an export keeps
+        // working — but the interactive cards are Calypr's rendering, not the agent's. Saying
+        // that here is the honest version of a claim we'd otherwise be leaving them to discover.
+        <p
+          className="border-t border-border px-3 py-2 text-[11px] leading-relaxed text-muted-foreground"
+          data-testid="code-cards-note"
+        >
+          Cards render as interactive, scored cards in Calypr. Your exported agent emits the same{" "}
+          <code className="font-mono">calypr-card</code> blocks for your own UI to parse.
+        </p>
+      ) : null}
+
       {!canRoundTrip && !locked && plan ? (
         // Names the account we actually see, so an invited partner whose GitHub email differs
         // from the one they gave us can tell us which address to add — instead of silently
