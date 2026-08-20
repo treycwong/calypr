@@ -41,6 +41,14 @@ pre-0019 objects open. Two bugs fixed in passing: a stopped run lost its answer 
 (`GeneratorExit` is not an `Exception`), and `gc_checkpoints` collected actively-used threads on
 the strength of their oldest run.
 
+**Study mode, the Workflows library and the project-cap upsell shipped 2026-08-20** (PRs #84,
+#85 — both merged and live): projects can now be drills that keep score, the dashboard's Templates
+stub is a real workflow gallery, and a free account out of project slots is offered Plus instead of
+`save failed (402)`. Three bugs surfaced on the way, each fixed with a test that bites — the
+Evaluator was streaming its private "SCORE: 5" onto the end of the user's answer, Share minted
+links for a graph the canvas had already moved past, and the card specimen taught its own subject
+so a German deck came back in Chinese. See the section below.
+
 **The canvas toolbar shipped 2026-08-13** (on branch, not yet merged): React Flow's stock
 `<Controls />` and `<MiniMap />` are replaced by one weavy-style bar centred on the canvas —
 arrow/hand tools, undo/redo, and a live zoom readout — with V/H/⌘Z/⌘⇧Z/+/− shortcuts and
@@ -430,6 +438,105 @@ Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the s
 
 ---
 
+## 🟢 Study mode, Workflows library, project-cap upsell — DONE (2026-08-20), merged + live
+
+Two PRs. **#84** added study cards and turned the dashboard's Templates placeholder into a real
+Workflows gallery, carrying three fixes it surfaced. **#85** replaced the project cap's raw 402
+with a pricing card. Both merged to `main`, deployed, and confirmed working in production.
+
+### What shipped
+
+- **Study cards.** An agent emits cards as ```` ```calypr-card ```` fences holding JSON; the chat
+  renders them as interactive quiz and flashcard components and tallies a score. Four templates
+  (Language flash cards, Quiz me on anything, Quiz me on my notes, Notion study quiz) and a
+  study few-shot for the AI assistant.
+- **The Workflows library** at `/dashboard/workflows` — all 18 use-case starters as a compact
+  grid with real Unsplash covers; picking one creates the project and opens the canvas with its
+  nodes wired. `/dashboard/templates` redirects.
+- **The project-cap upsell** — a compact Free-vs-Plus card, reached from a Workflow card, the
+  blank/template picker, and New Project.
+
+### The decision that governs any future structured output
+
+**The card protocol lives in the token stream, not on our wire.** An export is a single headless
+`.py` that owns no Calypr dependency, so anything carried as a new SSE event is lost the moment
+someone exports; a fence survives, and a buyer's own UI can parse it. The runtime, both SSE
+routers, metering and `conversations.py` were untouched, and transcripts and history replay
+carried cards for free. Put the next structured output in the text before considering a wire
+change.
+
+Study chrome is triggered by cards *arriving*, not by a field on the project — so it works
+identically on the canvas, on a share link, and on a reloaded transcript, with nothing to
+configure and no way for the setting and the behaviour to disagree. **No migration, no schema
+change, no new node types.**
+
+### Three bugs it surfaced, all worse than the feature
+
+- **Internal nodes were talking to the user.** `collect_text` streamed `token` events, and all
+  three of its callers are scaffolding — the Evaluator writes score/rationale, Memory a summary,
+  the Router a branch. None writes to `messages`, yet the judge's `SCORE: 5 …` was appended to the
+  end of the reply, same bubble, no separator. Now gated. **The gate is on the token emission
+  alone, never on the writer:** silencing the writer would have taken `usage` with it and
+  under-reported spend.
+- **Share minted links for a graph you weren't looking at.** A link runs the *saved* graph and
+  nothing tracked whether the canvas had diverged, so applying a template and hitting Share handed
+  out a link to the previous version, silently — and applying a template keeps the project's own
+  name, so nothing on screen contradicted you. It warns now, and deliberately does **not**
+  auto-save: the canvas may be a template someone is trying on top of a project they want to keep.
+- **The card specimen taught its own subject.** `_CARD_PROTOCOL` demonstrated the format with a
+  real card (火 = fire); asked for a German deck, gpt-4o-mini copied the kanji along with the
+  shape. Instructing it harder to "reproduce the block exactly" made it *worse* — that is an
+  instruction to copy. The specimen now carries no subject at all (`THE QUESTION` / `RIGHT`).
+  Applies to any exemplar-taught format.
+
+### Never predict a plan cap in the browser
+
+The upsell first decided "at cap" client-side from a row count against `PLAN_LIMITS`. Caps carry a
+dev/CI carve-out (`enforce_project_cap` returns early with no internal key), so the browser
+predicted a refusal the server would never make and **the dialog blocked the create flow for 17
+e2e specs** that had already made three projects.
+
+`can_create_project` now rides along with the workspace list the dashboard already fetches,
+answered by `project_slots_left` — the same predicate `enforce_project_cap` calls.
+`can_create` has worked this way for workspaces since it shipped and its docstring warns about
+exactly this. The outage fallback is `true`, opposite to `can_create`: a missing menu item is a
+quiet omission, but a `false` there tells a paying customer they are out of projects when the API
+is merely down.
+
+### Two smaller traps
+
+- **`eslint-disable-next-line` followed by more comment lines does nothing** — "next line" points
+  at the continuation comment. Put the rationale in a block comment *above* the directive.
+- **`pytest` is not the gate.** PR #84 went red on `uvx ruff check .` (E501) after a green local
+  pytest run. The full local sequence is `uvx ruff check .`, `pnpm --filter @calypr/dsl gen:check`,
+  `pnpm -r --if-present typecheck`, `uv run pytest`, `pnpm --filter @calypr/e2e test`. `apps/web`'s
+  eslint is **not** in CI, so a warning there blocks nothing — but ruff errors do.
+
+### Verified
+
+- 1696 Python tests, 161 e2e, ruff + typecheck clean. `build-test` green on both PRs.
+- Against a live model: German → cards on the first turn, AWS exam → cards, plain support chatbot
+  → no cards; a Japanese run still returns kanji, so the specimen fix removed the bleed rather than
+  the characters. All 18 cover URLs return 200.
+- Production deploys green on both Vercel (web) and Railway (`calypr-api`).
+
+### Still open on this work
+
+- **Cover photos are placeholders by decision** — to be replaced by hand later. They are committed
+  static `images.unsplash.com` URLs in `apps/web/src/app/dashboard/workflows/photos.ts`, resolved
+  once against the API so the app holds no key and makes no call. A template with no entry falls
+  back to generative art.
+- **e2e still writes fixtures to the local dev database.** Pointing it at a throwaway database was
+  attempted and reverted: a migrations-only database is missing Better Auth's
+  `user`/`session`/`account`/`verification` and LangGraph's `checkpoint_*` tables, which the dev
+  database accumulated from other tooling, and 15 run/chat specs fail on it. Needs those seeded
+  first — worth its own change.
+- **A filter for the Workflows gallery** — by feature (Chat, Flash Card, Quiz, Media, RAG) rather
+  than by the job-based categories that currently only order the grid. Derivable from node types
+  and prompts rather than hand-tagged, so it need never drift.
+
+---
+
 ## 🟢 Google sign-in, auth pages, provider disconnect — DONE (2026-08-20), merged + live
 
 Three PRs in a day: Google as a second sign-in provider (#81), then disconnect/unlink plus an
@@ -484,8 +591,11 @@ Verified live: same-email GitHub → Google folded into one account, plan and wo
 
 ### Still open on this work
 
-- `phase19-canvas-interaction.spec.ts:202` flakes ~1-in-6 **on `main`** (a 6px layout tolerance).
-  Pre-existing, not caused by this work, not fixed.
+- ~~`phase19-canvas-interaction.spec.ts:202` flakes ~1-in-6 **on `main`** (a 6px layout
+  tolerance).~~ **Fixed 2026-08-20 (PR #84.)** It sampled the node mid-fit at `scale(2)`, so a 3px
+  graph-space error read as 6px on screen; it now waits for React Flow's viewport transform to
+  settle before measuring. Adding four templates was enough to shift the fetch timing and turn the
+  flake into a hard failure.
 - `/dashboard/settings` throws an unhandled `BetterAuthError: You are using the default secret` on
   the dev-auth path. Reproducible on untouched `main` via `phase-settings.spec.ts`. Pre-existing.
 - The unlink round-trip has **no E2E coverage** and structurally cannot have any: the dev-auth
