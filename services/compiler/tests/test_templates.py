@@ -174,7 +174,7 @@ def test_card_specimen_teaches_shape_without_teaching_a_subject():
     cards = [json.loads(b) for b in blocks]  # the specimen must itself be valid JSON
 
     quiz = next(c for c in cards if c["kind"] == "quiz")
-    assert quiz["choices"][quiz["answer"]] == "THE RIGHT ONE", (
+    assert quiz["choices"][quiz["answer"]] == "RIGHT", (
         "the specimen's own answer index must point at the slot named right, or it teaches "
         "the index wrong"
     )
@@ -190,7 +190,9 @@ def test_every_workflow_has_a_gallery_category():
     assert not uncategorized, f"no gallery category for: {uncategorized}"
 
     unknown = {c for c in TEMPLATE_CATEGORIES.values() if c not in CATEGORY_ORDER}
-    assert not unknown, f"category missing from CATEGORY_ORDER (so it renders last, unordered): {unknown}"
+    assert not unknown, (
+        f"category missing from CATEGORY_ORDER (so it renders last, unordered): {unknown}"
+    )
 
     stale = set(TEMPLATE_CATEGORIES) - {t.id for t in TEMPLATES}
     assert not stale, f"category for a template that no longer exists: {stale}"

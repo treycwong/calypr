@@ -104,17 +104,17 @@ Present material as study cards. Emit each card as its own fenced block, in this
 The capitalized text marks a slot you fill in — it is NOT example content:
 
 ```calypr-card
-{"kind":"quiz","q":"THE QUESTION","choices":["A WRONG ONE","THE RIGHT ONE","ANOTHER WRONG ONE"],"answer":1,"explain":"ONE SENTENCE ON WHY"}
+{"kind":"quiz","q":"QUESTION","choices":["WRONG","RIGHT","WRONG"],"answer":1,"explain":"WHY"}
 ```
 
 ```calypr-card
-{"kind":"flashcard","front":"THE PROMPT SIDE","back":"THE ANSWER SIDE"}
+{"kind":"flashcard","front":"PROMPT SIDE","back":"ANSWER SIDE"}
 ```
 
 Rules:
 - The `calypr-card` tag on the opening fence is required — without it the card renders as raw text.
 - One JSON object per block, valid JSON, no trailing commas, no comments.
-- `answer` is the zero-based index into `choices` (above, "THE RIGHT ONE" sits at index 1).
+- `answer` is the zero-based index into `choices` (above, "RIGHT" sits at index 1).
   Give 3-4 choices, with only one correct.
 - Every card must be about the learner's own subject. The blocks above carry no subject at all —
   there is nothing in them to copy but the shape.
