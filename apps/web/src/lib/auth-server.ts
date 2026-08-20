@@ -16,7 +16,26 @@ export const auth = betterAuth({
       clientId: process.env.GITHUB_CLIENT_ID ?? "",
       clientSecret: process.env.GITHUB_CLIENT_SECRET ?? "",
     },
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    },
   },
+  // There is deliberately **no `account.accountLinking` block**, and adding one would be a
+  // mistake. Better Auth's defaults are already the secure behaviour we want: linking is on,
+  // implicit linking is on, and `requireLocalEmailVerified` is on — so a second provider folds
+  // into an existing `user` row only when the local row's email is provider-verified.
+  //
+  // That default is load-bearing here. `billing_account.owner_user_id` *is* this `user.id`
+  // (see migration 0016 / `resolve_account()`), so a duplicate user row means a duplicate
+  // billing account — a second plan, a second credit balance, and the person's own agents
+  // invisible to them. Both providers report verification honestly (GitHub from /user/emails,
+  // Google from the `email_verified` claim), so the gate holds.
+  //
+  // In particular, do not add `trustedProviders` to "fix" a refused link. A refusal means the
+  // existing row's email was never verified, and trusting the provider past that is exactly the
+  // pre-registration takeover the gate exists to stop — which, given the beta-invite matching on
+  // `x-calypr-user-email` below, would hand out a paid feature.
   session: {
     // Better Auth gates its "sensitive" operations on session *freshness*, and `deleteUser` is
     // one of them: without this it throws `SESSION_EXPIRED` unless the session was created

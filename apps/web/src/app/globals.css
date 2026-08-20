@@ -39,6 +39,12 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  /* The brand accent (Tailwind cyan-400). Until now cyan lived only as hard-coded literals
+     inside the share route; a second surface — the auth pages — needs it, so it becomes a token.
+     Declared as a literal rather than the `var(--x)` indirection the light/dark pairs below use:
+     the accent is the same in both themes, and a `var()` pointing at a non-theme property gets
+     pruned out of the compiled stylesheet, so `text-brand` silently renders as inherit. */
+  --color-brand: oklch(0.789 0.154 211.53);
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);

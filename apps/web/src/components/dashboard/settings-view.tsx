@@ -46,6 +46,13 @@ import { useProviderKeys } from "@/lib/use-provider-keys";
 
 /** What each tier means in the one place a user goes looking. `beta` keeps code export because
  * we don't take a shipped feature back off the cohort already using it. */
+/** The social providers we offer, in the order the sign-in page shows them. Ids match Better
+ * Auth's `account.providerId`, which is what `listUserAccounts()` returns. */
+const SIGN_IN_PROVIDERS = [
+  { id: "github", label: "GitHub" },
+  { id: "google", label: "Google" },
+] as const;
+
 /** "August 24, 2026" from an ISO string. Empty for null so callers can guard on it. */
 function formatDate(iso: string | null): string {
   if (!iso) return "";
@@ -435,8 +442,10 @@ export function SettingsView({
           </div>
 
           {/* --- Integrations ------------------------------------------------------------- */}
-          {/* Connected state only, with no disconnect. GitHub is the only way in, so an
-              "unlink" button is a button that locks you out of your own account. */}
+          {/* Connected state only, with no disconnect. Unlinking the provider you actually use
+              is a button that locks you out of your own account, and we don't yet track which
+              one that is. Both providers fold into a single identity when the email matches and
+              is verified, so "Connected" on both rows is one account, not two. */}
           <div
             className="mt-4 rounded-lg border border-border p-5"
             data-testid="account-integrations-card"
@@ -445,21 +454,27 @@ export function SettingsView({
             <p className="mt-0.5 text-xs text-muted-foreground">
               How you sign in to Calypr.
             </p>
-            <div
-              className="mt-4 flex items-center justify-between gap-4"
-              data-testid="account-integration-github"
-              data-connected={linkedProviders.includes("github")}
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">GitHub</span>
-                <span className="font-mono text-xs text-muted-foreground">
-                  {manageable ? "OAuth" : "development sign-in"}
-                </span>
-              </div>
-              <Badge variant={linkedProviders.includes("github") ? "default" : "outline"}>
-                {linkedProviders.includes("github") ? "Connected" : "Not connected"}
-              </Badge>
-            </div>
+            {SIGN_IN_PROVIDERS.map(({ id, label }) => {
+              const connected = linkedProviders.includes(id);
+              return (
+                <div
+                  key={id}
+                  className="mt-4 flex items-center justify-between gap-4"
+                  data-testid={`account-integration-${id}`}
+                  data-connected={connected}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium">{label}</span>
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {manageable ? "OAuth" : "development sign-in"}
+                    </span>
+                  </div>
+                  <Badge variant={connected ? "default" : "outline"}>
+                    {connected ? "Connected" : "Not connected"}
+                  </Badge>
+                </div>
+              );
+            })}
           </div>
 
           {/* --- Danger ------------------------------------------------------------------- */}

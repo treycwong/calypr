@@ -31,6 +31,10 @@ unconfigured.
 `CALYPR_API_URL` (Railway API URL), `CALYPR_INTERNAL_KEY` (same as API), `BETTER_AUTH_SECRET`,
 `DATABASE_URL`, GitHub OAuth creds — unchanged by this branch.
 
+Plus `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (Google Cloud OAuth client, type *Web
+application*, redirect URI `https://www.calypr.co/api/auth/callback/google`). These must be set
+**before** the Google button ships, or it 500s on click.
+
 ## What's live
 
 All of it, as of **2026-07-22**:
