@@ -101,10 +101,10 @@ test("Workflows and Usage are reachable from the sidebar", async ({ page }) => {
   // design — they live on the canvas rail, next to the wiring they describe.
   await page.getByTestId("nav-workflows").click();
   await expect(page.getByRole("heading", { name: "Workflows" })).toBeVisible();
-  await expect(page.getByTestId("workflow-group").first()).toBeVisible();
-  // Study first: CATEGORY_ORDER decides, and the API ships the templates already in it.
-  await expect(page.getByRole("heading", { name: "Study & revision" })).toBeVisible();
-  await expect(page.getByTestId("workflow-group").first()).toHaveAttribute(
+  await expect(page.getByTestId("workflow-grid")).toBeVisible();
+  // One flat grid — no category headings. The order still comes from CATEGORY_ORDER, so study
+  // leads; the grouping survives as sequence, which is what a filter will key off later.
+  await expect(page.getByTestId("workflow-card").first()).toHaveAttribute(
     "data-category",
     "Study & revision",
   );

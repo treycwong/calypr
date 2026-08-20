@@ -165,3 +165,26 @@ test("Share warns when the canvas holds changes the link would not run", async (
   await expect(page.getByTestId("save-msg")).toContainText("Saved");
   await expect(page.getByTestId("share-stale")).toBeHidden();
 });
+
+// Picking a workflow has to land you on a working canvas, not an empty one: the project is
+// created from the template's graph first, then opened by id, so the nodes are already wired
+// when the canvas paints.
+test("a workflow card spawns a project with its nodes ready", async ({ page }) => {
+  await signInAt(page, "/dashboard/workflows");
+  const card = page.getByTestId("workflow-card").filter({ hasText: "Language flash cards" });
+  await expect(card).toBeVisible();
+  await card.click();
+
+  await expect(page).toHaveURL(/\/canvas\?agent=/);
+  await expect(page.getByTestId("canvas-toolbar")).toBeVisible();
+  await expect(page.getByTestId("agent-name")).toHaveValue("Language flash cards");
+  // The template's own graph, already on the canvas.
+  await expect(page.getByTestId("node-input")).toBeVisible();
+  await expect(page.getByTestId("node-agent")).toBeVisible();
+  await expect(page.getByTestId("node-output")).toBeVisible();
+  await expect(page.locator(".react-flow__edge")).toHaveCount(2);
+
+  // And it drills: the card protocol rode along in the saved graph.
+  await page.getByTestId("node-agent").click();
+  await expect(page.getByTestId("cfg-prompt")).toHaveValue(/calypr-card/);
+});
