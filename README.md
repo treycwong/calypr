@@ -49,8 +49,9 @@ streams both servers' logs. Override ports with `API_PORT` / `WEB_PORT`.
 ### Auth
 
 The web app ships a **keyless dev sign-in** so it runs locally and in CI with no setup. To
-switch the whole app to **[Better Auth](https://better-auth.com)** (GitHub OAuth, self-hosted
-against the project's Postgres) set these env vars in `apps/web/.env.local` — no code changes:
+switch the whole app to **[Better Auth](https://better-auth.com)** (GitHub + Google OAuth,
+self-hosted against the project's Postgres) set these env vars in `apps/web/.env.local` — no
+code changes:
 
 ```bash
 BETTER_AUTH_SECRET=...          # openssl rand -base64 32
@@ -58,12 +59,19 @@ BETTER_AUTH_URL=http://localhost:3100
 DATABASE_URL=postgresql://calypr:calypr@localhost:5432/calypr
 GITHUB_CLIENT_ID=...            # a GitHub OAuth app; callback:
 GITHUB_CLIENT_SECRET=...        #   ${BETTER_AUTH_URL}/api/auth/callback/github
+GOOGLE_CLIENT_ID=...            # a Google Cloud OAuth client (Web application); callback:
+GOOGLE_CLIENT_SECRET=...        #   ${BETTER_AUTH_URL}/api/auth/callback/google
 npx @better-auth/cli migrate    # one-time: create the auth tables in Postgres
 ```
 
-When `BETTER_AUTH_SECRET` is set, the proxy gates on the Better Auth session, the sign-in page
-shows "Continue with GitHub", and the account control signs out via Better Auth. When unset, the
-dev cookie sign-in is used. The single seam is `getSession()` in
+When `BETTER_AUTH_SECRET` is set, the proxy gates on the Better Auth session, `/sign-in` and
+`/sign-up` show "Continue with GitHub" / "Continue with Google", and the account control signs
+out via Better Auth. When unset, the dev cookie sign-in is used.
+
+Signing in with a second provider on the **same verified email** links into the existing
+identity rather than creating a new one — which matters, because `billing_account.owner_user_id`
+is that Better Auth user id, so a duplicate user would mean a duplicate plan and credit balance.
+That is Better Auth's default behaviour and `auth-server.ts` deliberately does not override it. The single seam is `getSession()` in
 [`apps/web/src/lib/auth.ts`](apps/web/src/lib/auth.ts) — Organizations (collaboration) and an
 MCP/API-key provider (agent auth) are natural follow-ons on the same instance.
 
