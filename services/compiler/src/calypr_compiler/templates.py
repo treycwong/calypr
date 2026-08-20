@@ -90,24 +90,34 @@ def _chain(*node_ids: str) -> list[EdgeSpec]:
 # its markdown image — models copy an exact shape far more reliably than they follow a
 # description of one.
 #
+# The specimen carries NO subject, and that is the whole point. It used to quiz 火 = fire, and a
+# model told to drill German copied the kanji along with the shape: a "German" deck that asked
+# what 木 and 水 mean. Content-copying beats instruction-following at this size, so the only safe
+# specimen is one with no content to copy. The slot names double as the `answer`-index lesson —
+# "THE RIGHT ONE" sits at index 1.
+#
 # Crucially this lives in the *text the agent emits*, not on Calypr's wire, so an exported
 # project keeps working: the generated Python emits the same blocks, and its owner's own UI can
 # parse them. Nothing here depends on running inside Calypr.
 _CARD_PROTOCOL = """
-Present material as study cards. Emit each card as its own fenced block, exactly like this:
+Present material as study cards. Emit each card as its own fenced block, in this exact shape.
+The capitalized text marks a slot you fill in — it is NOT example content:
 
 ```calypr-card
-{"kind":"quiz","q":"What does 火 mean?","choices":["water","fire","tree"],"answer":1,"explain":"火 = fire (hi / ka)."}
+{"kind":"quiz","q":"THE QUESTION","choices":["A WRONG ONE","THE RIGHT ONE","ANOTHER WRONG ONE"],"answer":1,"explain":"ONE SENTENCE ON WHY"}
 ```
 
 ```calypr-card
-{"kind":"flashcard","front":"火","back":"fire (hi / ka)"}
+{"kind":"flashcard","front":"THE PROMPT SIDE","back":"THE ANSWER SIDE"}
 ```
 
 Rules:
 - The `calypr-card` tag on the opening fence is required — without it the card renders as raw text.
 - One JSON object per block, valid JSON, no trailing commas, no comments.
-- `answer` is the zero-based index into `choices`. Give 3-4 choices, with only one correct.
+- `answer` is the zero-based index into `choices` (above, "THE RIGHT ONE" sits at index 1).
+  Give 3-4 choices, with only one correct.
+- Every card must be about the learner's own subject. The blocks above carry no subject at all —
+  there is nothing in them to copy but the shape.
 - Use `quiz` when the learner should be tested, `flashcard` for recall practice.
 - Emit 1-3 cards per turn, not a whole deck at once — the learner answers before continuing.
 - One short sentence of framing before the cards is fine. Never explain the format itself.

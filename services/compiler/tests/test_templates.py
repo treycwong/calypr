@@ -148,3 +148,32 @@ def test_no_starter_ships_the_fake_model(graph):
         n.id for n in graph.nodes if isinstance(n.config, dict) and n.config.get("model") == "fake"
     ]
     assert fakes == [], f"{graph.id} ships the fake model on {fakes}"
+
+
+def test_card_specimen_teaches_shape_without_teaching_a_subject():
+    """The card specimen must carry no subject matter of its own.
+
+    It used to quiz 火 = fire. Asked for a German deck, gpt-4o-mini copied the kanji along with
+    the shape and produced a "German" quiz asking what 木 and 水 mean — content-copying beats
+    instruction-following at that size, so the only safe specimen is one with nothing to copy.
+    The slot names also carry the `answer`-index lesson, which is why they are checked here: if
+    someone renames them, the index must still line up.
+    """
+    import json
+    import re
+
+    from calypr_compiler.templates import _CARD_PROTOCOL
+
+    assert not re.search(r"[぀-ヿ㐀-鿿]", _CARD_PROTOCOL), (
+        "no CJK in the specimen — a subject-free specimen has no language at all"
+    )
+
+    blocks = re.findall(r"```calypr-card\n(.+?)\n```", _CARD_PROTOCOL, re.S)
+    assert len(blocks) == 2, "one quiz specimen and one flashcard specimen"
+    cards = [json.loads(b) for b in blocks]  # the specimen must itself be valid JSON
+
+    quiz = next(c for c in cards if c["kind"] == "quiz")
+    assert quiz["choices"][quiz["answer"]] == "THE RIGHT ONE", (
+        "the specimen's own answer index must point at the slot named right, or it teaches "
+        "the index wrong"
+    )
