@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { Unlink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tooltip, TooltipGroup } from "@/components/ui/tooltip";
 import {
   type AssistantModelOption,
   deleteAccount,
@@ -42,6 +44,7 @@ import {
   type WorkspaceInfo,
 } from "@/lib/api";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 import { PLAN_COPY } from "@/lib/plans";
 import { useProviderKeys } from "@/lib/use-provider-keys";
 
@@ -454,16 +457,18 @@ export function SettingsView({
             <p className="mt-0.5 text-xs text-muted-foreground">
               How you sign in to Calypr.
             </p>
-            {SIGN_IN_PROVIDERS.map(({ id, label }) => (
-              <SignInProviderRow
-                key={id}
-                id={id}
-                label={label}
-                connected={linkedProviders.includes(id)}
-                manageable={manageable}
-                linkedCount={linkedProviders.length}
-              />
-            ))}
+            <TooltipGroup>
+              {SIGN_IN_PROVIDERS.map(({ id, label }) => (
+                <SignInProviderRow
+                  key={id}
+                  id={id}
+                  label={label}
+                  connected={linkedProviders.includes(id)}
+                  manageable={manageable}
+                  linkedCount={linkedProviders.length}
+                />
+              ))}
+            </TooltipGroup>
           </div>
 
           {/* --- Danger ------------------------------------------------------------------- */}
@@ -767,16 +772,29 @@ function SignInProviderRow({
           {connected ? "Connected" : "Not connected"}
         </Badge>
         {manageable && connected ? (
-          <Button
-            size="xs"
-            variant="ghost"
-            disabled={isLast}
-            title={isLast ? "This is your only way to sign in." : undefined}
-            onClick={() => setOpen(true)}
+          // `aria-disabled`, never `disabled`: a disabled button suppresses pointer events, which
+          // would silence the tooltip in the one case where it is the whole explanation — the
+          // last provider, dimmed with no visible reason why. The dimming and the no-op are done
+          // by hand instead.
+          <Tooltip
+            label={
+              isLast
+                ? `${label} is your only way to sign in — connect another provider first.`
+                : `Disconnect ${label}`
+            }
+            aria-disabled={isLast}
+            aria-label={`Disconnect ${label}`}
+            onClick={() => {
+              if (!isLast) setOpen(true);
+            }}
+            className={cn(
+              buttonVariants({ variant: "ghost", size: "icon-sm" }),
+              isLast && "cursor-not-allowed opacity-40",
+            )}
             data-testid={`disconnect-${id}`}
           >
-            Disconnect
-          </Button>
+            <Unlink className="h-4 w-4" />
+          </Tooltip>
         ) : null}
       </div>
 
