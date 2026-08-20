@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForHydration } from "./helpers";
+import { signInAt, waitForHydration } from "./helpers";
 
 // `/sign-up` is mechanically the same page as `/sign-in` — social sign-in creates the user on
 // first use — so what's worth asserting is that the two are distinguishable to a visitor and
@@ -27,10 +27,12 @@ test("the two auth pages link to each other", async ({ page }) => {
   // Unlike `dev-sign-in` — a form post that lands whether or not React is up — these are Next
   // `<Link>`s, and a click before hydration is dropped. See `waitForHydration`.
   await waitForHydration(page);
-  await page.getByRole("link", { name: "Create an account" }).click();
+  // Scoped to the card's footer: the nav offers the same destination under the same name, and
+  // this test is about the in-card link specifically (the nav has its own test below).
+  await page.getByTestId("auth-footer").getByRole("link").click();
   await expect(page).toHaveURL(/\/sign-up/);
   await waitForHydration(page);
-  await page.getByRole("link", { name: "Log in", exact: true }).click();
+  await page.getByTestId("auth-footer").getByRole("link").click();
   await expect(page).toHaveURL(/\/sign-in/);
 });
 
@@ -44,4 +46,33 @@ test("the backdrop does not block or delay the sign-in card", async ({ page }) =
   await page.getByTestId("dev-sign-in").click();
   await expect(page).toHaveURL(/\/dashboard/);
   expect(errors).toEqual([]);
+});
+
+test("the nav offers the other auth page", async ({ page }) => {
+  await page.goto("/sign-in");
+  await waitForHydration(page);
+  await expect(page.getByTestId("auth-nav-action")).toHaveText("Sign up");
+  await page.getByTestId("auth-nav-action").click();
+  await expect(page).toHaveURL(/\/sign-up/);
+  await waitForHydration(page);
+  await expect(page.getByTestId("auth-nav-action")).toHaveText("Log in");
+});
+
+// The Integrations card carries destructive controls, and the dev-auth session has no Better Auth
+// `account` rows at all — so there is nothing it could legitimately disconnect. Rendering a
+// Disconnect button here would offer an action that can only fail.
+test("no disconnect controls exist on the dev-auth path", async ({ page }) => {
+  await signInAt(page, "/dashboard/settings");
+  const card = page.getByTestId("account-integrations-card");
+  await expect(card).toBeVisible();
+  await expect(page.getByTestId("account-integration-github")).toHaveAttribute(
+    "data-connected",
+    "false",
+  );
+  await expect(page.getByTestId("account-integration-google")).toHaveAttribute(
+    "data-connected",
+    "false",
+  );
+  await expect(page.getByTestId("disconnect-github")).toHaveCount(0);
+  await expect(page.getByTestId("disconnect-google")).toHaveCount(0);
 });

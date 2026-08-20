@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -442,10 +443,9 @@ export function SettingsView({
           </div>
 
           {/* --- Integrations ------------------------------------------------------------- */}
-          {/* Connected state only, with no disconnect. Unlinking the provider you actually use
-              is a button that locks you out of your own account, and we don't yet track which
-              one that is. Both providers fold into a single identity when the email matches and
-              is verified, so "Connected" on both rows is one account, not two. */}
+          {/* Both providers fold into a single identity when the email matches and is verified,
+              so "Connected" on both rows is one account, not two — and disconnecting one is
+              therefore safe *as long as another remains*. See `ProviderRow` for that rule. */}
           <div
             className="mt-4 rounded-lg border border-border p-5"
             data-testid="account-integrations-card"
@@ -454,27 +454,16 @@ export function SettingsView({
             <p className="mt-0.5 text-xs text-muted-foreground">
               How you sign in to Calypr.
             </p>
-            {SIGN_IN_PROVIDERS.map(({ id, label }) => {
-              const connected = linkedProviders.includes(id);
-              return (
-                <div
-                  key={id}
-                  className="mt-4 flex items-center justify-between gap-4"
-                  data-testid={`account-integration-${id}`}
-                  data-connected={connected}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{label}</span>
-                    <span className="font-mono text-xs text-muted-foreground">
-                      {manageable ? "OAuth" : "development sign-in"}
-                    </span>
-                  </div>
-                  <Badge variant={connected ? "default" : "outline"}>
-                    {connected ? "Connected" : "Not connected"}
-                  </Badge>
-                </div>
-              );
-            })}
+            {SIGN_IN_PROVIDERS.map(({ id, label }) => (
+              <SignInProviderRow
+                key={id}
+                id={id}
+                label={label}
+                connected={linkedProviders.includes(id)}
+                manageable={manageable}
+                linkedCount={linkedProviders.length}
+              />
+            ))}
           </div>
 
           {/* --- Danger ------------------------------------------------------------------- */}
@@ -692,6 +681,143 @@ export function SettingsView({
           <DeleteWorkspaceCard workspace={savedWs} />
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+/**
+ * One sign-in provider in the Integrations card, with its Disconnect control.
+ *
+ * Named for sign-in specifically because `ProviderRow` further down is a different thing
+ * entirely — an LLM vendor and its BYO API key.
+ *
+ * **The rule that matters: you can never disconnect your last provider.** These are the only
+ * ways into the account — there is no password to fall back on — so removing the last one would
+ * lock someone out of their own workspaces permanently, with no self-serve way back.
+ *
+ * Better Auth enforces that server-side (`/unlink-account` refuses when one account remains,
+ * since `allowUnlinkingAll` defaults to false), and that refusal is the enforcement. This mirrors
+ * it as a disabled button explaining why — the same shape `DeleteWorkspaceCard` uses for the
+ * last-workspace rule, and for the same reason: discovering the rule by being refused is a worse
+ * way to learn it than seeing it before you click.
+ *
+ * The confirm step is not decoration. `auth-server.ts` sets `session.freshAge: 0`, which makes
+ * Better Auth's `freshSessionMiddleware` on this endpoint a no-op for us — so the dialog is the
+ * only friction between a stolen session and an unlink. It is deliberately not type-to-confirm:
+ * this is reversible by signing in with that provider again, unlike the deletions below.
+ *
+ * Note this is *sign-in* only. The GitHub **connector** (the PAT that lets agents call the GitHub
+ * API) is an unrelated credential and is untouched here, which the copy says out loud — one
+ * product, two different GitHub relationships.
+ */
+function SignInProviderRow({
+  id,
+  label,
+  connected,
+  manageable,
+  linkedCount,
+}: {
+  id: string;
+  label: string;
+  connected: boolean;
+  manageable: boolean;
+  /** How many providers are linked in total — one means this row's button must stay disabled. */
+  linkedCount: number;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const isLast = linkedCount <= 1;
+
+  async function confirmDisconnect() {
+    setBusy(true);
+    setError("");
+    const { error: err } = await authClient.unlinkAccount({ providerId: id });
+    if (err) {
+      setBusy(false);
+      // Keep the dialog open so the reason sits next to the button that failed — this is where
+      // the server's last-account refusal surfaces if the mirror above was ever wrong.
+      setError(err.message ?? `Could not disconnect ${label}.`);
+      return;
+    }
+    setOpen(false);
+    setBusy(false);
+    // The linked list is resolved server-side (see `settings/page.tsx`), so re-render from the
+    // server rather than guessing locally — the badge and every other row's disabled state are
+    // all downstream of the same count.
+    router.refresh();
+  }
+
+  return (
+    <div
+      className="mt-4 flex items-center justify-between gap-4"
+      data-testid={`account-integration-${id}`}
+      data-connected={connected}
+    >
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{label}</span>
+        <span className="font-mono text-xs text-muted-foreground">
+          {manageable ? "OAuth" : "development sign-in"}
+        </span>
+      </div>
+      <div className="flex items-center gap-3">
+        <Badge variant={connected ? "default" : "outline"}>
+          {connected ? "Connected" : "Not connected"}
+        </Badge>
+        {manageable && connected ? (
+          <Button
+            size="xs"
+            variant="ghost"
+            disabled={isLast}
+            title={isLast ? "This is your only way to sign in." : undefined}
+            onClick={() => setOpen(true)}
+            data-testid={`disconnect-${id}`}
+          >
+            Disconnect
+          </Button>
+        ) : null}
+      </div>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent data-testid={`disconnect-${id}-dialog`}>
+          <DialogHeader>
+            <DialogTitle>Disconnect {label}?</DialogTitle>
+            <DialogDescription>
+              You&rsquo;ll no longer be able to sign in with {label}. Your projects, workspaces and
+              plan are unaffected, and you can reconnect any time by signing in with {label}{" "}
+              again.
+              {id === "github" ? (
+                <> This does not affect the GitHub connector your agents use.</>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          {error ? (
+            <p className="text-sm text-destructive" data-testid={`disconnect-${id}-error`}>
+              {error}
+            </p>
+          ) : null}
+          <DialogFooter>
+            <DialogClose
+              render={
+                <Button variant="ghost" size="sm">
+                  Cancel
+                </Button>
+              }
+            />
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              onClick={confirmDisconnect}
+              data-testid={`disconnect-${id}-confirm`}
+            >
+              {busy ? "Disconnecting…" : `Disconnect ${label}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -52,10 +52,11 @@ const PROVIDERS: Record<SocialProvider, { label: string; mark: () => React.React
 export function SocialSignIn({
   provider,
   next,
-  variant = "default",
+  variant = "outline",
 }: {
   provider: SocialProvider;
   next?: string;
+  /** Defaults to `outline` so every provider carries the same weight — see `AuthPanel`. */
   variant?: "default" | "outline";
 }) {
   const [busy, setBusy] = useState(false);
