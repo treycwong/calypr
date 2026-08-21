@@ -5,12 +5,22 @@ from calypr_model.base import ModelClient
 from calypr_model.events import Done, StreamEvent, TextDelta, ToolCall, Usage
 from calypr_model.factory import (
     image_model_for,
+    mesh_model_for,
     model_for,
     provider_of,
     tts_model_for,
 )
 from calypr_model.fake import FakeModelClient
 from calypr_model.image_client import FakeImageClient, ImageResult, OpenAIImageClient
+from calypr_model.mesh_client import (
+    DEFAULT_MESH_SIMPLIFY,
+    DEFAULT_TEXTURE_SIZE,
+    MESH_MODELS,
+    TEXTURE_SIZES,
+    FakeMeshClient,
+    FalMeshClient,
+    MeshResult,
+)
 from calypr_model.messages import Msg, Role, ToolCallRequest
 from calypr_model.openai_client import OpenAIModelClient
 from calypr_model.tts_client import FakeTTSClient, OpenAITTSClient, TTSResult
@@ -31,11 +41,19 @@ __all__ = [
     "OpenAIImageClient",
     "FakeImageClient",
     "ImageResult",
+    "FalMeshClient",
+    "FakeMeshClient",
+    "MeshResult",
+    "MESH_MODELS",
+    "TEXTURE_SIZES",
+    "DEFAULT_TEXTURE_SIZE",
+    "DEFAULT_MESH_SIMPLIFY",
     "OpenAITTSClient",
     "FakeTTSClient",
     "TTSResult",
     "model_for",
     "image_model_for",
+    "mesh_model_for",
     "tts_model_for",
     "provider_of",
 ]

@@ -44,6 +44,7 @@ WIRING = {
     "memory_channel",
     "images_channel",
     "prompt_channel",
+    "image_channel",
     "score_channel",
     "rationale_channel",
     "route_channel",

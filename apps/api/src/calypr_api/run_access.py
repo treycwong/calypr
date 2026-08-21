@@ -6,15 +6,20 @@ allowed, whatever the balance says. Only when some node would land on our keys d
 balance matter, and that question belongs to `credits.check_can_run`.
 
 Both plans work the same way: spend the monthly grant on platform models, and when it runs out
-either bring your own key or wait for the reset. **The plan never decides which models you may
+either bring your own key or wait for the reset. **The plan never decides which *models* you may
 run.** An earlier version refused Free any platform run at all (BYO-key only, per an older
 reading of `PRICING-SPEC` §1); that was reversed before it ever shipped, because it made a new
 Free user's very first Run an error message.
 
-The plan does decide *where* you may run, which is a different question and is checked first: a
-workspace beyond the plan's cap after a downgrade is read-only, so no run starts in it at all
-(`locking.py`). That gate is about capacity the account no longer has, not about models — and
-unlike the credit gate, waiting for the monthly reset does nothing for it.
+It does decide which **blocks** you may run, which is a different question. The generative media
+blocks (`entitlements.PLUS_NODE_TYPES`) cost real money per output rather than per token, so they
+are a paid entitlement — and unlike the credit gate, a BYO key does not open them. That check runs
+before the own-key short-circuit for exactly that reason.
+
+And it decides *where* you may run, checked first of all: a workspace beyond the plan's cap
+after a downgrade is read-only, so no run starts in it at all (`locking.py`). That gate is about
+capacity the account no longer has — and like the block gate, waiting for the monthly reset does
+nothing for it.
 
 Graph-shaped, so it can't be a FastAPI dependency — the graph arrives in the request body.
 Callers run it off the event loop (it touches the DB) and stream the `(code, message)` back
@@ -27,17 +32,36 @@ import logging
 import uuid
 
 from calypr_dsl import GraphSpec
+from sqlalchemy import text
 
-from calypr_api import credits, locking
+from calypr_api import credits, entitlements, locking
 from calypr_api.config import settings
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal
-from calypr_api.errors import WORKSPACE_LOCKED
+from calypr_api.errors import PLAN_REQUIRED, WORKSPACE_LOCKED
 from calypr_api.model_access import platform_key_models, runs_on_own_key
 from calypr_api.provider_keys import byok_providers
 
 log = logging.getLogger(__name__)
+
+#: A workspace's plan lives on its account (migration 0016). Same join `deps` uses; duplicated as
+#: a constant rather than imported because `deps` is the FastAPI dependency layer and this module
+#: is deliberately graph-shaped and framework-free.
+_PLAN_FOR_WORKSPACE = (
+    "SELECT a.plan FROM billing_account a JOIN workspace w ON w.account_id = a.id WHERE w.id = :id"
+)
+
+#: Palette labels for the gated block types, so the refusal names what the user actually dragged
+#: onto the canvas rather than an internal node type.
+_BLOCK_LABELS = {"mesh": "3D"}
+
+
+def _plan_required_message(types: list[str]) -> str:
+    """Copy for a graph containing blocks this plan doesn't include."""
+    names = ", ".join(_BLOCK_LABELS.get(t, t) for t in types)
+    plural = "blocks are" if len(types) > 1 else "block is"
+    return f"The {names} {plural} part of Calypr Plus. Upgrade to run this agent."
 
 
 def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[str, str] | None:
@@ -73,6 +97,17 @@ def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[s
             workspace = session.get(Workspace, workspace_id)
             if workspace is None:
                 return None
+            # Entitlement before cost. A paid block is refused whatever the balance says and
+            # whoever's key would pay for it, so this sits above the own-key short-circuit.
+            #
+            # Inside the fail-open `try` with everything else, deliberately: a DB hiccup letting a
+            # Free run through costs cents and is still backstopped by the spend cap, whereas
+            # failing closed here would refuse *every* run whenever Postgres blinks.
+            plan = session.execute(
+                text(_PLAN_FOR_WORKSPACE), {"id": str(workspace_id)}
+            ).scalar_one_or_none()
+            if gated := entitlements.gated_nodes_in(graph, plan):
+                return (PLAN_REQUIRED, _plan_required_message(gated))
             on_platform = platform_key_models(
                 graph, byok_providers(workspace_id), workspace.default_model or ""
             )

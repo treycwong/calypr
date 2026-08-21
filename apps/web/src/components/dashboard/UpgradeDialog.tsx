@@ -12,7 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { track } from "@/lib/analytics";
+import { type AnalyticsEvent, track } from "@/lib/analytics";
 import { PLAN_LIMITS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
@@ -38,32 +38,53 @@ const ROWS: { label: string; free: string; plus: string }[] = [
     plus: PLAN_LIMITS.plus.credits.toLocaleString(),
   },
   { label: "Code export", free: "—", plus: "Included" },
+  { label: "3D blocks", free: "—", plus: "Included" },
 ];
 
-/** The paywall a free account meets when it runs out of project slots.
+/** The paywall a free account meets when a plan refuses something.
  *
- *  Creating a project is the one action on this dashboard a plan can refuse, and it used to fail
- *  with "save failed (402)" — a status code, shown to someone in the middle of starting work.
+ *  Two callers now. Running out of project slots was the first — it used to fail with "save
+ *  failed (402)", a status code shown to someone in the middle of starting work. Reaching for a
+ *  paid block on the canvas is the second, and `title`/`body`/`event` are what let it say so
+ *  without a second near-identical dialog: the plan comparison below is the substance, and it is
+ *  the same comparison either way.
  */
 export function UpgradeDialog({
   open,
   onOpenChange,
   detail,
+  title,
+  body,
+  event = "project_cap_upgrade_clicked",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   detail?: CapDetail;
+  /** Overrides the project-cap heading. */
+  title?: string;
+  /** Overrides the project-cap explanation. `detail.message` still wins when the server sent one. */
+  body?: string;
+  /** Analytics event for the CTA, so the two paywalls stay tellable apart. */
+  event?: AnalyticsEvent;
 }) {
   const limit = detail?.limit ?? PLAN_LIMITS.free.projects;
+  // The project-cap wording is assembled, not overridden: when the server sends its own sentence
+  // it still gets the "what to do about it" tail. `body` replaces the whole thing, because the
+  // block paywall has no count to report and nothing to delete.
+  const description =
+    body ??
+    `${detail?.message ?? `Your plan includes ${limit} projects, pooled across workspaces.`} ` +
+      "Upgrade for more room, or delete one you\u2019re done with.";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-sm" data-testid="upgrade-dialog">
         <DialogHeader>
-          <DialogTitle className="text-base">You&rsquo;ve used all {limit} projects</DialogTitle>
+          <DialogTitle className="text-base">
+            {title ?? `You\u2019ve used all ${limit} projects`}
+          </DialogTitle>
           <DialogDescription className="text-xs">
-            {detail?.message ?? `Your plan includes ${limit} projects, pooled across workspaces.`}{" "}
-            Upgrade for more room, or delete one you&rsquo;re done with.
+            {description}
           </DialogDescription>
         </DialogHeader>
 
@@ -105,7 +126,7 @@ export function UpgradeDialog({
             href="/checkout?plan=plus"
             className={cn(buttonVariants({ size: "sm" }))}
             data-testid="upgrade-cta"
-            onClick={() => track("project_cap_upgrade_clicked")}
+            onClick={() => track(event)}
           >
             Upgrade to Plus
           </Link>

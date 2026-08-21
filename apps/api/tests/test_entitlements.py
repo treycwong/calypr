@@ -453,3 +453,58 @@ def test_re_inviting_someone_lets_them_back_in(monkeypatch, tenant_factory):
         s.commit()
         assert entitlements.grant_beta_if_invited(s, acct, email) is True
         assert acct.plan == entitlements.BETA
+
+
+# --- paid blocks ----------------------------------------------------------------------------------
+
+
+def _graph_with(*types: str):
+    """A minimal Input → …→ Output graph. Only node *types* matter to the gate, so the configs
+    stay empty rather than dragging real ones in."""
+    from calypr_dsl import EdgeSpec, GraphSpec, NodeSpec
+
+    nodes = [NodeSpec(id="in", type="input", config={})]
+    nodes += [NodeSpec(id=f"n{i}", type=t, config={}) for i, t in enumerate(types)]
+    nodes.append(NodeSpec(id="out", type="output", config={}))
+    ids = [n.id for n in nodes]
+    return GraphSpec(
+        id="g",
+        name="g",
+        state=[],
+        nodes=nodes,
+        edges=[
+            EdgeSpec(id=f"e{i}", source=a, target=b)
+            for i, (a, b) in enumerate(zip(ids, ids[1:], strict=False))
+        ],
+        entry="in",
+    )
+
+
+def test_free_may_not_run_a_3d_block():
+    gated = entitlements.gated_nodes_in(_graph_with("mesh"), entitlements.FREE)
+    assert gated == ["mesh"]
+
+
+@pytest.mark.parametrize("plan", [entitlements.PLUS, entitlements.BETA])
+def test_paid_plans_may_run_a_3d_block(plan):
+    """`beta` keeps it for the same reason it keeps code export — we don't take a shipped feature
+    back off the cohort already using it."""
+    assert entitlements.gated_nodes_in(_graph_with("mesh"), plan) == []
+
+
+def test_unpaid_blocks_are_never_gated():
+    """The gate is an allowlist of *paid* types, not a general node filter — an ordinary graph
+    must sail through on every plan."""
+    graph = _graph_with("agent", "image", "tts", "tool")
+    assert entitlements.gated_nodes_in(graph, entitlements.FREE) == []
+
+
+def test_gated_types_are_deduplicated_and_in_graph_order():
+    """Two 3D blocks are one refusal, not two — the message names blocks, not nodes."""
+    assert entitlements.gated_nodes_in(_graph_with("mesh", "agent", "mesh"), "free") == ["mesh"]
+
+
+def test_an_unknown_plan_gets_the_free_answer():
+    """`limits()` fails to the smallest set, so a null or garbage plan opens no paid block."""
+    assert entitlements.gated_nodes_in(_graph_with("mesh"), None) == ["mesh"]
+    assert entitlements.gated_nodes_in(_graph_with("mesh"), "enterprise") == ["mesh"]

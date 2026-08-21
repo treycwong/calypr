@@ -682,6 +682,71 @@ def image_generation() -> GraphSpec:
     )
 
 
+def image_to_3d() -> GraphSpec:
+    """Prompt → image → 3D model. Two media blocks chained: the Image node appends a Markdown
+    image, and the 3D node picks that same URL back up out of `messages` — which is why it needs
+    no wiring beyond the edge between them.
+
+    A **Plus** template: the 3D block is gated (`entitlements.PLUS_NODE_TYPES`), so a Free user can
+    open and read this graph but not run it. Defaults to `fal-ai/trellis` (needs FAL_KEY) — switch
+    the 3D block to `fake` for a keyless placeholder mesh.
+
+    **The Image block's `style` is the quality setting.** Trellis reconstructs whatever it is
+    shown, so a moody product shot — dark backdrop, hard shadow, reflective floor — comes back as
+    a smeared mesh, because the shadow and the backdrop are geometry as far as it knows. A flat
+    white background with even lighting and the whole object in frame is worth more than any
+    parameter on the 3D block. That is exactly what `style` is for: a fixed instruction folded
+    into every prompt.
+
+Half of that string is **negatives**, and they are not padding. The user's message reaches the
+    image model verbatim, and people phrase it as an instruction to the workflow — "prepare a 3d
+    model of a classic Honda car". An image model reads that as a request for a *3D-modelling
+    reference sheet* and returns a contact sheet: hero shot, front and side elevations, a
+    wireframe, colour swatches, captions. Trellis is then handed five pictures and some text and
+    reconstructs a shell. Naming each of those shapes to refuse is what keeps one prompt one
+    object.
+
+    The opening clause — asking for a reference *asset* rendered with visible texture and material
+    detail — came from a user who tried it by hand and got noticeably better meshes. It works
+    because it tells the image model what the picture is *for*, which biases it toward the even,
+    fully-lit, unambiguous surfaces Trellis reconstructs well.
+
+    Its one word of tension is lighting. "Include lighting" invites a *cast shadow*, and a shadow
+    is the single thing Trellis most reliably mistakes for geometry — so the request is kept as
+    material and surface detail, and `no cast shadow` stays. Shading on the object: yes. A shadow
+    on the floor beneath it: no."""
+    return GraphSpec(
+        id="tpl-image-to-3d",
+        name="Image to 3D",
+        description="Describe an object; get back a generated image and a downloadable 3D model.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(
+                id="image",
+                type="image",
+                config={
+                    "model": "gpt-image-2",
+                    "style": (
+                        "{prompt} — prepare as a reference asset for 3D modelling, rendered in "
+                        "high quality with clear surface texture and material detail. One single "
+                        "object, photographed from one single camera angle, isolated product "
+                        "photograph, centered, entire object in frame, plain flat white "
+                        "background, soft even studio lighting, no cast shadow, no reflection, "
+                        "no backdrop, no props, no text, no labels, no watermark, NOT a collage, "
+                        "NOT a grid, NOT multiple views, NOT a turnaround sheet, NOT a "
+                        "wireframe, NOT a blueprint, NOT a reference sheet"
+                    ),
+                },
+            ),
+            NodeSpec(id="mesh", type="mesh", config={"model": "fal-ai/trellis"}),
+            _output(),
+        ],
+        edges=_chain("in", "image", "mesh", "out"),
+        entry="in",
+    )
+
+
 def text_to_speech() -> GraphSpec:
     """The thinnest voice pipeline: text in, spoken audio out. The Voice node streams a Markdown
     audio link the playground renders as a player. Defaults to `gpt-4o-mini-tts` (needs
@@ -1024,6 +1089,7 @@ TEMPLATES: list[GraphSpec] = [
     routing(),
     trip_planner(),
     image_generation(),
+    image_to_3d(),
     text_to_speech(),
     translate_and_speak(),
     label_reader(),
@@ -1062,6 +1128,7 @@ TEMPLATE_CATEGORIES: dict[str, str] = {
     "tpl-study-notes": "Study & revision",
     "tpl-study-notion": "Study & revision",
     "tpl-image-generation": "Images & audio",
+    "tpl-image-to-3d": "Images & audio",
     "tpl-street-photography": "Images & audio",
     "tpl-image-finder": "Images & audio",
     "tpl-alt-text": "Images & audio",

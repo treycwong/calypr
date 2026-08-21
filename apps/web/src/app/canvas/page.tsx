@@ -625,6 +625,21 @@ function CanvasInner() {
       return next;
     });
   }, []);
+  // The GLB each 3D block produced, so the block can show it in place rather than making the
+  // user open the chat. Keyed by node id and kept beside `runStatus` for the same reason: it is a
+  // run result, and `buildGraphSpec` must never see it.
+  //
+  // Only `kind === "3d"` is kept. Images already render in the chat at full size, and a second
+  // copy on the canvas would be noise; a mesh is the case where the chat can only offer a link.
+  const [meshPreviews, setMeshPreviews] = useState<Record<string, string>>({});
+  const onAssetGenerated = useCallback((asset: Record<string, unknown>) => {
+    setMediaTick((n) => n + 1);
+    const { kind, node_id: nodeId, url } = asset;
+    if (kind === "3d" && typeof nodeId === "string" && typeof url === "string") {
+      setMeshPreviews((prev) => ({ ...prev, [nodeId]: url }));
+    }
+  }, []);
+
   const onRunReset = useCallback((opts?: { error?: boolean }) => {
     if (opts?.error) {
       // Freeze the run where it stopped, flagging the node that was executing.
@@ -642,10 +657,14 @@ function CanvasInner() {
   // finished node. Untouched objects keep their identity so React Flow re-renders minimally.
   const decoratedNodes = useMemo(
     () =>
-      nodes.map((n) =>
-        runStatus[n.id] ? { ...n, data: { ...n.data, status: runStatus[n.id] } } : n,
-      ),
-    [nodes, runStatus],
+      nodes.map((n) => {
+        const status = runStatus[n.id];
+        const meshUrl = meshPreviews[n.id];
+        // Identity is preserved for untouched nodes so React Flow re-renders minimally — which
+        // matters more now that a node can own a WebGL context.
+        return status || meshUrl ? { ...n, data: { ...n.data, status, meshUrl } } : n;
+      }),
+    [nodes, runStatus, meshPreviews],
   );
   // A wire takes the colour of the block it *leaves*, so you can trace what feeds what on a graph
   // too big to read label by label. Run state still wins: an active or finished edge is carrying
@@ -924,7 +943,7 @@ function CanvasInner() {
                   : ""
               }`}
             >
-              {activePanel === "blocks" ? <Palette onAdd={addNode} /> : null}
+              {activePanel === "blocks" ? <Palette onAdd={addNode} plan={plan} /> : null}
               {activePanel === "templates" ? (
                 <TemplatesPanel templates={templates} onLoad={loadTemplate} />
               ) : null}
@@ -1076,7 +1095,7 @@ function CanvasInner() {
               getGraph={getGraph}
               agentId={agentId ?? undefined}
               scopeReady={agentResolved}
-              onAssetGenerated={() => setMediaTick((n) => n + 1)}
+              onAssetGenerated={onAssetGenerated}
               onNodeEvent={onNodeEvent}
               onRunReset={onRunReset}
               onRunFinished={refreshWorkspace}

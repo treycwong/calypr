@@ -64,6 +64,8 @@ class Limits:
     checkpoint_ttl_days: int
     #: Code export — the Code tab's editable mode and "Apply to canvas".
     roundtrip: bool
+    #: The paid media blocks (3D today, video next). See `PLUS_NODE_TYPES`.
+    media_nodes: bool
 
 
 #: `beta` matches `plus` on capacity: the cohort was invited to use the product properly, and
@@ -76,6 +78,7 @@ LIMITS: dict[str, Limits] = {
         storage_bytes=500 * 1024**2,  # 500 MB
         checkpoint_ttl_days=7,
         roundtrip=False,
+        media_nodes=False,
     ),
     BETA: Limits(
         projects=20,
@@ -84,6 +87,7 @@ LIMITS: dict[str, Limits] = {
         storage_bytes=5 * 1024**3,  # 5 GB
         checkpoint_ttl_days=30,
         roundtrip=True,
+        media_nodes=True,
     ),
     PLUS: Limits(
         projects=20,
@@ -92,6 +96,7 @@ LIMITS: dict[str, Limits] = {
         storage_bytes=5 * 1024**3,  # 5 GB
         checkpoint_ttl_days=30,
         roundtrip=True,
+        media_nodes=True,
     ),
 }
 
@@ -145,6 +150,34 @@ def has_roundtrip(plan: str | None) -> bool:
     cohort already using it (we don't take a shipped feature back off them). It does not graduate
     to `return True`; see the module docstring for the decision that reversed."""
     return limits(plan).roundtrip
+
+
+#: Node types only a paid plan may run. The expensive generative media blocks: a 3D mesh costs
+#: real money per generation, unlike every other block whose cost is bounded by tokens.
+#:
+#: Free users still *see* these in the palette — locked, with an upgrade prompt. A block nobody
+#: can discover sells nothing, and hiding it would make the canvas silently different per plan.
+PLUS_NODE_TYPES = frozenset({"mesh"})
+
+
+def has_media_nodes(plan: str | None) -> bool:
+    """Whether this plan may run the paid media blocks (`PLUS_NODE_TYPES`)."""
+    return limits(plan).media_nodes
+
+
+def gated_nodes_in(graph, plan: str | None) -> list[str]:
+    """Every node type in `graph` this plan may not run, deduplicated and in graph order.
+
+    Empty ⇒ the run may proceed. Modelled on `model_access.missing_frontier_keys`: walk the graph,
+    return a structured refusal, and let the caller decide the status code. Hiding the palette tile
+    is a product surface; this is the paywall."""
+    if has_media_nodes(plan):
+        return []
+    gated: list[str] = []
+    for node in graph.nodes:
+        if node.type in PLUS_NODE_TYPES and node.type not in gated:
+            gated.append(node.type)
+    return gated
 
 
 def is_invited(session: Session, email: str | None) -> bool:

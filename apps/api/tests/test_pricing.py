@@ -111,3 +111,46 @@ def test_credits_are_not_rounded_per_call():
 
 def test_the_fake_model_is_free_in_credits_too():
     assert pricing.credits_for("fake", 1_000_000, 1_000_000) == 0.0
+
+
+# --- flat-rate media models -----------------------------------------------------------------------
+
+
+def test_media_prices_do_not_poison_the_fail_closed_rate():
+    """The reason `MEDIA_PRICES` is a separate table.
+
+    A flat $0.02/generation written into `MODEL_PRICES` would read as `$20,000 per 1M`, and
+    `_MOST_EXPENSIVE` is the max over that table — so one typo'd *text* model id would record a
+    four-figure cost and could trip the month's spend kill-switch for every workspace."""
+    ceiling = max(p.input_per_1m for p in pricing.MODEL_PRICES.values())
+    assert pricing._MOST_EXPENSIVE.input_per_1m == ceiling
+    assert pricing.price_for("gpt-totally-made-up").input_per_1m == ceiling
+    # And the ceiling is a plausible token rate, not a per-unit one smuggled in.
+    assert ceiling < 1_000
+
+
+def test_a_generated_mesh_costs_ten_credits():
+    """$0.02 per generation × 500 credits/$ = 10. The node reports one unit as `input_tokens`."""
+    assert pricing.cost_usd("fal-ai/trellis", 1, 0) == pytest.approx(0.02)
+    assert pricing.credits_for("fal-ai/trellis", 1, 0) == pytest.approx(10.0)
+
+
+def test_the_plus_grant_buys_a_sane_amount_of_3d():
+    """Same sanity floor the image rate gets: 2,000 credits should be a month of real use."""
+    assert 2000 / pricing.credits_for("fal-ai/trellis", 1, 0) > 50
+
+
+def test_every_selectable_mesh_model_is_priced():
+    """`calypr_nodes` can't import this module (wrong direction), so the node validates against
+    `MESH_MODELS` and the prices live here. This is what keeps the two tables honest: adding a
+    model to the allowlist without pricing it fails here rather than recording a run at ~$0."""
+    from calypr_model import MESH_MODELS
+
+    assert set(MESH_MODELS) <= set(pricing.MEDIA_PRICES)
+
+
+def test_media_ids_match_exactly_not_by_prefix():
+    """Vendor-qualified slugs from a closed allowlist — a prefix match would buy nothing and
+    could collide. An unknown sibling must fail closed, not inherit Trellis's price."""
+    assert "fal-ai/trellis-xl" not in pricing.MEDIA_PRICES
+    assert pricing._resolve("fal-ai/trellis-xl") is None

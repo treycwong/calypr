@@ -10,6 +10,7 @@ from calypr_nodes.evaluator import EvaluatorConfig, EvaluatorNode
 from calypr_nodes.image import ImageConfig, ImageNode
 from calypr_nodes.input import InputConfig, InputNode
 from calypr_nodes.memory import MemoryConfig, MemoryNode
+from calypr_nodes.mesh import MeshConfig, MeshNode
 from calypr_nodes.output import OutputConfig, OutputNode
 from calypr_nodes.registry import (
     BaseNode,
@@ -24,6 +25,7 @@ from calypr_nodes.registry import (
     graph_channels,
     has_node,
     image_model_for_node,
+    mesh_model_for_node,
     model_for_node,
     parse_config,
     register,
@@ -56,6 +58,7 @@ __all__ = [
     "graph_channels",
     "model_for_node",
     "image_model_for_node",
+    "mesh_model_for_node",
     "tts_model_for_node",
     # node types + configs
     "InputNode",
@@ -75,6 +78,8 @@ __all__ = [
     "ImageConfig",
     "MemoryNode",
     "MemoryConfig",
+    "MeshNode",
+    "MeshConfig",
     "ToolsNode",
     "ToolConfig",
     "TTSNode",

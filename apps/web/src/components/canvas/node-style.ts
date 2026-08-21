@@ -1,6 +1,7 @@
 import {
   AudioLines,
   Bot,
+  Box,
   Brain,
   Code2,
   Gauge,
@@ -80,6 +81,15 @@ export const NODE_STYLE: Record<
     edge: "#ec4899",
     description: "Generates an image from a text prompt.",
   },
+  mesh: {
+    icon: Box,
+    // Not orange, though it would suit: `upload` already owns #f97316, and Upload → 3D is the
+    // canonical wiring for this block — two orange wires in the one graph that most needs them
+    // told apart. The wheel is genuinely full at fifteen once cyan is reserved for run state, so
+    // this is red-600 against the router's rose-500; the two rarely sit adjacent.
+    edge: "#dc2626",
+    description: "Turns an image into a downloadable 3D model. Plus only.",
+  },
   tts: {
     icon: AudioLines,
     edge: "#a855f7",
@@ -138,6 +148,7 @@ export const PALETTE_ORDER: CalyprNodeType[] = [
   "tool",
   "retriever",
   "image",
+  "mesh",
   "tts",
   "responder",
   "revisor",
@@ -153,6 +164,7 @@ export const PALETTE_ORDER: CalyprNodeType[] = [
  * one containing an Image node is *the image one*. Used to pick a template's tile icon.
  */
 const CHARACTERISTIC_ORDER: CalyprNodeType[] = [
+  "mesh",
   "image",
   "tts",
   "upload",

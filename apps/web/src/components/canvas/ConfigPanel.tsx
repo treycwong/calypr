@@ -16,6 +16,8 @@ import {
   IMAGE_SIZE_OPTIONS,
   KNOWLEDGE_SOURCE_OPTIONS,
   MCP_TRANSPORT_OPTIONS,
+  MESH_MODEL_OPTIONS,
+  MESH_TEXTURE_SIZE_OPTIONS,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
@@ -723,6 +725,55 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function MeshFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <SelectField
+        id="cfg-model"
+        label="3D model"
+        value={String(config.model ?? "fal-ai/trellis")}
+        options={MESH_MODEL_OPTIONS}
+        onChange={(v) => set({ model: v })}
+      />
+      <SelectField
+        id="cfg-texture-size"
+        label="Texture resolution"
+        value={String(config.texture_size ?? 1024)}
+        options={MESH_TEXTURE_SIZE_OPTIONS}
+        // Number, not the raw string: fal validates an integer literal and rejects "1024".
+        onChange={(v) => set({ texture_size: Number(v) })}
+      />
+      <Field id="cfg-mesh-simplify" label="Polygon reduction">
+        <Input
+          id="cfg-mesh-simplify"
+          data-testid="cfg-mesh-simplify"
+          type="number"
+          min={0.5}
+          max={0.98}
+          step={0.01}
+          value={Number(config.mesh_simplify ?? 0.95)}
+          onChange={(e) => set({ mesh_simplify: Number(e.target.value) })}
+        />
+        <p className="text-xs text-muted-foreground">
+          How much geometry is thrown away. <strong>Lower keeps more</strong> — try 0.9 when
+          curved surfaces come back faceted.
+        </p>
+      </Field>
+      <p className="text-xs text-muted-foreground">
+        Turns the incoming image into a downloadable 3D model (.glb). Wire an Upload or Image
+        block into it — it reads whichever image arrived most recently. The <code>fake</code>{" "}
+        model is keyless (a placeholder mesh); Trellis calls fal and is billed per generation.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Quality comes from the <em>picture</em> far more than from these knobs: a flat white
+        background, even lighting and the whole object in frame. Dark backdrops, hard shadows and
+        reflective floors get rebuilt as geometry. The Image block&rsquo;s <em>Style</em> field is
+        where to say so.
+      </p>
+    </>
+  );
+}
+
 function TTSFields({ config, set }: { config: Config; set: Setter }) {
   const model = String(config.model ?? "gpt-4o-mini-tts");
   const instructable = model === "gpt-4o-mini-tts";
@@ -843,6 +894,7 @@ export function ConfigPanel({
       {type === "evaluator" ? <EvaluatorFields config={config} set={set} /> : null}
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}
       {type === "image" ? <ImageFields config={config} set={set} /> : null}
+      {type === "mesh" ? <MeshFields config={config} set={set} /> : null}
       {type === "tts" ? <TTSFields config={config} set={set} /> : null}
       {type === "upload" ? <UploadFields config={config} set={set} /> : null}
 

@@ -1,8 +1,13 @@
 "use client";
 
+import { Lock } from "lucide-react";
+import { useState } from "react";
+
 import { InfoTip, InfoTipGroup } from "@/components/canvas/InfoTip";
 import { NODE_STYLE, PALETTE_ORDER } from "@/components/canvas/node-style";
+import { UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
 import { type CalyprNodeType, NODE_LABELS } from "@/lib/graph";
+import { mediaNodesEnabled } from "@/lib/flags";
 
 /**
  * The tile every sidebar grid uses — Blocks here, Templates next door.
@@ -20,7 +25,14 @@ export const TILE_CLASS =
  *  selection and ignore the rest. */
 export const PALETTE_DND_TYPE = "application/calypr-block";
 
-export function Palette({ onAdd }: { onAdd: (type: CalyprNodeType) => void }) {
+/** Blocks a plan can withhold. Mirrors `entitlements.PLUS_NODE_TYPES` on the API. */
+const PAID_TYPES = new Set<CalyprNodeType>(["mesh"]);
+
+export function Palette({ onAdd, plan }: { onAdd: (type: CalyprNodeType) => void; plan?: string }) {
+  // Which paid block was reached for, so the paywall can name it. `null` closes the dialog.
+  const [blocked, setBlocked] = useState<CalyprNodeType | null>(null);
+  const entitled = mediaNodesEnabled(plan);
+
   return (
     <InfoTipGroup>
       <div className="flex flex-col gap-3">
@@ -28,26 +40,45 @@ export function Palette({ onAdd }: { onAdd: (type: CalyprNodeType) => void }) {
           {PALETTE_ORDER.map((type) => {
             const { icon: Icon, description } = NODE_STYLE[type];
             const label = NODE_LABELS[type];
+            // Locked, not hidden. A block nobody can discover sells nothing, and hiding it would
+            // make the palette silently different per plan — so someone reading a shared graph or
+            // a template would meet a block that doesn't exist in their sidebar.
+            const locked = PAID_TYPES.has(type) && !entitled;
             return (
               <InfoTip
                 key={type}
-                title={label}
+                title={locked ? `${label} · Plus` : label}
                 description={description}
                 // `data-testid` belongs on the button itself: ~30 e2e tests click through
                 // `helpers.ts`'s `getByTestId('add-' + kind)`. `InfoTip` spreads these onto its
                 // `Tooltip.Trigger`, which *is* the button — nothing wraps it.
                 data-testid={`add-${type}`}
-                aria-label={label}
-                onClick={() => onAdd(type)}
-                // Drag to place, click to append. The grab cursor is the only thing advertising
-                // that the tile is draggable at all, so it is not decoration.
-                draggable
+                data-locked={locked ? "true" : undefined}
+                aria-label={locked ? `${label} (requires Plus)` : label}
+                onClick={() => (locked ? setBlocked(type) : onAdd(type))}
+                // Drag to place, click to append — but a locked tile does neither: dropping one on
+                // the canvas would build a graph that only fails at Run.
+                draggable={!locked}
                 onDragStart={(e) => {
+                  if (locked) {
+                    e.preventDefault();
+                    return;
+                  }
                   e.dataTransfer.setData(PALETTE_DND_TYPE, type);
                   e.dataTransfer.effectAllowed = "copy";
                 }}
-                className={`${TILE_CLASS} cursor-grab active:cursor-grabbing`}
+                className={`${TILE_CLASS} ${
+                  locked
+                    ? "relative cursor-pointer opacity-60 hover:opacity-100"
+                    : "cursor-grab active:cursor-grabbing"
+                }`}
               >
+                {locked ? (
+                  <Lock
+                    className="absolute top-1.5 right-1.5 h-3 w-3 text-white/50"
+                    aria-hidden="true"
+                  />
+                ) : null}
                 <Icon className="h-5 w-5" />
                 <span className="text-xs leading-tight font-medium">{label}</span>
               </InfoTip>
@@ -55,6 +86,14 @@ export function Palette({ onAdd }: { onAdd: (type: CalyprNodeType) => void }) {
           })}
         </div>
       </div>
+
+      <UpgradeDialog
+        open={blocked !== null}
+        onOpenChange={(open) => !open && setBlocked(null)}
+        title={`The ${blocked ? NODE_LABELS[blocked] : ""} block is part of Plus`}
+        body="It generates real files through a paid provider, billed per output rather than per token — so it isn't part of the free grant. Upgrade to add it to a canvas."
+        event="paid_block_upgrade_clicked"
+      />
     </InfoTipGroup>
   );
 }

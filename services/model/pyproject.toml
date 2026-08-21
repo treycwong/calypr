@@ -5,6 +5,8 @@ description = "Thin ModelClient protocol + provider adapters (tool-calling + str
 requires-python = ">=3.12"
 dependencies = [
   "anthropic>=0.40",
+  "fal-client>=0.5",  # image → 3D (GLB) via fal's queue; see mesh_client.py
+  "httpx>=0.27",  # download generated media from the provider's URL
   "openai>=1.50",
   "pydantic>=2.9",
 ]

@@ -254,3 +254,67 @@ def test_the_gate_is_off_without_an_internal_key(monkeypatch, ws_factory) -> Non
     monkeypatch.setattr(settings, "internal_key", "")
     wid = ws_factory(entitlements.FREE, exhausted=True)
     assert run_access.check_run_gates(wid, input_agent_output(model="gpt-4o-mini")) is None
+
+
+# --- paid blocks --------------------------------------------------------------------------------
+#
+# A different axis from everything above. The credit gate asks "whose key pays?"; this one asks
+# "does the plan include this block at all?" — and unlike credits, a BYO key does not answer it.
+
+
+def _mesh_graph():
+    """The shipped Prompt → Image → 3D template, so the gate is exercised against a graph the
+    product actually generates rather than a hand-rolled one."""
+    from calypr_compiler.templates import image_to_3d
+
+    return image_to_3d()
+
+
+@requires_db
+def test_free_is_refused_a_3d_block(monkeypatch, ws_factory) -> None:
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE)  # grant intact — this is not about credits
+    gate = run_access.check_run_gates(wid, _mesh_graph())
+    assert gate is not None
+    assert gate[0] == "plan_required"
+    # The copy names the palette label, not the internal node type.
+    assert "3D" in gate[1] and "Plus" in gate[1]
+
+
+@requires_db
+def test_a_byo_key_does_not_open_a_paid_block(monkeypatch, ws_factory) -> None:
+    """The distinguishing case. Bringing your own key answers the *credit* question and is
+    always enough there — it is deliberately not enough here, or the paywall would be one
+    Settings page away from bypassed."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE, providers=("openai", "fal"))
+    gate = run_access.check_run_gates(wid, _mesh_graph())
+    assert gate is not None
+    assert gate[0] == "plan_required"
+
+
+@requires_db
+def test_plus_may_run_a_3d_block(monkeypatch, ws_factory) -> None:
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS)
+    assert run_access.check_run_gates(wid, _mesh_graph()) is None
+
+
+@requires_db
+def test_the_block_gate_outranks_the_credit_gate(monkeypatch, ws_factory) -> None:
+    """An exhausted Free workspace running a 3D block has two problems, and only one of them is
+    fixable by waiting for the monthly reset. Saying "out of credits" would send them to wait for
+    something that will never help."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE, exhausted=True)
+    gate = run_access.check_run_gates(wid, _mesh_graph())
+    assert gate is not None
+    assert gate[0] == "plan_required"
+
+
+@requires_db
+def test_free_still_runs_an_ordinary_graph(monkeypatch, ws_factory) -> None:
+    """The gate must not have widened into a general refusal — the free tier still works."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE)
+    assert run_access.check_run_gates(wid, input_agent_output(model="gpt-4o-mini")) is None

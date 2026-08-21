@@ -55,6 +55,7 @@ _RECOGNITION_ORDER = (
     "evaluator",
     "memory",
     "image",
+    "mesh",
     "tts",
     "upload",
 )
