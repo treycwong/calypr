@@ -698,13 +698,23 @@ def image_to_3d() -> GraphSpec:
     parameter on the 3D block. That is exactly what `style` is for: a fixed instruction folded
     into every prompt.
 
-    Half of that string is **negatives**, and they are not padding. The user's message reaches the
+Half of that string is **negatives**, and they are not padding. The user's message reaches the
     image model verbatim, and people phrase it as an instruction to the workflow — "prepare a 3d
     model of a classic Honda car". An image model reads that as a request for a *3D-modelling
     reference sheet* and returns a contact sheet: hero shot, front and side elevations, a
     wireframe, colour swatches, captions. Trellis is then handed five pictures and some text and
     reconstructs a shell. Naming each of those shapes to refuse is what keeps one prompt one
-    object."""
+    object.
+
+    The opening clause — asking for a reference *asset* rendered with visible texture and material
+    detail — came from a user who tried it by hand and got noticeably better meshes. It works
+    because it tells the image model what the picture is *for*, which biases it toward the even,
+    fully-lit, unambiguous surfaces Trellis reconstructs well.
+
+    Its one word of tension is lighting. "Include lighting" invites a *cast shadow*, and a shadow
+    is the single thing Trellis most reliably mistakes for geometry — so the request is kept as
+    material and surface detail, and `no cast shadow` stays. Shading on the object: yes. A shadow
+    on the floor beneath it: no."""
     return GraphSpec(
         id="tpl-image-to-3d",
         name="Image to 3D",
@@ -718,12 +728,14 @@ def image_to_3d() -> GraphSpec:
                 config={
                     "model": "gpt-image-2",
                     "style": (
-                        "{prompt} — one single object, photographed from one single camera "
-                        "angle, isolated product photograph, centered, entire object in frame, "
-                        "plain flat white background, soft even studio lighting, no shadow, no "
-                        "reflection, no backdrop, no props, no text, no labels, no watermark, "
-                        "NOT a collage, NOT a grid, NOT multiple views, NOT a turnaround sheet, "
-                        "NOT a wireframe, NOT a blueprint, NOT a reference sheet"
+                        "{prompt} — prepare as a reference asset for 3D modelling, rendered in "
+                        "high quality with clear surface texture and material detail. One single "
+                        "object, photographed from one single camera angle, isolated product "
+                        "photograph, centered, entire object in frame, plain flat white "
+                        "background, soft even studio lighting, no cast shadow, no reflection, "
+                        "no backdrop, no props, no text, no labels, no watermark, NOT a collage, "
+                        "NOT a grid, NOT multiple views, NOT a turnaround sheet, NOT a "
+                        "wireframe, NOT a blueprint, NOT a reference sheet"
                     ),
                 },
             ),
