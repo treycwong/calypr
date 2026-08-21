@@ -16,6 +16,7 @@ from calypr_model.anthropic_client import AnthropicModelClient
 from calypr_model.base import ModelClient
 from calypr_model.fake import FakeModelClient
 from calypr_model.image_client import FakeImageClient, OpenAIImageClient
+from calypr_model.mesh_client import FakeMeshClient, FalMeshClient
 from calypr_model.openai_client import OpenAIModelClient
 from calypr_model.tts_client import FakeTTSClient, OpenAITTSClient
 
@@ -85,6 +86,18 @@ def image_model_for(
     if model_id.lower().strip() == "fake":
         return FakeImageClient()
     return OpenAIImageClient(api_key=_key("openai", keys, "OPENAI_API_KEY"))
+
+
+def mesh_model_for(
+    model_id: str, keys: dict[str, str] | None = None
+) -> FalMeshClient | FakeMeshClient:
+    """Resolve a 3D-model id to a client — the mesh sibling of `image_model_for`. `fake` → keyless
+    deterministic client (tests/CI); everything else → fal, on the workspace's BYO key if set else
+    the env. Separate seam because mesh generation returns a GLB file and is billed per generation
+    rather than per token."""
+    if model_id.lower().strip() == "fake":
+        return FakeMeshClient()
+    return FalMeshClient(api_key=_key("fal", keys, "FAL_KEY"))
 
 
 def tts_model_for(

@@ -88,14 +88,49 @@ MODEL_PRICES: dict[str, ModelPrice] = {
 }
 
 # Fail-closed rate for unknown models: the most expensive known input+output pair.
+#
+# Derived from MODEL_PRICES *only* — deliberately, and MEDIA_PRICES below is a separate table for
+# exactly this reason. See the note there.
 _MOST_EXPENSIVE = ModelPrice(
     input_per_1m=max(p.input_per_1m for p in MODEL_PRICES.values()),
     output_per_1m=max(p.output_per_1m for p in MODEL_PRICES.values()),
 )
 
 
+# --- flat-rate media models (USD per generated output) --------------------------------------------
+#
+# Some providers don't bill tokens at all: fal charges a flat price per generated 3D mesh, and per
+# second for video. The node reports the unit count in `input_tokens` — the same move the TTS node
+# makes with characters — so one `cost_usd` call still prices everything and `credits_for` keeps
+# deriving the 5× margin automatically.
+#
+# **Why these are not in MODEL_PRICES.** That table's units are dollars-per-1M, so $0.02/generation
+# would have to be written as `20000.00`. `_MOST_EXPENSIVE` is the max over that table, so the entry
+# would silently become the fail-closed rate for every *unknown text model* — one typo'd model id
+# would then record a four-figure cost and could trip the month's spend kill-switch for every
+# workspace. A separate table keeps the fail-closed rate an honest token rate.
+#
+# There is no fail-closed rate for an unknown *media* id (a token rate applied to "1 unit" rounds to
+# nothing), so media models are an allowlist instead: `calypr_model.MESH_MODELS` is validated at
+# node compile time, and a test asserts every entry there is priced here.
+MEDIA_PRICES: dict[str, float] = {
+    # fal image→3D. Verified 2026-08-21 against https://fal.ai/models/fal-ai/trellis
+    "fal-ai/trellis": 0.02,
+}
+
+
+def _per_unit(usd_per_unit: float) -> ModelPrice:
+    """A flat per-output price expressed in the token table's units, so one `cost_usd` prices
+    both. The caller reports `input_tokens=<units>`, hence the input direction."""
+    return ModelPrice(input_per_1m=usd_per_unit * 1_000_000, output_per_1m=0.0)
+
+
 def _resolve(model_id: str) -> ModelPrice | None:
-    """Longest-prefix match against MODEL_PRICES. `fake` → free ($0). Unknown → None."""
+    """Longest-prefix match against MODEL_PRICES, then an exact match against MEDIA_PRICES.
+    `fake` → free ($0). Unknown → None.
+
+    Media ids match exactly, not by prefix: they are vendor-qualified slugs (`fal-ai/trellis`)
+    from a closed allowlist, so prefix matching would buy nothing and could collide."""
     m = model_id.lower().strip()
     if m == "fake":
         return ModelPrice(0.0, 0.0)
@@ -104,7 +139,11 @@ def _resolve(model_id: str) -> ModelPrice | None:
     for prefix, price in MODEL_PRICES.items():
         if m.startswith(prefix) and len(prefix) > best_len:
             best, best_len = price, len(prefix)
-    return best
+    if best is not None:
+        return best
+    if m in MEDIA_PRICES:
+        return _per_unit(MEDIA_PRICES[m])
+    return None
 
 
 def price_for(model_id: str) -> ModelPrice:

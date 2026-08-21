@@ -8,7 +8,7 @@ import subprocess
 import pytest
 from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, STARTERS, TEMPLATES, validate_graph
-from calypr_model import FakeImageClient, FakeModelClient, FakeTTSClient
+from calypr_model import FakeImageClient, FakeMeshClient, FakeModelClient, FakeTTSClient
 from calypr_nodes import NodeContext
 from calypr_runtime import run
 
@@ -29,6 +29,11 @@ def test_frameworks_present():
     ]
 
 
+#: Nodes whose `model` is resolved by a media seam rather than `effective_model`, so naming one
+#: in a template is correct rather than a missed inherit.
+MEDIA_NODE_TYPES = ("image", "tts", "mesh")
+
+
 def test_use_case_templates_present():
     ids = [t.id for t in TEMPLATES]
     assert ids == [
@@ -38,6 +43,7 @@ def test_use_case_templates_present():
         "tpl-routing",
         "tpl-trip-planner",
         "tpl-image-generation",
+        "tpl-image-to-3d",
         "tpl-text-to-speech",
         "tpl-translate-speak",
         "tpl-label-reader",
@@ -74,7 +80,10 @@ async def test_starter_runs_with_fake_model(graph):
     # Image/TTS templates default to real (billed) models in production; inject Fake clients here
     # so the whole starter matrix stays keyless/offline in CI regardless of each node's `model`.
     ctx = NodeContext(
-        model=FakeModelClient(), image_model=FakeImageClient(), tts_model=FakeTTSClient()
+        model=FakeModelClient(),
+        image_model=FakeImageClient(),
+        tts_model=FakeTTSClient(),
+        mesh_model=FakeMeshClient(),
     )
     result = await run(graph, ctx, "hello there")
     assert isinstance(result.get("output"), str)
@@ -124,9 +133,11 @@ def test_starter_llm_nodes_inherit_the_workspace_model(graph):
     resolves through `effective_model` to the workspace default, then to
     `PLATFORM_DEFAULT_MODEL` — so an un-configured workspace still gets a working agent.
 
-    Image and Voice nodes are excluded: they resolve through separate seams
-    (`image_model_for` / `tts_model_for`) and name their own models."""
-    llm = [n for n in graph.nodes if n.type not in ("image", "tts") and isinstance(n.config, dict)]
+    The media nodes are excluded: they resolve through separate seams (`image_model_for` /
+    `tts_model_for` / `mesh_model_for`) and name their own models."""
+    llm = [
+        n for n in graph.nodes if n.type not in MEDIA_NODE_TYPES and isinstance(n.config, dict)
+    ]
     named = {n.id: n.config["model"] for n in llm if n.config.get("model")}
     assert named == {}, f"{graph.id} hard-codes a model on {named} instead of inheriting"
 

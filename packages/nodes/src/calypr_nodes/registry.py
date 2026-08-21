@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from calypr_dsl import StateChannel
-from calypr_model import ModelClient, image_model_for, model_for, tts_model_for
+from calypr_model import ModelClient, image_model_for, mesh_model_for, model_for, tts_model_for
 from pydantic import BaseModel
 
 # A compiled node: reads the graph state, returns a partial state update.
@@ -41,9 +41,9 @@ class NodeContext:
 
     Carries the model client and, for an LLM node wired to Tool nodes, the bound tool
     schemas (`{name, description, input_schema}`) the compiler resolves from the graph.
-    `image_model`/`tts_model` are the same injection seam for the Image/Voice nodes (tests
-    inject a Fake client so the starter/template test matrix never makes a real, billed API
-    call regardless of the node's configured model — see `image_model_for_node`).
+    `image_model`/`tts_model`/`mesh_model` are the same injection seam for the Image/Voice/3D
+    nodes (tests inject a Fake client so the starter/template test matrix never makes a real,
+    billed API call regardless of the node's configured model — see `image_model_for_node`).
     KB retrievers and a credential vault are added in later phases.
     """
 
@@ -59,6 +59,7 @@ class NodeContext:
     tool_owners: dict[str, str] | None = None
     image_model: Any | None = None
     tts_model: Any | None = None
+    mesh_model: Any | None = None
     # A workspace's BYO provider keys ({provider: api_key}), resolved from the vault at run
     # time. Used only when no client is directly injected — overrides the server env per
     # provider (self-serve BYO-key). Empty/None → the server env, exactly as before.
@@ -261,6 +262,14 @@ def image_model_for_node(ctx: NodeContext, model_id: str):
     if ctx.image_model is not None:
         return ctx.image_model
     return image_model_for(model_id, ctx.model_keys)
+
+
+def mesh_model_for_node(ctx: NodeContext, model_id: str):
+    """Resolve the mesh client for a 3D node: the injected client (tests) if present, otherwise
+    the node's own provider from its `model` id. Mirrors `image_model_for_node`."""
+    if ctx.mesh_model is not None:
+        return ctx.mesh_model
+    return mesh_model_for(model_id, ctx.model_keys)
 
 
 def tts_model_for_node(ctx: NodeContext, model_id: str):

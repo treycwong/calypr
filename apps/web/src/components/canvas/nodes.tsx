@@ -1,7 +1,7 @@
 "use client";
 
 import { Handle, type NodeProps, Position } from "@xyflow/react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 
 import { NODE_STYLE } from "@/components/canvas/node-style";
 import {
@@ -348,6 +348,19 @@ export function TTSNodeView({ data, selected }: NodeProps) {
   );
 }
 
+export function MeshNodeView({ data, selected }: NodeProps) {
+  const config = (data as NodeData).config;
+  return (
+    <>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell title="3D" type="mesh" selected={selected} status={statusOf(data)} testid="node-mesh">
+        {String(config.model ?? "fal-ai/trellis")} · image → glb
+      </Shell>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </>
+  );
+}
+
 export function UploadNodeView({ data, selected }: NodeProps) {
   const max = (data as NodeData).config.max_images ?? 4;
   return (
@@ -361,7 +374,16 @@ export function UploadNodeView({ data, selected }: NodeProps) {
   );
 }
 
-export const nodeTypes = {
+/**
+ * Which component draws each block on the canvas.
+ *
+ * The `Record<CalyprNodeType, …>` annotation is load-bearing, not decoration. Without it this was
+ * an untyped object literal, so a node type registered everywhere else — palette, config panel,
+ * codegen, the API — but missing here rendered as an **empty card**: React Flow found no component
+ * and drew the two connection handles with nothing between them. Nothing failed; the block was
+ * simply invisible. Typed, a missing entry is a build error.
+ */
+export const nodeTypes: Record<CalyprNodeType, ComponentType<NodeProps>> = {
   input: InputNodeView,
   agent: AgentNodeView,
   output: OutputNodeView,
@@ -374,6 +396,7 @@ export const nodeTypes = {
   revisor: RevisorNodeView,
   retriever: RetrieverNodeView,
   image: ImageNodeView,
+  mesh: MeshNodeView,
   tts: TTSNodeView,
   upload: UploadNodeView,
 };

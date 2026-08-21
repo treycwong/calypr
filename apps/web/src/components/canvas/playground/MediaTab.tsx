@@ -1,6 +1,6 @@
 "use client";
 
-import { AudioLines, Download, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
+import { AudioLines, Box, Download, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
+import { MediaViewer } from "@/components/MediaViewer";
 import { type StoredAsset, deleteAsset, listAssets } from "@/lib/api";
 import { downloadUrl, filenameFrom } from "@/lib/download";
 import { relativeTime } from "@/lib/time";
@@ -22,9 +23,13 @@ const KINDS = [
   { id: "", label: "All" },
   { id: "image", label: "Images" },
   { id: "audio", label: "Audio" },
+  { id: "3d", label: "3D" },
 ] as const;
 
 function extFor(a: StoredAsset): string {
+  // `model/gltf-binary` is the one content type whose subtype isn't the extension anyone wants —
+  // a file called `model.gltf-binary` opens in nothing.
+  if (a.kind === "3d") return "glb";
   const fromType = a.content_type?.split("/")[1];
   if (fromType) return fromType === "mpeg" ? "mp3" : fromType;
   return a.kind === "audio" ? "mp3" : "png";
@@ -169,8 +174,14 @@ export function MediaTab({ refreshKey }: { refreshKey: number }) {
  * it to the browser's own player.
  */
 function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => void }) {
+  const [viewing, setViewing] = useState(false);
   const isImage = asset.kind === "image";
-  const caption = asset.caption || (isImage ? "Untitled" : "Untitled audio");
+  const is3d = asset.kind === "3d";
+  // Audio has no viewer — its player is the chat bubble, and "Open" in the menu hands the file to
+  // the browser. Only the two visual kinds get a full-size window.
+  const viewable = isImage || is3d;
+  const caption =
+    asset.caption || (isImage ? "Untitled" : is3d ? "Untitled model" : "Untitled audio");
   // Time and model moved off the face of the tile and into its tooltip: at this size they were a
   // third line of grey text competing with the one line that identifies the clip.
   const meta = [relativeTime(asset.created_at), asset.model].filter(Boolean).join(" · ");
@@ -190,11 +201,27 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
           src={asset.url}
           alt={asset.caption}
           loading="lazy"
-          className="aspect-square w-full bg-muted object-cover"
+          onClick={() => setViewing(true)}
+          className="aspect-square w-full cursor-zoom-in bg-muted object-cover"
+          data-testid="media-thumb"
         />
       ) : (
         <div className="flex aspect-square w-full items-center justify-center bg-muted/40">
-          <AudioLines className="h-7 w-7 text-muted-foreground" />
+          {/* A glyph, not a render: a GLB has no thumbnail of its own, and spinning up WebGL for
+              every cell in a grid to make one would cost far more than the tile is worth. */}
+          {is3d ? (
+            <button
+              type="button"
+              onClick={() => setViewing(true)}
+              aria-label={`View ${asset.caption || "3D model"}`}
+              data-testid="media-thumb"
+              className="flex h-full w-full cursor-zoom-in items-center justify-center"
+            >
+              <Box className="h-7 w-7 text-muted-foreground" />
+            </button>
+          ) : (
+            <AudioLines className="h-7 w-7 text-muted-foreground" />
+          )}
         </div>
       )}
 
@@ -235,6 +262,16 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
+
+      {viewable ? (
+        <MediaViewer
+          open={viewing}
+          onOpenChange={setViewing}
+          kind={isImage ? "image" : "3d"}
+          src={asset.url}
+          caption={caption}
+        />
+      ) : null}
     </figure>
   );
 }

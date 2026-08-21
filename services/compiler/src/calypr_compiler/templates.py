@@ -682,6 +682,30 @@ def image_generation() -> GraphSpec:
     )
 
 
+def image_to_3d() -> GraphSpec:
+    """Prompt → image → 3D model. Two media blocks chained: the Image node appends a Markdown
+    image, and the 3D node picks that same URL back up out of `messages` — which is why it needs
+    no wiring beyond the edge between them.
+
+    A **Plus** template: the 3D block is gated (`entitlements.PLUS_NODE_TYPES`), so a Free user can
+    open and read this graph but not run it. Defaults to `fal-ai/trellis` (needs FAL_KEY) — switch
+    the 3D block to `fake` for a keyless placeholder mesh."""
+    return GraphSpec(
+        id="tpl-image-to-3d",
+        name="Image to 3D",
+        description="Describe an object; get back a generated image and a downloadable 3D model.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(id="image", type="image", config={"model": "gpt-image-2"}),
+            NodeSpec(id="mesh", type="mesh", config={"model": "fal-ai/trellis"}),
+            _output(),
+        ],
+        edges=_chain("in", "image", "mesh", "out"),
+        entry="in",
+    )
+
+
 def text_to_speech() -> GraphSpec:
     """The thinnest voice pipeline: text in, spoken audio out. The Voice node streams a Markdown
     audio link the playground renders as a player. Defaults to `gpt-4o-mini-tts` (needs
@@ -1024,6 +1048,7 @@ TEMPLATES: list[GraphSpec] = [
     routing(),
     trip_planner(),
     image_generation(),
+    image_to_3d(),
     text_to_speech(),
     translate_and_speak(),
     label_reader(),
@@ -1062,6 +1087,7 @@ TEMPLATE_CATEGORIES: dict[str, str] = {
     "tpl-study-notes": "Study & revision",
     "tpl-study-notion": "Study & revision",
     "tpl-image-generation": "Images & audio",
+    "tpl-image-to-3d": "Images & audio",
     "tpl-street-photography": "Images & audio",
     "tpl-image-finder": "Images & audio",
     "tpl-alt-text": "Images & audio",

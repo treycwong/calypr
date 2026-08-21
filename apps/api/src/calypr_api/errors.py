@@ -21,6 +21,11 @@ PROVIDER_KEY_REJECTED = "provider_key_rejected"
 #: Distinct from `credits` — waiting for the monthly reset fixes that one and does nothing here.
 WORKSPACE_LOCKED = "workspace_locked"
 
+#: The graph uses a block this plan doesn't include (`entitlements.PLUS_NODE_TYPES`). Unlike
+#: `credits`, no amount of waiting or BYO key fixes it — the only route forward is upgrading, so
+#: the web app keys its upgrade prompt off this code rather than off the message text.
+PLAN_REQUIRED = "plan_required"
+
 _KEY_REJECTED = (
     "Your {provider} API key was rejected. Check the key saved for this workspace — "
     "it may be revoked, expired, or missing a billing plan."

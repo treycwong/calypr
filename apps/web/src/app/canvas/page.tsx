@@ -924,7 +924,7 @@ function CanvasInner() {
                   : ""
               }`}
             >
-              {activePanel === "blocks" ? <Palette onAdd={addNode} /> : null}
+              {activePanel === "blocks" ? <Palette onAdd={addNode} plan={plan} /> : null}
               {activePanel === "templates" ? (
                 <TemplatesPanel templates={templates} onLoad={loadTemplate} />
               ) : null}

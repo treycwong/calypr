@@ -39,7 +39,9 @@ test("a workflow card refused by the project cap offers the upgrade", async ({ p
   await expect(dialog).toContainText("3 of 3 projects on Free");
   // The comparison is the point: Free as it stands, next to what Plus changes.
   await expect(dialog).toContainText("$20/mo");
-  await expect(dialog.getByTestId("plan-row")).toHaveCount(4);
+  // Five rows since the 3D block joined the comparison — the count is pinned so a row added
+  // without a thought about this dialog fails here rather than quietly stretching it.
+  await expect(dialog.getByTestId("plan-row")).toHaveCount(5);
   await expect(dialog.getByTestId("plan-row").first()).toContainText("Projects");
   await expect(dialog).toContainText("Code export");
   await expect(page.getByTestId("upgrade-cta")).toHaveAttribute("href", "/checkout?plan=plus");

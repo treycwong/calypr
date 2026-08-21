@@ -25,6 +25,10 @@ export type AnalyticsEvent =
   // different things and folding them together would hide which one converts.
   | "project_cap_hit"
   | "project_cap_upgrade_clicked"
+  // The third paywall: a free user reached for a paid block in the palette. Distinct again —
+  // this one sells a capability rather than more room, so folding it into the project cap would
+  // hide which of the two a free user actually wants.
+  | "paid_block_upgrade_clicked"
   // playground runs
   | "run_started"
   | "run_completed"

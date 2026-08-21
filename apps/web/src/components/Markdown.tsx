@@ -3,6 +3,7 @@ import { Fragment, type ReactNode } from "react";
 import { type Card, parseCard } from "@/components/cards/parseCards";
 import { ChatAudio } from "@/components/ChatAudio";
 import { ChatImage } from "@/components/ChatImage";
+import { ChatMesh } from "@/components/ChatMesh";
 
 // A tiny, dependency-free markdown renderer for chat output — images, audio players, links, bold,
 // italic, inline code, headings, and ordered/unordered lists. It builds React nodes (never
@@ -45,18 +46,26 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
         </code>,
       );
     else if (m[11] !== undefined)
+      // A `.glb` link is still a link — same alternative, same http/https guard — but it gets a
+      // richer control than an anchor that downloads a file the browser can't display. Branching
+      // here rather than adding a media alternative to INLINE keeps every capture-group index
+      // above untouched, which is the property that regex's comment asks callers to preserve.
       nodes.push(
-        // New tab + noopener/noreferrer: the href can come from a GitHub issue or Notion page the
-        // agent read, so it is untrusted content — never hand it the opener window.
-        <a
-          key={key}
-          href={m[11]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="underline underline-offset-2 hover:no-underline"
-        >
-          {m[10] || m[11]}
-        </a>,
+        /\.glb(?:\?[^\s]*)?$/i.test(m[11]) ? (
+          <ChatMesh key={key} src={m[11]} label={(m[10] ?? "").replace(/^[⬇\s]+/, "")} />
+        ) : (
+          // New tab + noopener/noreferrer: the href can come from a GitHub issue or Notion page
+          // the agent read, so it is untrusted content — never hand it the opener window.
+          <a
+            key={key}
+            href={m[11]}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline underline-offset-2 hover:no-underline"
+          >
+            {m[10] || m[11]}
+          </a>
+        ),
       );
     else nodes.push(<em key={key}>{m[8] ?? m[9]}</em>);
     last = m.index + m[0].length;

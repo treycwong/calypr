@@ -45,3 +45,23 @@ export function roundtripEnabled(plan?: string): boolean {
     return false; // storage blocked (private mode, embedded context) → stay off
   }
 }
+
+/** Plans that include the paid media blocks. Mirrors `entitlements.has_media_nodes` on the API. */
+const MEDIA_NODE_PLANS = new Set(["beta", "plus"]);
+
+/**
+ * The paid generative-media blocks (3D today, video next).
+ *
+ * Unlike `roundtripEnabled` there is **no build flag and no localStorage override**. That escape
+ * hatch exists for the round-trip because the e2e suite has to exercise an unfinished surface;
+ * here the block is finished, and the only thing an override would buy is a way to put a block on
+ * the canvas that the server then refuses at Run — a worse experience than the lock.
+ *
+ * This gates the *surface* only. `run_access.check_run_gates` is the paywall: it refuses the run
+ * with a `plan_required` code whoever's key would have paid for it.
+ *
+ * Server-owned and passed in, so unlike `roundtripEnabled` this is safe to read during render.
+ */
+export function mediaNodesEnabled(plan?: string): boolean {
+  return !!plan && MEDIA_NODE_PLANS.has(plan);
+}

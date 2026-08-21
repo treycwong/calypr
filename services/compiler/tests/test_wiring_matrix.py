@@ -30,7 +30,7 @@ import pytest
 from calypr_compiler import STARTERS, validate_graph
 from calypr_compiler import validate as validate_module
 from calypr_dsl import EdgeSpec, GraphSpec, NodeSpec, Reducer, StateChannel
-from calypr_model import FakeImageClient, FakeModelClient, FakeTTSClient
+from calypr_model import FakeImageClient, FakeMeshClient, FakeModelClient, FakeTTSClient
 from calypr_nodes import NodeContext
 from calypr_nodes.registry import all_node_types, graph_channels
 from calypr_runtime import run
@@ -65,10 +65,13 @@ MIDDLE_TYPES = sorted(set(all_node_types()) - {"input", "output"})
 
 
 def _fake_ctx() -> NodeContext:
-    """Fake clients for all three model seams, so image/TTS nodes — which default to real,
-    billed models in production — stay keyless and free here, as in `test_templates.py`."""
+    """Fake clients for every model seam, so the media nodes — which default to real, billed
+    models in production — stay keyless and free here, as in `test_templates.py`."""
     return NodeContext(
-        model=FakeModelClient(), image_model=FakeImageClient(), tts_model=FakeTTSClient()
+        model=FakeModelClient(),
+        image_model=FakeImageClient(),
+        tts_model=FakeTTSClient(),
+        mesh_model=FakeMeshClient(),
     )
 
 

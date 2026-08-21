@@ -16,6 +16,7 @@ import {
   IMAGE_SIZE_OPTIONS,
   KNOWLEDGE_SOURCE_OPTIONS,
   MCP_TRANSPORT_OPTIONS,
+  MESH_MODEL_OPTIONS,
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
@@ -723,6 +724,25 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+function MeshFields({ config, set }: { config: Config; set: Setter }) {
+  return (
+    <>
+      <SelectField
+        id="cfg-model"
+        label="3D model"
+        value={String(config.model ?? "fal-ai/trellis")}
+        options={MESH_MODEL_OPTIONS}
+        onChange={(v) => set({ model: v })}
+      />
+      <p className="text-xs text-muted-foreground">
+        Turns the incoming image into a downloadable 3D model (.glb). Wire an Upload or Image
+        block into it — it reads whichever image arrived most recently. The <code>fake</code>{" "}
+        model is keyless (a placeholder mesh); Trellis calls fal and is billed per generation.
+      </p>
+    </>
+  );
+}
+
 function TTSFields({ config, set }: { config: Config; set: Setter }) {
   const model = String(config.model ?? "gpt-4o-mini-tts");
   const instructable = model === "gpt-4o-mini-tts";
@@ -843,6 +863,7 @@ export function ConfigPanel({
       {type === "evaluator" ? <EvaluatorFields config={config} set={set} /> : null}
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}
       {type === "image" ? <ImageFields config={config} set={set} /> : null}
+      {type === "mesh" ? <MeshFields config={config} set={set} /> : null}
       {type === "tts" ? <TTSFields config={config} set={set} /> : null}
       {type === "upload" ? <UploadFields config={config} set={set} /> : null}
 

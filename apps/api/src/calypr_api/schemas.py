@@ -441,7 +441,7 @@ class NotionCallback(BaseModel):
 #: maps the tool providers (`unsplash`) onto the Tool nodes that use them.
 #: `moonshot` is mandatory rather than optional — kimi-k3 is a frontier model and runs *only*
 #: on a workspace's own key (see `model_access`).
-PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash")
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash", "fal")
 
 
 class ProviderKeyInfo(BaseModel):
@@ -452,7 +452,9 @@ class ProviderKeyInfo(BaseModel):
     `None` means either no key, or a key saved before that migration — both render as a plain
     "key on file" with nothing to disambiguate."""
 
-    provider: Literal["openai", "anthropic", "moonshot", "tavily", "unsplash"]
+    # Derived from the tuple above rather than re-typed: the two were duplicated, and adding a
+    # provider to one list produced a 500 from this very model rather than a clear error.
+    provider: Literal[*PROVIDER_KEY_PROVIDERS]  # type: ignore[valid-type]
     has_key: bool
     key_hint: str | None = None
 

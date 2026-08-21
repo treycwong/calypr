@@ -3,6 +3,7 @@
 import { Download } from "lucide-react";
 import { useState } from "react";
 
+import { MediaViewer } from "@/components/MediaViewer";
 import { downloadUrl, filenameFrom } from "@/lib/download";
 
 // An image emitted by the Image node (`![alt](url)`), with a download control beneath it. The url
@@ -15,6 +16,7 @@ function extFromSrc(src: string): string {
 
 export function ChatImage({ src, alt }: { src: string; alt: string }) {
   const [busy, setBusy] = useState(false);
+  const [viewing, setViewing] = useState(false);
 
   async function download() {
     if (busy) return;
@@ -28,13 +30,23 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
 
   return (
     <span className="my-1 inline-flex max-w-full flex-col items-start gap-1">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        className="max-w-full rounded-md border border-border"
-        loading="lazy"
-      />
+      {/* A button, not an <img> with onClick: opening a dialog is an action, and this way it is
+          keyboard-reachable and announced without hand-rolling the role and key handling. */}
+      <button
+        type="button"
+        onClick={() => setViewing(true)}
+        data-testid="image-open"
+        aria-label={`View ${alt || "image"} full size`}
+        className="cursor-zoom-in rounded-md transition hover:opacity-90"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt={alt}
+          className="max-w-full rounded-md border border-border"
+          loading="lazy"
+        />
+      </button>
       <button
         type="button"
         onClick={download}
@@ -46,6 +58,13 @@ export function ChatImage({ src, alt }: { src: string; alt: string }) {
         <Download className="h-3.5 w-3.5" />
         {busy ? "Saving…" : "Download"}
       </button>
+      <MediaViewer
+        open={viewing}
+        onOpenChange={setViewing}
+        kind="image"
+        src={src}
+        caption={alt}
+      />
     </span>
   );
 }
