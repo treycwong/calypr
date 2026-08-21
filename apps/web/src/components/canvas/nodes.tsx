@@ -1,8 +1,12 @@
 "use client";
 
 import { Handle, type NodeProps, Position } from "@xyflow/react";
+import { Download, Maximize2 } from "lucide-react";
 import dynamic from "next/dynamic";
-import type { ComponentType, ReactNode } from "react";
+import { type ComponentType, type ReactNode, useState } from "react";
+
+import { MediaViewer } from "@/components/MediaViewer";
+import { downloadUrl, filenameFrom } from "@/lib/download";
 
 import { NODE_STYLE } from "@/components/canvas/node-style";
 import {
@@ -356,6 +360,74 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   loading: () => <div className="h-32 w-full animate-pulse rounded bg-white/5" />,
 });
 
+/** The orbitable preview a 3D block shows after a run, with expand and save in the corner.
+ *
+ *  The controls sit *over* the model rather than under it because the node is already the
+ *  smallest card on the canvas — a row of buttons beneath would cost as much height as it gives.
+ *  They fade in on hover so a resting canvas stays quiet, and stay visible on focus so they are
+ *  reachable from the keyboard.
+ */
+function MeshPreview({ src }: { src: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function download() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await downloadUrl(src, filenameFrom("model", "glb"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    // `nodrag` and `nowheel` are what make this usable: without them React Flow treats an orbit as
+    // dragging the block across the canvas, and a zoom gesture as zooming the whole graph. They
+    // hand those gestures to the viewer while the rest of the card still drags normally — which is
+    // why the viewer is a bounded region *inside* the node rather than the node itself.
+    <div
+      className="nodrag nowheel relative mt-2 h-48 w-56 overflow-hidden rounded"
+      data-testid="node-mesh-preview"
+    >
+      <ModelViewer src={src} alt="Generated 3D model" className="h-48 w-full" />
+      {/* Always visible, not hover-revealed. Two reasons: a hover-only control is unreachable on
+          touch and undiscoverable until you happen to point at the right corner of a small card,
+          and the `group-hover:` variant this originally used was never emitted into the
+          stylesheet — so it silently did nothing. Two small glyphs on a translucent chip are
+          quiet enough to leave up. */}
+      <div className="absolute top-1 right-1 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          data-testid="node-mesh-expand"
+          aria-label="View 3D model full size"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={download}
+          disabled={saving}
+          data-testid="node-mesh-download"
+          aria-label="Download 3D model"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <MediaViewer
+        open={expanded}
+        onOpenChange={setExpanded}
+        kind="3d"
+        src={src}
+        caption="Generated 3D model"
+      />
+    </div>
+  );
+}
+
 export function MeshNodeView({ data, selected }: NodeProps) {
   const { config, meshUrl } = data as NodeData;
   return (
@@ -363,19 +435,7 @@ export function MeshNodeView({ data, selected }: NodeProps) {
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="3D" type="mesh" selected={selected} status={statusOf(data)} testid="node-mesh">
         {String(config.model ?? "fal-ai/trellis")} · image → glb
-        {meshUrl ? (
-          // `nodrag` and `nowheel` are what make this usable: without them React Flow treats an
-          // orbit as dragging the block across the canvas, and a zoom gesture as zooming the
-          // whole graph. They hand those gestures to the viewer while the rest of the card still
-          // drags normally — which is why the viewer is a bounded region *inside* the node rather
-          // than the node itself.
-          <div
-            className="nodrag nowheel mt-2 h-32 w-full overflow-hidden rounded"
-            data-testid="node-mesh-preview"
-          >
-            <ModelViewer src={meshUrl} alt="Generated 3D model" className="h-32 w-full" />
-          </div>
-        ) : null}
+        {meshUrl ? <MeshPreview src={meshUrl} /> : null}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </>

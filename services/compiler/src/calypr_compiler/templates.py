@@ -696,7 +696,15 @@ def image_to_3d() -> GraphSpec:
     a smeared mesh, because the shadow and the backdrop are geometry as far as it knows. A flat
     white background with even lighting and the whole object in frame is worth more than any
     parameter on the 3D block. That is exactly what `style` is for: a fixed instruction folded
-    into every prompt."""
+    into every prompt.
+
+    Half of that string is **negatives**, and they are not padding. The user's message reaches the
+    image model verbatim, and people phrase it as an instruction to the workflow — "prepare a 3d
+    model of a classic Honda car". An image model reads that as a request for a *3D-modelling
+    reference sheet* and returns a contact sheet: hero shot, front and side elevations, a
+    wireframe, colour swatches, captions. Trellis is then handed five pictures and some text and
+    reconstructs a shell. Naming each of those shapes to refuse is what keeps one prompt one
+    object."""
     return GraphSpec(
         id="tpl-image-to-3d",
         name="Image to 3D",
@@ -710,9 +718,12 @@ def image_to_3d() -> GraphSpec:
                 config={
                     "model": "gpt-image-2",
                     "style": (
-                        "a single {prompt}, centered, entire object in frame, plain flat white "
-                        "background, soft even studio lighting, no shadows, no reflections, no "
-                        "backdrop, no props, photographed straight on, slight three-quarter angle"
+                        "{prompt} — one single object, photographed from one single camera "
+                        "angle, isolated product photograph, centered, entire object in frame, "
+                        "plain flat white background, soft even studio lighting, no shadow, no "
+                        "reflection, no backdrop, no props, no text, no labels, no watermark, "
+                        "NOT a collage, NOT a grid, NOT multiple views, NOT a turnaround sheet, "
+                        "NOT a wireframe, NOT a blueprint, NOT a reference sheet"
                     ),
                 },
             ),
