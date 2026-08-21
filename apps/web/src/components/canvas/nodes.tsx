@@ -1,6 +1,7 @@
 "use client";
 
 import { Handle, type NodeProps, Position } from "@xyflow/react";
+import dynamic from "next/dynamic";
 import type { ComponentType, ReactNode } from "react";
 
 import { NODE_STYLE } from "@/components/canvas/node-style";
@@ -348,13 +349,33 @@ export function TTSNodeView({ data, selected }: NodeProps) {
   );
 }
 
+// Only ever mounted by a 3D block that has actually produced a mesh, so three.js stays out of
+// the canvas bundle for everyone else — see `ModelViewer` for the rest of that argument.
+const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
+  ssr: false,
+  loading: () => <div className="h-32 w-full animate-pulse rounded bg-white/5" />,
+});
+
 export function MeshNodeView({ data, selected }: NodeProps) {
-  const config = (data as NodeData).config;
+  const { config, meshUrl } = data as NodeData;
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="3D" type="mesh" selected={selected} status={statusOf(data)} testid="node-mesh">
         {String(config.model ?? "fal-ai/trellis")} · image → glb
+        {meshUrl ? (
+          // `nodrag` and `nowheel` are what make this usable: without them React Flow treats an
+          // orbit as dragging the block across the canvas, and a zoom gesture as zooming the
+          // whole graph. They hand those gestures to the viewer while the rest of the card still
+          // drags normally — which is why the viewer is a bounded region *inside* the node rather
+          // than the node itself.
+          <div
+            className="nodrag nowheel mt-2 h-32 w-full overflow-hidden rounded"
+            data-testid="node-mesh-preview"
+          >
+            <ModelViewer src={meshUrl} alt="Generated 3D model" className="h-32 w-full" />
+          </div>
+        ) : null}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </>

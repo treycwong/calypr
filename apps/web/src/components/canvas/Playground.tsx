@@ -44,7 +44,7 @@ export function Playground({
   /** A run stored a generated file. Media lives in the left rail (it is workspace-scoped, not
    *  conversation-scoped), so the panel that lists it is not ours to refresh — we just say it
    *  happened. */
-  onAssetGenerated?: () => void;
+  onAssetGenerated?: (asset: Record<string, unknown>) => void;
   // Drives the canvas run animation. `onRunReset` clears prior run state at the start of a
   // send (and on New chat); `onNodeEvent` reports node enter/exit and run errors.
   onNodeEvent?: (nodeId: string, phase: "start" | "end") => void;
@@ -147,7 +147,7 @@ export function Playground({
       )) {
         if (ev.type === "token") append(ev.text);
         else if (ev.type === "node") onNodeEvent?.(ev.node_id, ev.phase);
-        else if (ev.type === "asset") onAssetGenerated?.();
+        else if (ev.type === "asset") onAssetGenerated?.(ev);
         else if (ev.type === "conversation") {
           // The turn is now durable. A conversation the user just spoke into has live state by
           // definition, so clear any "memory expired" warning they were shown.

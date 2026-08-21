@@ -689,7 +689,14 @@ def image_to_3d() -> GraphSpec:
 
     A **Plus** template: the 3D block is gated (`entitlements.PLUS_NODE_TYPES`), so a Free user can
     open and read this graph but not run it. Defaults to `fal-ai/trellis` (needs FAL_KEY) — switch
-    the 3D block to `fake` for a keyless placeholder mesh."""
+    the 3D block to `fake` for a keyless placeholder mesh.
+
+    **The Image block's `style` is the quality setting.** Trellis reconstructs whatever it is
+    shown, so a moody product shot — dark backdrop, hard shadow, reflective floor — comes back as
+    a smeared mesh, because the shadow and the backdrop are geometry as far as it knows. A flat
+    white background with even lighting and the whole object in frame is worth more than any
+    parameter on the 3D block. That is exactly what `style` is for: a fixed instruction folded
+    into every prompt."""
     return GraphSpec(
         id="tpl-image-to-3d",
         name="Image to 3D",
@@ -697,7 +704,18 @@ def image_to_3d() -> GraphSpec:
         state=_BASE_STATE,
         nodes=[
             _input(),
-            NodeSpec(id="image", type="image", config={"model": "gpt-image-2"}),
+            NodeSpec(
+                id="image",
+                type="image",
+                config={
+                    "model": "gpt-image-2",
+                    "style": (
+                        "a single {prompt}, centered, entire object in frame, plain flat white "
+                        "background, soft even studio lighting, no shadows, no reflections, no "
+                        "backdrop, no props, photographed straight on, slight three-quarter angle"
+                    ),
+                },
+            ),
             NodeSpec(id="mesh", type="mesh", config={"model": "fal-ai/trellis"}),
             _output(),
         ],

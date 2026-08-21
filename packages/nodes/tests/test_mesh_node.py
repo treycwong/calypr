@@ -29,8 +29,9 @@ async def test_mesh_node_falls_back_to_the_last_markdown_image_in_messages():
     seen: dict = {}
 
     class _Capture:
-        async def generate(self, *, model, image_url, on_progress=None):
+        async def generate(self, *, model, image_url, **kwargs):
             seen["image_url"] = image_url
+            seen.update(kwargs)
             from calypr_model import FakeMeshClient
 
             return await FakeMeshClient().generate(model=model, image_url=image_url)
@@ -172,3 +173,44 @@ async def test_mesh_node_does_not_echo_when_the_channel_is_messages_itself():
     run = MeshNode.compile(MeshConfig(model="fake", image_channel="messages"), NodeContext())
     update = await run({"messages": [AIMessage(content="![c](https://example.test/c.png)")]})
     assert "![source]" not in update["messages"][0].content
+
+
+async def test_mesh_node_passes_the_quality_knobs_through():
+    """`texture_size` and `mesh_simplify` are the two levers on a bad mesh, so they have to reach
+    the provider — a config field that never leaves the node is worse than no field."""
+    seen: dict = {}
+
+    class _Capture:
+        async def generate(self, *, model, image_url, **kwargs):
+            seen.update(kwargs)
+            from calypr_model import FakeMeshClient
+
+            return await FakeMeshClient().generate(model=model, image_url=image_url)
+
+    cfg = MeshConfig(model="fake", texture_size=2048, mesh_simplify=0.9)
+    run = MeshNode.compile(cfg, NodeContext(mesh_model=_Capture()))
+    await run({"images": ["https://example.test/c.png"]})
+    assert seen["texture_size"] == 2048
+    assert seen["mesh_simplify"] == 0.9
+
+
+async def test_texture_size_reaches_fal_as_an_integer():
+    """fal validates an integer literal and answers `Input should be 512, 1024 or 2048` for the
+    string — after the upstream Image node has already generated and billed. Pinned at the client
+    boundary, which is the last place the type is still ours to fix."""
+    sent: dict = {}
+
+    class _Subscribe:
+        async def subscribe(self, model, arguments, on_queue_update=None):
+            sent.update(arguments)
+            raise RuntimeError("stop here — the arguments are what is under test")
+
+    from calypr_model.mesh_client import FalMeshClient
+
+    client = FalMeshClient.__new__(FalMeshClient)  # skip __init__: no fal SDK, no key needed
+    client._client = _Subscribe()
+    with pytest.raises(RuntimeError, match="stop here"):
+        # A stringy value, as a saved graph or hand-edited code could carry.
+        await client.generate(image_url="https://example.test/c.png", texture_size="2048")
+    assert sent["texture_size"] == 2048
+    assert isinstance(sent["texture_size"], int)

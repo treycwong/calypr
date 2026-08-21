@@ -37,6 +37,18 @@ GLB_CONTENT_TYPE = "model/gltf-binary"
 #: a test asserts every entry here is priced. Adding a model means editing both.
 MESH_MODELS: tuple[str, ...] = ("fal-ai/trellis",)
 
+#: Output texture resolution. 2048 is sharper but a bigger file; 512 is for previews.
+#:
+#: **Integers, not strings.** fal's own docs page renders the default as `"1024"` with quotes, but
+#: the API validates a literal int and answers `Input should be 512, 1024 or 2048` for the string —
+#: a whole run lost, after the image was already generated and billed.
+TEXTURE_SIZES: tuple[int, ...] = (512, 1024, 2048)
+DEFAULT_TEXTURE_SIZE = 1024
+
+#: How aggressively the mesh is decimated (Trellis's `mesh_simplify`). Higher removes more
+#: polygons, so **lower keeps more geometry** — the knob to reach for when curves come out faceted.
+DEFAULT_MESH_SIMPLIFY = 0.95
+
 #: How long to wait for the generated mesh to download. The generation itself is bounded by
 #: `AsyncClient(default_timeout=...)`; this covers only the file fetch that follows it.
 _DOWNLOAD_TIMEOUT = 60.0
@@ -104,6 +116,8 @@ class FalMeshClient:
         *,
         model: str = "fal-ai/trellis",
         image_url: str,
+        texture_size: int = DEFAULT_TEXTURE_SIZE,
+        mesh_simplify: float = DEFAULT_MESH_SIMPLIFY,
         on_progress: Callable[[str], None] | None = None,
     ) -> MeshResult:
         def _update(status: object) -> None:
@@ -114,7 +128,13 @@ class FalMeshClient:
 
         payload = await self._client.subscribe(
             model,
-            arguments={"image_url": image_url},
+            arguments={
+                "image_url": image_url,
+                # int(...) rather than trusting the caller: a stringy value from a saved graph
+                # or hand-edited code fails validation server-side, which is a lost run.
+                "texture_size": int(texture_size),
+                "mesh_simplify": mesh_simplify,
+            },
             on_queue_update=_update if on_progress else None,
         )
         mesh = (payload or {}).get("model_mesh") or {}
@@ -139,6 +159,8 @@ class FakeMeshClient:
         *,
         model: str = "fake",
         image_url: str,
+        texture_size: int = DEFAULT_TEXTURE_SIZE,
+        mesh_simplify: float = DEFAULT_MESH_SIMPLIFY,
         on_progress: Callable[[str], None] | None = None,
     ) -> MeshResult:
         return _result_from(_FAKE_GLB, GLB_CONTENT_TYPE)

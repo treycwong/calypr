@@ -28,6 +28,9 @@ export type NodeData = {
   // Display-only run state injected at render time (see canvas decoration). Never persisted:
   // `buildGraphSpec` reads only `config`, so a run's status never leaks into the saved graph.
   status?: NodeStatus;
+  // The GLB this 3D block produced on the last run, so the block can show it in place. Same
+  // render-time-only contract as `status` — it is a run result, not part of the graph.
+  meshUrl?: string;
 };
 
 export const NODE_LABELS: Record<CalyprNodeType, string> = {
@@ -141,6 +144,16 @@ export const MESH_MODEL_OPTIONS = [
   { value: "fal-ai/trellis", label: "fal · Trellis (image → GLB)" },
 ];
 
+// Trellis output texture resolution. Sharper costs bytes and download time, not credits —
+// generation is a flat $0.02 whatever this says.
+// The option `value`s are strings because a <select> only carries strings — but fal validates an
+// *integer* literal and rejects "1024", so `ConfigPanel` converts on the way into config.
+export const MESH_TEXTURE_SIZE_OPTIONS = [
+  { value: "512", label: "512 · preview" },
+  { value: "1024", label: "1024 · default" },
+  { value: "2048", label: "2048 · sharpest" },
+];
+
 export const TTS_MODEL_OPTIONS = [
   { value: "fake", label: "Fake (no key, silent preview)" },
   { value: "gpt-4o-mini-tts", label: "OpenAI · gpt-4o-mini-tts" },
@@ -195,7 +208,13 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     goal: "",
   },
   output: { source_channel: "messages", output_channel: "output" },
-  mesh: { model: "fal-ai/trellis", image_channel: "images", output_channel: "messages" },
+  mesh: {
+    model: "fal-ai/trellis",
+    image_channel: "images",
+    output_channel: "messages",
+    texture_size: 1024,
+    mesh_simplify: 0.95,
+  },
   code: {
     code: 'last = state["messages"][-1]\nreturn {"messages": [AIMessage(content=last.content.upper())]}',
     imports: ["from langchain_core.messages import AIMessage"],

@@ -30,7 +30,7 @@ import re
 from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
-from calypr_model import MESH_MODELS
+from calypr_model import DEFAULT_MESH_SIMPLIFY, DEFAULT_TEXTURE_SIZE, MESH_MODELS
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
@@ -40,6 +40,7 @@ from calypr_nodes._convert import safe_stream_writer, text_of
 from calypr_nodes._parse import (
     calls_named,
     docstring,
+    kwarg_const,
     return_dict_key,
     state_get_keys,
     str_const,
@@ -99,6 +100,11 @@ class MeshConfig(BaseModel):
     #: Where the source image URL comes from. Falls back to the last Markdown image in `messages`.
     image_channel: str = "images"
     output_channel: str = "messages"  # the source image + download link are appended here
+    #: Output texture resolution — 512 | 1024 | 2048. Sharper costs bytes, not credits.
+    texture_size: int = DEFAULT_TEXTURE_SIZE
+    #: Polygon reduction. Higher removes more, so **lower keeps more geometry** — reach for it
+    #: when curved surfaces come back faceted.
+    mesh_simplify: float = DEFAULT_MESH_SIMPLIFY
 
 
 @register
@@ -160,7 +166,12 @@ class MeshNode(BaseNode):
             if poster:
                 writer({"type": "token", "text": poster + "\n\n"})
 
-            result = await client.generate(model=cfg.model, image_url=image_url)
+            result = await client.generate(
+                model=cfg.model,
+                image_url=image_url,
+                texture_size=cfg.texture_size,
+                mesh_simplify=cfg.mesh_simplify,
+            )
             # Meter like a chat call — same payload shape RunRecorder expects. Flat-rate per
             # generation, so the unit count rides in `input_tokens` (as TTS does with characters).
             writer(
@@ -234,8 +245,16 @@ class MeshNode(BaseNode):
         if not subscribe or not keys or out is None:
             return None
         cfg = MeshConfig(image_channel=keys[0], output_channel=out)
-        args = subscribe[0].args
-        model = str_const(args[0]) if args else None
+        call = subscribe[0]
+        model = str_const(call.args[0]) if call.args else None
         if isinstance(model, str):
             cfg.model = model
+        # Quality knobs ride inside the `arguments={...}` dict rather than as kwargs, so they are
+        # recovered from the literal instead of via `kwarg_const`.
+        args = kwarg_const(call, "arguments")
+        if isinstance(args, dict):
+            if isinstance(size := args.get("texture_size"), int):
+                cfg.texture_size = size
+            if isinstance(simplify := args.get("mesh_simplify"), int | float):
+                cfg.mesh_simplify = float(simplify)
         return cfg

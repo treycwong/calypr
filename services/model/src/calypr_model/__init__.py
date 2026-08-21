@@ -13,7 +13,10 @@ from calypr_model.factory import (
 from calypr_model.fake import FakeModelClient
 from calypr_model.image_client import FakeImageClient, ImageResult, OpenAIImageClient
 from calypr_model.mesh_client import (
+    DEFAULT_MESH_SIMPLIFY,
+    DEFAULT_TEXTURE_SIZE,
     MESH_MODELS,
+    TEXTURE_SIZES,
     FakeMeshClient,
     FalMeshClient,
     MeshResult,
@@ -42,6 +45,9 @@ __all__ = [
     "FakeMeshClient",
     "MeshResult",
     "MESH_MODELS",
+    "TEXTURE_SIZES",
+    "DEFAULT_TEXTURE_SIZE",
+    "DEFAULT_MESH_SIMPLIFY",
     "OpenAITTSClient",
     "FakeTTSClient",
     "TTSResult",
