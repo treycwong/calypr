@@ -139,16 +139,26 @@ class MeshNode(BaseNode):
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             image_url = _image_url_from(state.get(cfg.image_channel))
+            # Where the image came from decides whether it is worth showing again. From the
+            # `images` channel (an Upload node) it is *not* in the transcript, so the run would
+            # otherwise never say what it was built from. From `messages` it already is — and
+            # echoing it there prints the same picture twice, which is exactly what the shipped
+            # `Image → 3D` template does.
+            # True also when `image_channel` *is* `messages` — the source is what matters, not
+            # which branch found it.
+            from_transcript = bool(image_url) and cfg.image_channel == _MESSAGES
             if not image_url and cfg.image_channel != _MESSAGES:
                 image_url = _image_url_from(state.get(_MESSAGES))
+                from_transcript = bool(image_url)
             if not image_url:
                 return {}
             writer = safe_stream_writer()
-            # Show the source image *before* the call. Generation runs tens of seconds, and this
-            # is honest progress the user can see — the poster is part of the final message
-            # anyway, so nothing extra is written to the transcript to achieve it.
-            poster = f"![source]({image_url})"
-            writer({"type": "token", "text": poster + "\n\n"})
+            # Show the source image *before* the call when it isn't already on screen. Generation
+            # runs tens of seconds, and this is honest progress the user can see — the poster is
+            # part of the final message anyway, so nothing extra is written to achieve it.
+            poster = "" if from_transcript else f"![source]({image_url})"
+            if poster:
+                writer({"type": "token", "text": poster + "\n\n"})
 
             result = await client.generate(model=cfg.model, image_url=image_url)
             # Meter like a chat call — same payload shape RunRecorder expects. Flat-rate per
@@ -183,7 +193,8 @@ class MeshNode(BaseNode):
                 )
             link = f"[⬇ Download model.glb]({stored.url})" if stored.durable else _NO_STORAGE_NOTICE
             writer({"type": "token", "text": link})
-            return {cfg.output_channel: [AIMessage(content=f"{poster}\n\n{link}")]}
+            content = f"{poster}\n\n{link}" if poster else link
+            return {cfg.output_channel: [AIMessage(content=content)]}
 
         return _run
 

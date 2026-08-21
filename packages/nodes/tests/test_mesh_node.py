@@ -22,9 +22,21 @@ async def test_mesh_node_appends_source_image_and_download_link():
 
 async def test_mesh_node_falls_back_to_the_last_markdown_image_in_messages():
     """This is what makes `Image → 3D` work on the canvas: the Image node appends
-    `![alt](url)` to `messages` and never touches the `images` channel."""
-    run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
-    update = await run(
+    `![alt](url)` to `messages` and never touches the `images` channel.
+
+    Asserted on what the *client* received rather than on the rendered message, because a
+    transcript image is deliberately not echoed back — see the poster tests below."""
+    seen: dict = {}
+
+    class _Capture:
+        async def generate(self, *, model, image_url, on_progress=None):
+            seen["image_url"] = image_url
+            from calypr_model import FakeMeshClient
+
+            return await FakeMeshClient().generate(model=model, image_url=image_url)
+
+    run = MeshNode.compile(MeshConfig(model="fake"), NodeContext(mesh_model=_Capture()))
+    await run(
         {
             "messages": [
                 HumanMessage(content="a chair"),
@@ -34,7 +46,7 @@ async def test_mesh_node_falls_back_to_the_last_markdown_image_in_messages():
         }
     )
     # Most recent image wins — a transcript accumulates.
-    assert "![source](https://example.test/latest.png)" in update["messages"][0].content
+    assert seen["image_url"] == "https://example.test/latest.png"
 
 
 async def test_mesh_node_reads_plain_string_channel():
@@ -135,3 +147,28 @@ async def test_fake_mesh_client_returns_a_structurally_valid_glb():
     assert result.data[:4] == b"glTF"
     assert int.from_bytes(result.data[8:12], "little") == len(result.data)  # header length
     assert result.units == 1
+
+
+async def test_mesh_node_does_not_echo_an_image_already_in_the_transcript():
+    """The `Image → 3D` case. The Image node has already put `![alt](url)` in `messages`, so
+    echoing a `![source](url)` poster prints the same picture twice — which is what the shipped
+    template did."""
+    run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
+    update = await run({"messages": [AIMessage(content="![a chair](https://example.test/c.png)")]})
+    assert "![source]" not in update["messages"][0].content
+
+
+async def test_mesh_node_echoes_an_uploaded_image():
+    """The Upload → 3D case, and why the poster exists at all: a URL seeded into `images` is not
+    in the transcript, so without this the run never says what it was built from."""
+    run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
+    update = await run({"images": ["https://example.test/c.png"]})
+    assert "![source](https://example.test/c.png)" in update["messages"][0].content
+
+
+async def test_mesh_node_does_not_echo_when_the_channel_is_messages_itself():
+    """Same rule when someone points `image_channel` at `messages` by hand — what matters is
+    where the image came from, not which branch found it."""
+    run = MeshNode.compile(MeshConfig(model="fake", image_channel="messages"), NodeContext())
+    update = await run({"messages": [AIMessage(content="![c](https://example.test/c.png)")]})
+    assert "![source]" not in update["messages"][0].content
