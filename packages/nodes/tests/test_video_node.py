@@ -234,7 +234,7 @@ def test_every_offered_duration_is_accepted_by_every_model(monkeypatch):
 # --- metering and storage ----------------------------------------------------------------------
 
 
-async def test_usage_reports_seconds_and_carries_the_resolution_in_the_model_key(monkeypatch):
+async def test_usage_reports_seconds_and_carries_the_resolution_in_the_model_key(monkeypatch, blob):
     """The whole reason video needs a compound price key: fal bills per second, and the rate
     roughly doubles between 480p and 720p, so `model` alone cannot price a clip."""
     captured: list[dict] = []
@@ -303,3 +303,21 @@ def test_the_endpoint_id_is_the_only_record_of_which_direction_a_block_runs():
 
 def test_every_model_declares_its_resolutions():
     assert set(VIDEO_RESOLUTIONS) == set(VIDEO_MODELS)
+
+
+async def test_a_clip_that_cannot_be_stored_is_not_billed(monkeypatch):
+    """Same guarantee as the 3D block, and it matters more here: a clip can be 600+ credits, so
+    billing for one the customer never received is most of a monthly grant."""
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.video.safe_stream_writer", lambda: captured.append)
+
+    async def rejected(data, *, pathname, content_type):
+        from calypr_storage import BlobError
+
+        raise BlobError("403 from the blob store")
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", rejected)
+    run = _run_node(VideoConfig(model="fake"))
+    await run({"messages": [HumanMessage(content="a kite")]})
+
+    assert not [p for p in captured if p.get("type") == "usage"], "billed for a discarded clip"

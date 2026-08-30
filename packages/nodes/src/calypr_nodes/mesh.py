@@ -165,20 +165,29 @@ class MeshNode(BaseNode):
                 texture_size=cfg.texture_size,
                 mesh_simplify=cfg.mesh_simplify,
             )
-            # Meter like a chat call — same payload shape RunRecorder expects. Flat-rate per
-            # generation, so the unit count rides in `input_tokens` (as TTS does with characters).
-            writer(
-                {
-                    "type": "usage",
-                    "node_id": current_node_id.get(None),
-                    "model": cfg.model,
-                    "input_tokens": result.units,
-                    "output_tokens": 0,
-                }
-            )
             stored = await store_asset(
                 result.data, ext="glb", content_type=result.content_type, b64=result.b64
             )
+            # Meter like a chat call — same payload shape RunRecorder expects. Flat-rate per
+            # generation, so the unit count rides in `input_tokens` (as TTS does with characters).
+            #
+            # **Emitted only once the file is durable**, and that ordering is the fix for a real
+            # production failure: this used to charge first and store second, so when the blob
+            # store was rejecting uploads the customer paid credits for a mesh that was then
+            # discarded. The pre-flight `blob_configured()` above catches a *missing* token; it
+            # cannot catch a token that is present and refused — an expired one, or a store whose
+            # billing has lapsed — which is exactly what happened. Not billing costs us the fal
+            # call we already made; billing for nothing costs a customer's trust.
+            if stored.durable:
+                writer(
+                    {
+                        "type": "usage",
+                        "node_id": current_node_id.get(None),
+                        "model": cfg.model,
+                        "input_tokens": result.units,
+                        "output_tokens": 0,
+                    }
+                )
             # Record only what durably landed — a `data:` fallback is the file itself, so there is
             # no object to list or delete later. See `_assets.StoredAsset`.
             if stored.durable:

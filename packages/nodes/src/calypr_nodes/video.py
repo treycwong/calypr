@@ -231,21 +231,26 @@ class VideoNode(BaseNode):
                 duration=cfg.duration,
                 aspect_ratio=cfg.aspect_ratio,
             )
-            # Meter like a chat call — same payload shape RunRecorder expects. Per *second*, so the
-            # clip length rides in `input_tokens` (as TTS does with characters), and the resolution
-            # rides in the model key because it doubles the rate.
-            writer(
-                {
-                    "type": "usage",
-                    "node_id": current_node_id.get(None),
-                    "model": priced_model(cfg.model, result.resolution),
-                    "input_tokens": result.units,
-                    "output_tokens": 0,
-                }
-            )
             stored = await store_asset(
                 result.data, ext="mp4", content_type=result.content_type, b64=result.b64
             )
+            # Meter like a chat call — same payload shape RunRecorder expects. Per *second*, so the
+            # clip length rides in `input_tokens` (as TTS does with characters), and the resolution
+            # rides in the model key because it doubles the rate.
+            #
+            # **Emitted only once the file is durable** — see the 3D node for the production
+            # failure that ordering fixes. It matters more here: a clip can be 600+ credits, so
+            # billing for one the customer never received is most of a monthly grant.
+            if stored.durable:
+                writer(
+                    {
+                        "type": "usage",
+                        "node_id": current_node_id.get(None),
+                        "model": priced_model(cfg.model, result.resolution),
+                        "input_tokens": result.units,
+                        "output_tokens": 0,
+                    }
+                )
             # Record only what durably landed — a `data:` fallback is the file itself, so there is
             # no object to list or delete later. See `_assets.StoredAsset`.
             if stored.durable:

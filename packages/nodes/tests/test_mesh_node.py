@@ -78,8 +78,16 @@ async def test_mesh_node_rejects_an_unpriced_model():
 async def test_mesh_node_emits_usage_for_metering(monkeypatch):
     """The node must emit a `{type:'usage', model, input_tokens, output_tokens}` payload with the
     keys `RunRecorder` buffers. Flat-rate per generation, so the unit count rides in
-    `input_tokens` — the same move the Voice node makes with characters."""
+    `input_tokens` — the same move the Voice node makes with characters.
+
+    Needs durable storage: usage is emitted only once the file has landed somewhere, so a mesh
+    that cannot be kept is never billed."""
     captured: list[dict] = []
+
+    async def fake_put_blob(data, *, pathname, content_type):
+        return f"https://store.public.blob.vercel-storage.com/{pathname}"
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", fake_put_blob)
     monkeypatch.setattr("calypr_nodes.mesh.safe_stream_writer", lambda: captured.append)
     run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
     await run({"images": ["https://example.test/chair.png"]})
@@ -214,3 +222,26 @@ async def test_texture_size_reaches_fal_as_an_integer():
         await client.generate(image_url="https://example.test/c.png", texture_size="2048")
     assert sent["texture_size"] == 2048
     assert isinstance(sent["texture_size"], int)
+
+
+async def test_a_mesh_that_cannot_be_stored_is_not_billed(monkeypatch):
+    """The production failure this ordering fixes. The blob store's billing lapsed, so uploads were
+    rejected — a *present* token that the API refuses, which the pre-flight check cannot see. The
+    run used to charge first and store second, so the customer paid 10 credits for a mesh that was
+    then thrown away."""
+    captured: list[dict] = []
+    monkeypatch.setattr("calypr_nodes.mesh.safe_stream_writer", lambda: captured.append)
+
+    async def rejected(data, *, pathname, content_type):
+        from calypr_storage import BlobError
+
+        raise BlobError("403 from the blob store")
+
+    monkeypatch.setattr("calypr_nodes._assets.put_blob", rejected)
+    run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
+    out = await run({"images": ["https://example.test/chair.png"]})
+
+    assert not [p for p in captured if p.get("type") == "usage"], "billed for a discarded mesh"
+    assert not [p for p in captured if p.get("type") == "asset"]
+    # The run still finishes and says what happened, rather than failing opaquely.
+    assert "storage isn’t configured" in out["messages"][0].content
