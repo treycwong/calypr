@@ -9,6 +9,7 @@ import {
   MoreHorizontal,
   Trash2,
 } from "lucide-react";
+import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -210,19 +211,27 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
       className="group relative overflow-hidden rounded-md border border-border"
     >
       {isImage ? (
-        /* A plain <img>, not <ChatImage>: that component is built for a chat bubble (its own
-           download affordance, intrinsic sizing) and fights a fixed-ratio grid cell. Not
-           `next/image` either — these are arbitrary blob URLs, which the optimizer would need
-           `remotePatterns` for, and `ChatImage` made the same call for the same reason. */
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={asset.url}
-          alt={asset.caption}
-          loading="lazy"
-          onClick={() => setViewing(true)}
-          className="aspect-square w-full cursor-zoom-in bg-muted object-cover"
-          data-testid="media-thumb"
-        />
+        /* `next/image`, not a plain <img>. This grid used to render the *original* at tile size:
+           a gpt-image-2 PNG is around 2.7 MB and the tile is ~180px, so a page of sixty pulled
+           well over a hundred megabytes of blob transfer to draw postage stamps. That is what
+           exhausted the store's monthly allowance.
+
+           The optimizer needs the blob host in `remotePatterns` (see next.config.ts) — the
+           friction that got it rejected here originally. `sizes` is what makes it worth having:
+           without it the optimizer serves a viewport-width variant, which for a small tile is
+           most of the saving thrown away. */
+        <div className="relative aspect-square w-full bg-muted">
+          <Image
+            src={asset.url}
+            alt={asset.caption}
+            fill
+            sizes="(max-width: 768px) 45vw, 180px"
+            loading="lazy"
+            onClick={() => setViewing(true)}
+            className="cursor-zoom-in object-cover"
+            data-testid="media-thumb"
+          />
+        </div>
       ) : (
         <div className="flex aspect-square w-full items-center justify-center bg-muted/40">
           {/* A glyph, not a render. A GLB has no thumbnail of its own and spinning up WebGL for

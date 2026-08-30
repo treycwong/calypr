@@ -117,6 +117,41 @@ async def put_blob(
     return url
 
 
+async def list_blobs(
+    *,
+    token: str | None = None,
+    timeout: float = 30.0,
+) -> list[dict]:
+    """Every object in the store, following the cursor to the end.
+
+    Exists for the orphan sweep (`scripts/purge_orphan_blobs.py`): the app records what it uploads
+    in the `asset` table, but anything written before that table existed — or by a path that never
+    recorded a row — is invisible to it and is never collected. Listing is the only way to see
+    those, and they accumulate against the store's quota forever.
+
+    Returns Vercel's raw blob dicts (`url`, `pathname`, `size`, `uploadedAt`) rather than a
+    narrowed type: the caller is an operator script deciding what to keep, and hiding fields from
+    it would just mean coming back to widen this.
+    """
+    headers = _headers(_auth(token))
+    out: list[dict] = []
+    cursor: str | None = None
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        while True:
+            params = {"limit": "1000", **({"cursor": cursor} if cursor else {})}
+            try:
+                resp = await client.get(f"{_BASE_URL}/", params=params, headers=headers)
+            except httpx.HTTPError as exc:
+                raise BlobError(f"Vercel Blob list failed: {exc}") from exc
+            if resp.status_code != 200:
+                raise BlobError(f"Vercel Blob list error (status {resp.status_code}): {resp.text}")
+            page = resp.json()
+            out.extend(page.get("blobs") or [])
+            if not page.get("hasMore"):
+                return out
+            cursor = page.get("cursor")
+
+
 async def delete_blob(
     urls: str | Iterable[str],
     *,
