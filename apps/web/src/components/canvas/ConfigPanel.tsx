@@ -34,6 +34,7 @@ import {
   isImageToVideo,
 } from "@/lib/graph";
 import { useConnectors } from "@/lib/use-connectors";
+import { useMediaPrices } from "@/lib/use-media-prices";
 import { useProviderKeys } from "@/lib/use-provider-keys";
 
 type Setter = (patch: Record<string, unknown>) => void;
@@ -732,6 +733,9 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
 }
 
 function MeshFields({ config, set }: { config: Config; set: Setter }) {
+  const prices = useMediaPrices();
+  // A mesh bills per generation, so the rate is the whole cost — no length to multiply by.
+  const rate = prices[String(config.model ?? "fal-ai/trellis")];
   return (
     <>
       <SelectField
@@ -765,10 +769,11 @@ function MeshFields({ config, set }: { config: Config; set: Setter }) {
           curved surfaces come back faceted.
         </p>
       </Field>
+      <CreditEstimate credits={rate === undefined ? null : rate} />
       <p className="text-xs text-muted-foreground">
         Turns the incoming image into a downloadable 3D model (.glb). Wire an Upload or Image
         block into it — it reads whichever image arrived most recently. The <code>fake</code>{" "}
-        model is keyless (a placeholder mesh); Trellis calls fal and is billed per generation.
+        model is free (a placeholder mesh); Trellis calls fal and is billed per generation.
       </p>
       <p className="text-xs text-muted-foreground">
         Quality comes from the <em>picture</em> far more than from these knobs: a flat white
@@ -833,9 +838,34 @@ function InputFields({
   );
 }
 
+/** What this generation will cost, in credits, before it is run.
+ *
+ *  3D and Video are the only blocks whose price isn't bounded by tokens — a Seedance 2.0 clip is
+ *  605 credits, nearly a third of a monthly Plus grant, and until now nothing said so anywhere
+ *  until the balance moved. The rate comes from the API (`useMediaPrices`), not a copy here, so
+ *  the number shown is the number charged.
+ *
+ *  Renders nothing when the rate is unknown — an unpriced model, or the fetch failed. A missing
+ *  estimate is honest; a guessed one costs real credits. */
+function CreditEstimate({ credits, note }: { credits: number | null; note?: string }) {
+  if (credits === null) return null;
+  const rounded = credits >= 10 ? Math.round(credits) : Math.round(credits * 10) / 10;
+  return (
+    <p className="text-xs text-muted-foreground" data-testid="credit-estimate">
+      About <strong className="text-foreground">{rounded.toLocaleString()} credits</strong> per
+      run{note ? ` — ${note}` : ""}. A Plus month is 2,000.
+    </p>
+  );
+}
+
 function VideoFields({ config, set }: { config: Config; set: Setter }) {
   const model = String(config.model ?? "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video");
   const animatesAnImage = isImageToVideo(model);
+  const prices = useMediaPrices();
+  // Video bills per second, so the rate is multiplied by the clip length about to be asked for.
+  const seconds = Number(config.duration ?? 5);
+  const rate = prices[`${model}@${String(config.resolution ?? "720p")}`];
+  const estimate = rate === undefined ? null : rate * seconds;
   // 1080p exists only on Seedance 1.0. Filtering rather than disabling, because an option the
   // model will reject is not a choice — and fal rejects it server-side, after the queue has been
   // joined and the upstream Image block has already generated and billed.
@@ -898,11 +928,12 @@ function VideoFields({ config, set }: { config: Config; set: Setter }) {
           </>
         )}
       </p>
+      <CreditEstimate credits={estimate} note={`${seconds}s at this resolution`} />
       <p className="text-xs text-muted-foreground">
-        <strong>Billed per second, and the resolution roughly doubles the rate.</strong> A
-        5-second 720p clip on Seedance 1.0 is about 11¢; the same clip on 2.0 is about $1.21.
-        Video runs on <em>your</em> fal key (Settings → API Keys), never ours — the{" "}
-        <code>fake</code> model is keyless and generates a placeholder.
+        <strong>Billed per second, and the resolution roughly doubles the rate.</strong> Seedance
+        2.0 is around ten times 1.0 per second, so a longer clip on the higher tier can be a
+        sizeable share of a month. The <code>fake</code> model is free and generates a
+        placeholder.
       </p>
     </>
   );

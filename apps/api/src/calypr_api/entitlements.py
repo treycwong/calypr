@@ -156,9 +156,10 @@ def has_roundtrip(plan: str | None) -> bool:
 #: real money per generation and a video costs it per *second*, unlike every other block whose
 #: cost is bounded by tokens.
 #:
-#: Plan and key are separate axes. Video is also bring-your-own-fal-key
-#: (`model_access.BYO_KEY_ONLY_NODES`), so a Plus subscriber still needs their own key — and a Free
-#: user with a fal key still can't run it. Both gates apply; neither substitutes for the other.
+#: The plan is the *only* gate on these. They run on the platform's fal key and are paid for in
+#: credits, and there is no bring-your-own-key path to also satisfy — the credit grant is what
+#: bounds our fal spend, and it binds tighter than the kill-switch the old BYO-key rule protected:
+#: 2,000 credits at a 5× margin is about $4 of real cost against $20 of revenue.
 #:
 #: Free users still *see* these in the palette — locked, with an upgrade prompt. A block nobody
 #: can discover sells nothing, and hiding it would make the canvas silently different per plan.

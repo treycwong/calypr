@@ -79,10 +79,11 @@ const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   tavily: "Tavily",
   unsplash: "Unsplash",
-  fal: "fal · 3D and video",
 };
 // `moonshot` is deliberately absent: it is managed in Dashboard → Settings → Workspace, next
 // to the assistant-model picker it unlocks, so there is exactly one place to put that key.
+// `fal` is absent for a different reason — 3D and Video run on the platform key and are paid
+// for in credits, so there is no workspace key for them to take.
 
 export function SettingsPanel() {
   const { toast } = useToast();

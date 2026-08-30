@@ -64,56 +64,6 @@ def missing_frontier_keys(graph: GraphSpec, keys: dict[str, str] | None) -> list
     return missing
 
 
-#: Node types that may run **only** on the workspace's own key, mapped to the provider key they
-#: need and the palette label the refusal should name. The block-level counterpart of
-#: `FRONTIER_MODELS`, and a deliberately separate mechanism from it.
-#:
-#: `FRONTIER_MODELS` enforces itself by *substitution* — swap the unkeyed model for
-#: `FALLBACK_MODEL` and say so. That is right for a chat model and wrong for a media block: a
-#: Video node rewritten to `gpt-4o-mini` fails its own compile-time allowlist, so the user's
-#: actionable "add your fal key" would arrive as an opaque engine error instead. These refuse the
-#: run up front and name the key.
-#:
-#: Video earns the rule on price. fal bills $0.0096–$0.24 per *second* of output, so a handful of
-#: clips on the platform key could trip the month's spend cap for every workspace. 3D is $0.02 a
-#: generation and stays on the platform key.
-BYO_KEY_ONLY_NODES: dict[str, tuple[str, str]] = {
-    "video": ("fal", "Video"),
-}
-
-
-def missing_media_keys(graph: GraphSpec, providers: set[str] | None) -> list[tuple[str, str]]:
-    """Every (block label, provider) in `graph` that is BYO-key-only with no key on file.
-
-    Empty ⇒ the run may proceed. Takes provider *names* rather than the decrypted keys, like
-    `run_access` does elsewhere: deciding who pays never needs the secret itself.
-    """
-    on_file = providers or set()
-    missing: list[tuple[str, str]] = []
-    for node in graph.nodes:
-        entry = BYO_KEY_ONLY_NODES.get(node.type)
-        if entry is None:
-            continue
-        provider, label = entry
-        if provider in on_file:
-            continue
-        pair = (label, provider)
-        if pair not in missing:
-            missing.append(pair)
-    return missing
-
-
-def media_key_error(missing: list[tuple[str, str]]) -> str:
-    """User-facing copy for a run refused for want of a BYO key on a media block."""
-    blocks = ", ".join(sorted({label for label, _ in missing}))
-    providers = ", ".join(sorted({provider_label(p) for _, p in missing}))
-    plural = "blocks run" if len(missing) > 1 else "block runs"
-    return (
-        f"The {blocks} {plural} on your own API key. Add your {providers} key in "
-        "Settings → Workspace, then run again."
-    )
-
-
 def runs_on_own_key(model_id: str, providers: set[str] | None) -> bool:
     """Whether `model_id` will run on the *workspace's* key rather than the platform's.
 
@@ -164,8 +114,6 @@ def platform_key_models(
 #: Display names for the error copy. `.title()` would render "Openai" and "Moonshot (kimi)".
 _PROVIDER_LABELS = {
     "openai": "OpenAI",
-    # Lowercase on purpose: fal styles its own name that way, and `.title()` would render "Fal".
-    "fal": "fal",
     "anthropic": "Anthropic",
     "moonshot": "Moonshot",
     "google": "Google",

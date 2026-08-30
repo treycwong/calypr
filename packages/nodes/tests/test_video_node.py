@@ -218,10 +218,14 @@ def test_video_node_rejects_an_unsupported_aspect_ratio():
         VideoNode.compile(VideoConfig(model=_T2V, aspect_ratio="auto"), NodeContext())
 
 
-def test_every_offered_duration_is_accepted_by_every_model():
+def test_every_offered_duration_is_accepted_by_every_model(monkeypatch):
     """`VIDEO_DURATIONS` is the *intersection* of two families' ranges (1.0 takes 2–12, 2.0 takes
     4–15). If someone widens it to one family's range, this fails rather than shipping a menu item
-    that 422s on half the endpoints."""
+    that 422s on half the endpoints.
+
+    Needs a blob token in the env: compiling a *real* model now refuses when there is nowhere to
+    keep the result, and `conftest.py` unsets that token for the whole suite."""
+    monkeypatch.setenv("BLOB_READ_WRITE_TOKEN", "vercel_blob_rw_test")
     for model in VIDEO_MODELS:
         for duration in VIDEO_DURATIONS:
             VideoNode.compile(VideoConfig(model=model, duration=duration), NodeContext())

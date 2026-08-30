@@ -257,7 +257,7 @@ export function Capabilities() {
         <Tile
           chip="video"
           title="Video generation"
-          body="Seedance on fal — write a shot, or animate a still the Image node just made. Plus, on your own fal key."
+          body="Seedance on fal — write a shot, or animate a still the Image node just made. Plus, billed in credits."
           className="lg:col-span-7"
         >
           <div className="pt-6">
