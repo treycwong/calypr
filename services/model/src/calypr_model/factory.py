@@ -29,6 +29,13 @@ def provider_of(model_id: str) -> str:
     m = model_id.lower()
     if m == "fake":
         return "fake"
+    # fal's media endpoints, before the OpenAI default below. Without this branch they fall
+    # through to "openai", and `model_access.runs_on_own_key` then reports **True** for any
+    # workspace holding an OpenAI key — so a 3D mesh or a video generated on the *platform's*
+    # FAL_KEY is recorded at $0 and debited zero credits. Prefix-matched, so the `@720p` suffix
+    # the Video node reports for pricing resolves here too.
+    if m.startswith(("fal-ai/", "fal/", "bytedance/")):
+        return "fal"
     if m.startswith(("claude", "anthropic")):
         return "anthropic"
     if m.startswith(("kimi", "moonshot")):
