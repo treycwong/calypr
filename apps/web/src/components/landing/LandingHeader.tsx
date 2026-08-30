@@ -69,7 +69,7 @@ export function LandingHeader() {
 
       {/* mobile sheet */}
       {open ? (
-        <div className="mx-4 rounded-2xl border border-white/10 bg-black/70 p-2 backdrop-blur-md md:hidden">
+        <div className="mx-6 rounded-2xl border border-white/10 bg-black/70 p-2 backdrop-blur-md md:hidden">
           <nav className="flex flex-col">
             {NAV.map(({ label, href }) => (
               <Link
