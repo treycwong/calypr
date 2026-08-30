@@ -4,6 +4,7 @@ import { type Card, parseCard } from "@/components/cards/parseCards";
 import { ChatAudio } from "@/components/ChatAudio";
 import { ChatImage } from "@/components/ChatImage";
 import { ChatMesh } from "@/components/ChatMesh";
+import { ChatVideo } from "@/components/ChatVideo";
 
 // A tiny, dependency-free markdown renderer for chat output — images, audio players, links, bold,
 // italic, inline code, headings, and ordered/unordered lists. It builds React nodes (never
@@ -26,6 +27,23 @@ import { ChatMesh } from "@/components/ChatMesh";
 const INLINE =
   /(!\[([^\]]*)\]\((https?:\/\/[^)\s]+|data:image\/[^)\s]+)\)|\[([^\]]*)\]\((data:audio\/[^)\s]+|https?:\/\/[^)\s]+\.(?:mp3|wav|opus|aac|flac|ogg|m4a)(?:\?[^)\s]*)?)\)|\*\*([^*]+)\*\*|`([^`]+)`|\*([^*\n]+)\*|_([^_\n]+)_|\[([^\]]*)\]\((https?:\/\/[^)\s]+)\))/g;
 
+/** Link targets that deserve a player rather than an anchor, keyed by file extension. The label
+ *  has already had its leading glyph stripped by the caller (the nodes emit `⬇`/`▶` so the link
+ *  still reads correctly in a plain-text export, which is the one place this map doesn't run). */
+const RICH_LINK: {
+  match: RegExp;
+  render: (key: string, src: string, label: string) => ReactNode;
+}[] = [
+  {
+    match: /\.glb(?:\?[^\s]*)?$/i,
+    render: (key, src, label) => <ChatMesh key={key} src={src} label={label} />,
+  },
+  {
+    match: /\.mp4(?:\?[^\s]*)?$/i,
+    render: (key, src, label) => <ChatVideo key={key} src={src} label={label} />,
+  },
+];
+
 function renderInline(text: string, keyPrefix: string): ReactNode[] {
   const nodes: ReactNode[] = [];
   let last = 0;
@@ -45,14 +63,17 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
           {m[7]}
         </code>,
       );
-    else if (m[11] !== undefined)
-      // A `.glb` link is still a link — same alternative, same http/https guard — but it gets a
-      // richer control than an anchor that downloads a file the browser can't display. Branching
-      // here rather than adding a media alternative to INLINE keeps every capture-group index
-      // above untouched, which is the property that regex's comment asks callers to preserve.
+    else if (m[11] !== undefined) {
+      // A `.glb` or `.mp4` link is still a link — same alternative, same http/https guard — but it
+      // gets a richer control than an anchor to a file the browser won't display in place.
+      // Branching here rather than adding media alternatives to INLINE keeps every capture-group
+      // index above untouched, which is the property that regex's comment asks callers to
+      // preserve. `RICH_LINK` is a map rather than a chain of tests so a fourth modality is one
+      // entry, not another `else if` to get wrong.
+      const rich = RICH_LINK.find((r) => r.match.test(m?.[11] ?? ""));
       nodes.push(
-        /\.glb(?:\?[^\s]*)?$/i.test(m[11]) ? (
-          <ChatMesh key={key} src={m[11]} label={(m[10] ?? "").replace(/^[⬇\s]+/, "")} />
+        rich ? (
+          rich.render(key, m[11], (m[10] ?? "").replace(/^[⬇▶\s]+/, ""))
         ) : (
           // New tab + noopener/noreferrer: the href can come from a GitHub issue or Notion page
           // the agent read, so it is untrusted content — never hand it the opener window.
@@ -67,7 +88,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
           </a>
         ),
       );
-    else nodes.push(<em key={key}>{m[8] ?? m[9]}</em>);
+    } else nodes.push(<em key={key}>{m[8] ?? m[9]}</em>);
     last = m.index + m[0].length;
   }
   if (last < text.length) nodes.push(text.slice(last));

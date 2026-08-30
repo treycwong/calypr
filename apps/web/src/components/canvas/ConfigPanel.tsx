@@ -21,11 +21,17 @@ import {
   MODEL_OPTIONS,
   NODE_LABELS,
   type NodeData,
+  PROMPT_INSTRUCTION_CONSUMERS,
   ROUTER_KIND_OPTIONS,
   TOOL_PROVIDER_OPTIONS,
   TTS_FORMAT_OPTIONS,
   TTS_MODEL_OPTIONS,
   TTS_VOICE_OPTIONS,
+  VIDEO_ASPECT_OPTIONS,
+  VIDEO_DURATION_OPTIONS,
+  VIDEO_MODEL_OPTIONS,
+  VIDEO_RESOLUTION_OPTIONS,
+  isImageToVideo,
 } from "@/lib/graph";
 import { useConnectors } from "@/lib/use-connectors";
 import { useProviderKeys } from "@/lib/use-provider-keys";
@@ -774,6 +780,134 @@ function MeshFields({ config, set }: { config: Config; set: Setter }) {
   );
 }
 
+/** The Input block's Prompt Instructions — criteria written once, at the entry, that every
+ *  generative block downstream folds into its prompt.
+ *
+ *  **Rendered only when the graph has a block that reads it.** The value is never cleared with
+ *  it: deleting the last Image block hides the control but leaves `prompt_instructions` in the
+ *  node's config, so re-adding one brings the text back. Hidden, not destroyed.
+ *
+ *  Why the Input block and not the message it seeds: prepending the criteria to the user's
+ *  message would reach *every* downstream block, which reads as the feature and behaves as a bug
+ *  — the Voice block would read the criteria aloud and the Router would classify on them. They
+ *  travel on their own state channel instead, and only these blocks look at it.
+ */
+function InputFields({
+  config,
+  set,
+  nodeTypes,
+}: {
+  config: Config;
+  set: Setter;
+  nodeTypes: string[];
+}) {
+  const consumers = PROMPT_INSTRUCTION_CONSUMERS.filter((t) => nodeTypes.includes(t));
+  if (!consumers.length) return null;
+  return (
+    <Field id="cfg-prompt-instructions" label="Prompt instructions">
+      <Textarea
+        id="cfg-prompt-instructions"
+        data-testid="cfg-prompt-instructions"
+        // Taller than the panel's other textareas on purpose: this one holds a *list* of criteria,
+        // one per line, not a sentence, and at the default height a real list scrolled inside the
+        // box while the panel below it sat empty.
+        //
+        // **`min-h-*`, not `rows`.** `ui/textarea` sets `field-sizing-content`, which sizes the box
+        // to its content and makes the `rows` attribute inert — every `rows={n}` elsewhere in this
+        // panel is decorative. A min-height still lets the box grow past it as you type, which is
+        // what this field wants.
+        className="min-h-48"
+        placeholder={"e.g. no text or logos\nwarm natural light\none subject, centred"}
+        value={String(config.prompt_instructions ?? "")}
+        onChange={(e) => set({ prompt_instructions: e.target.value })}
+      />
+      <p className="text-xs text-muted-foreground">
+        Criteria applied to every generation in this graph, so you don’t repeat them on each
+        block. Added <em>after</em> a block’s own settings — the Image block’s{" "}
+        <em>Style</em> still decides the look, this adds requirements to it.
+      </p>
+      <p className="text-xs text-muted-foreground">
+        Used by: {consumers.map((c) => NODE_LABELS[c]).join(", ")}.
+      </p>
+    </Field>
+  );
+}
+
+function VideoFields({ config, set }: { config: Config; set: Setter }) {
+  const model = String(config.model ?? "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video");
+  const animatesAnImage = isImageToVideo(model);
+  // 1080p exists only on Seedance 1.0. Filtering rather than disabling, because an option the
+  // model will reject is not a choice — and fal rejects it server-side, after the queue has been
+  // joined and the upstream Image block has already generated and billed.
+  const resolutions = VIDEO_RESOLUTION_OPTIONS.filter(
+    (r) => !r.models || r.models.includes(model),
+  );
+  return (
+    <>
+      <SelectField
+        id="cfg-model"
+        label="Video model"
+        value={model}
+        options={VIDEO_MODEL_OPTIONS}
+        onChange={(v) => {
+          // Switching families can strand the resolution: 1080p is valid on Seedance 1.0 and
+          // rejected by 2.0, and a config carrying a value the model refuses fails at Run rather
+          // than here. Fall back to the default rather than leaving a setting that cannot work.
+          const stillValid = VIDEO_RESOLUTION_OPTIONS.some(
+            (r) => r.value === config.resolution && (!r.models || r.models.includes(v)),
+          );
+          set({
+            model: v,
+            resolution: stillValid ? String(config.resolution ?? "720p") : "720p",
+          });
+        }}
+      />
+      <SelectField
+        id="cfg-resolution"
+        label="Resolution"
+        value={String(config.resolution ?? "720p")}
+        options={resolutions}
+        onChange={(v) => set({ resolution: v })}
+      />
+      <SelectField
+        id="cfg-duration"
+        label="Length"
+        // A string, not a number: fal's schema declares a string enum and rejects a bare int.
+        value={String(config.duration ?? "5")}
+        options={VIDEO_DURATION_OPTIONS}
+        onChange={(v) => set({ duration: v })}
+      />
+      <SelectField
+        id="cfg-aspect-ratio"
+        label="Aspect ratio"
+        value={String(config.aspect_ratio ?? "16:9")}
+        options={VIDEO_ASPECT_OPTIONS}
+        onChange={(v) => set({ aspect_ratio: v })}
+      />
+      <p className="text-xs text-muted-foreground">
+        {animatesAnImage ? (
+          <>
+            Animates the incoming image. Wire an Upload or Image block into it — it uses whichever
+            image arrived most recently, and the message text becomes the <em>motion</em>{" "}
+            description.
+          </>
+        ) : (
+          <>
+            Generates a clip from the incoming message. Describe a single shot — subject, setting,
+            lighting, and one camera move — rather than asking for a video.
+          </>
+        )}
+      </p>
+      <p className="text-xs text-muted-foreground">
+        <strong>Billed per second, and the resolution roughly doubles the rate.</strong> A
+        5-second 720p clip on Seedance 1.0 is about 11¢; the same clip on 2.0 is about $1.21.
+        Video runs on <em>your</em> fal key (Settings → API Keys), never ours — the{" "}
+        <code>fake</code> model is keyless and generates a placeholder.
+      </p>
+    </>
+  );
+}
+
 function TTSFields({ config, set }: { config: Config; set: Setter }) {
   const model = String(config.model ?? "gpt-4o-mini-tts");
   const instructable = model === "gpt-4o-mini-tts";
@@ -865,9 +999,14 @@ function UploadFields({ config, set }: { config: Config; set: Setter }) {
 export function ConfigPanel({
   node,
   onChange,
+  nodeTypes = [],
 }: {
   node: Node<NodeData> | null;
   onChange: (config: Record<string, unknown>) => void;
+  /** Every block type currently on the canvas. Only the Input block uses it, to decide whether
+   *  its Prompt Instructions field has anyone to talk to — a graph-level fact this panel is
+   *  otherwise blind to, since it only ever sees the selected node. */
+  nodeTypes?: string[];
 }) {
   if (!node) {
     return (
@@ -885,6 +1024,7 @@ export function ConfigPanel({
     <div className="space-y-4">
       <div className="text-sm font-medium">{NODE_LABELS[type]} settings</div>
 
+      {type === "input" ? <InputFields config={config} set={set} nodeTypes={nodeTypes} /> : null}
       {type === "agent" ? <AgentFields config={config} set={set} /> : null}
       {type === "tool" ? <ToolFields config={config} set={set} /> : null}
       {type === "retriever" ? <RetrieverFields config={config} set={set} /> : null}
@@ -895,6 +1035,7 @@ export function ConfigPanel({
       {type === "memory" ? <MemoryFields config={config} set={set} /> : null}
       {type === "image" ? <ImageFields config={config} set={set} /> : null}
       {type === "mesh" ? <MeshFields config={config} set={set} /> : null}
+      {type === "video" ? <VideoFields config={config} set={set} /> : null}
       {type === "tts" ? <TTSFields config={config} set={set} /> : null}
       {type === "upload" ? <UploadFields config={config} set={set} /> : null}
 

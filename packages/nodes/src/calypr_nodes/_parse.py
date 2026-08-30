@@ -162,6 +162,24 @@ def kwarg_const(call: ast.Call, name: str):
     return None
 
 
+def kwarg_dict(call: ast.Call, name: str) -> dict:
+    """The constant entries of a `call(..., name={...})` dict literal, as a plain dict.
+
+    `kwarg_const` can't do this: it accepts only `ast.Constant`, and a dict literal is `ast.Dict`.
+    Node fragments that pass their knobs *inside* an arguments dict (the fal blocks) need the
+    literal entries back, so non-constant values — a variable holding the prompt, say — are simply
+    skipped rather than failing the whole recovery."""
+    for kw in call.keywords:
+        if kw.arg != name or not isinstance(kw.value, ast.Dict):
+            continue
+        out: dict = {}
+        for key, value in zip(kw.value.keys, kw.value.values, strict=False):
+            if isinstance(key, ast.Constant) and isinstance(value, ast.Constant):
+                out[key.value] = value.value
+        return out
+    return {}
+
+
 def llm_actor_fields(fn: ast.FunctionDef, prompt_prefix: str) -> dict | None:
     """Common recovery for a single-shot LLM node whose body is
     `model = init_chat_model(<model>, temperature=<t>); messages = state.get(<in>) or []; ...;

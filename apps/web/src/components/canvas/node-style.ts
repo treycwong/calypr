@@ -3,6 +3,7 @@ import {
   Bot,
   Box,
   Brain,
+  Clapperboard,
   Code2,
   Gauge,
   // Collides with the DOM `Image` global, so it is aliased everywhere it's used.
@@ -90,6 +91,16 @@ export const NODE_STYLE: Record<
     edge: "#dc2626",
     description: "Turns an image into a downloadable 3D model. Plus only.",
   },
+  video: {
+    icon: Clapperboard,
+    // Amber-700. The wheel is genuinely full at sixteen blocks once cyan is reserved for run
+    // state, so this one is told apart by *darkness* rather than hue: it sits between Upload's
+    // orange-500 and the Evaluator's amber-500, and it has to, because `Image → Video` puts it on
+    // the same canvas as the pink image wire and `Upload → Video` puts it next to the orange one.
+    edge: "#b45309",
+    description:
+      "Generates a short video from a prompt, or animates an image. Plus, and needs your own fal key.",
+  },
   tts: {
     icon: AudioLines,
     edge: "#a855f7",
@@ -149,6 +160,7 @@ export const PALETTE_ORDER: CalyprNodeType[] = [
   "retriever",
   "image",
   "mesh",
+  "video",
   "tts",
   "responder",
   "revisor",
@@ -164,6 +176,7 @@ export const PALETTE_ORDER: CalyprNodeType[] = [
  * one containing an Image node is *the image one*. Used to pick a template's tile icon.
  */
 const CHARACTERISTIC_ORDER: CalyprNodeType[] = [
+  "video",
   "mesh",
   "image",
   "tts",

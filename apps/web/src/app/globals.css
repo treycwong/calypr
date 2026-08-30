@@ -139,6 +139,42 @@
   h4 {
     @apply font-heading;
   }
+
+  /* Scrollbars. Nothing styled these, so every scrolling panel fell back to the browser's
+     default — which on a dark surface renders as a near-black bar that reads as a seam in the
+     layout rather than as a control. These are the design tokens, so the thumb is visible at
+     rest and comes forward on hover, in both themes.
+
+     Both syntaxes are set on purpose: `scrollbar-color` is the standard and is what Firefox
+     honours, while WebKit/Blink still only implement the pseudo-elements. Neither alone covers
+     the browsers this app runs in. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  /* Transparent, not a colour: a scrolling panel sits on several different surfaces (the rail,
+     a card, the canvas) and a fixed track colour would band against all but one of them. */
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+    border-radius: 9999px;
+    /* Inset via a transparent border so the thumb reads as a floating pill rather than filling
+       the gutter edge to edge. */
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
 }
 
 /* Blog article typography — hand-rolled on the design tokens (no typography plugin),

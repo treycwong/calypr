@@ -8,7 +8,13 @@ import subprocess
 import pytest
 from calypr_codegen import generate_python
 from calypr_compiler import FRAMEWORKS, STARTERS, TEMPLATES, validate_graph
-from calypr_model import FakeImageClient, FakeMeshClient, FakeModelClient, FakeTTSClient
+from calypr_model import (
+    FakeImageClient,
+    FakeMeshClient,
+    FakeModelClient,
+    FakeTTSClient,
+    FakeVideoClient,
+)
 from calypr_nodes import NodeContext
 from calypr_runtime import run
 
@@ -31,7 +37,7 @@ def test_frameworks_present():
 
 #: Nodes whose `model` is resolved by a media seam rather than `effective_model`, so naming one
 #: in a template is correct rather than a missed inherit.
-MEDIA_NODE_TYPES = ("image", "tts", "mesh")
+MEDIA_NODE_TYPES = ("image", "tts", "mesh", "video")
 
 
 def test_use_case_templates_present():
@@ -44,6 +50,8 @@ def test_use_case_templates_present():
         "tpl-trip-planner",
         "tpl-image-generation",
         "tpl-image-to-3d",
+        "tpl-text-to-video",
+        "tpl-image-to-video",
         "tpl-text-to-speech",
         "tpl-translate-speak",
         "tpl-label-reader",
@@ -84,6 +92,7 @@ async def test_starter_runs_with_fake_model(graph):
         image_model=FakeImageClient(),
         tts_model=FakeTTSClient(),
         mesh_model=FakeMeshClient(),
+        video_model=FakeVideoClient(),
     )
     result = await run(graph, ctx, "hello there")
     assert isinstance(result.get("output"), str)

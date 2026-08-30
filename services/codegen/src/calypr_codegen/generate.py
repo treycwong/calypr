@@ -12,7 +12,7 @@ import json
 import re
 import subprocess
 
-from calypr_dsl import SCHEMA_VERSION, GraphSpec, Reducer, StateChannel
+from calypr_dsl import SCHEMA_VERSION, GraphSpec, Reducer, StateChannel, ancestors
 from calypr_nodes import CodegenContext, get_node, graph_channels, has_node
 
 _PYTYPE: dict[str, str] = {
@@ -161,6 +161,26 @@ def _mcp_ordinals(graph: GraphSpec) -> dict[str, int]:
     }
 
 
+def _image_sources(graph: GraphSpec) -> dict[str, list[str]]:
+    """Node id → the Image nodes upstream of it, but **only when the graph has more than one**.
+
+    With a single Image block the exported code can read the last image in the channel, which is
+    what it has always done and is easy to follow. With two, that read is ambiguous — both Image
+    blocks append to `messages`, so a Video block downstream of one of them would pick up the
+    other's picture, which is exactly the bug this resolves at run time. The generated file has to
+    make the same distinction or the export stops matching the canvas.
+    """
+    producers = [n.id for n in graph.nodes if n.type == "image"]
+    if len(producers) < 2:
+        return {}
+    upstream = ancestors(graph)
+    return {
+        n.id: sorted(upstream.get(n.id, frozenset()) & set(producers))
+        for n in graph.nodes
+        if n.type in ("video", "mesh")
+    }
+
+
 def _tool_refs_by_node(graph: GraphSpec) -> dict[str, list[str]]:
     """Tool node id → the variable name(s) its tools live under in the generated module."""
     if not has_node("tool"):
@@ -235,6 +255,15 @@ def generate_python(graph: GraphSpec) -> str:
     mcp_ordinals = _mcp_ordinals(graph)
 
     routing_ids: set[str] = set()
+    # One graph-level lookup, not one per node: does the entry carry Prompt Instructions? The
+    # media nodes fold that channel into their prompt, and only emit the code to do so when there
+    # is something to fold — so an untouched graph exports exactly what it did before the field
+    # existed.
+    graph_instructions = any(
+        n.type == "input" and str(n.config.get("prompt_instructions") or "").strip()
+        for n in graph.nodes
+    )
+    image_sources = _image_sources(graph)
     for node in graph.nodes:
         fn = _fn_name(node.id)
         fn_for[node.id] = fn
@@ -243,6 +272,8 @@ def generate_python(graph: GraphSpec) -> str:
         cg_ctx = CodegenContext(
             tool_refs=tool_refs.get(node.id, []),
             mcp_ordinal=mcp_ordinals.get(node.id, 0),
+            graph_instructions=graph_instructions,
+            image_sources=image_sources.get(node.id, []),
         )
         fragment = node_cls.codegen(cfg, fn, cg_ctx)
         functions.append(fragment.function.rstrip("\n"))

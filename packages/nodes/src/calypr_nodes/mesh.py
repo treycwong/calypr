@@ -26,7 +26,6 @@ would not even render — it would print the base64 as text.
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
@@ -35,8 +34,10 @@ from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
 from calypr_nodes._assets import store_asset
+from calypr_nodes._codegen import image_pick_lines
 from calypr_nodes._context import current_node_id
-from calypr_nodes._convert import safe_stream_writer, text_of
+from calypr_nodes._convert import safe_stream_writer
+from calypr_nodes._media import MESSAGES, image_url_from
 from calypr_nodes._parse import (
     calls_named,
     docstring,
@@ -58,41 +59,12 @@ from calypr_nodes.registry import (
 
 _DOCSTRING = "Generate a 3D model from the image and append it as a download link."
 
-#: The canonical message channel every node defaults to — where the Image node leaves its
-#: `![alt](url)`. Hardcoded rather than exposed as config: it is the fallback source, and a second
-#: channel field would be a knob with one sensible value.
-_MESSAGES = "messages"
-
-_MD_IMAGE = re.compile(r"!\[[^\]]*\]\(\s*(\S+?)\s*\)")
-
 #: What the run says when the mesh was generated but there is nowhere durable to put it. See the
 #: module docstring for why this is a sentence rather than an inline `data:` URI.
 _NO_STORAGE_NOTICE = (
     "*The 3D model was generated, but file storage isn\u2019t configured on this deployment, "
     "so there is no link to download it.*"
 )
-
-
-def _md_image_url(text: str) -> str:
-    """The last Markdown image URL in `text`, or "". Last rather than first: a transcript
-    accumulates, and the mesh should be built from the most recently generated image."""
-    matches = _MD_IMAGE.findall(text or "")
-    return matches[-1] if matches else ""
-
-
-def _image_url_from(value: Any) -> str:
-    """Resolve an image URL from a channel: a plain string, a list of URLs (the `images` channel
-    the Upload node seeds), or a message list carrying a Markdown image. Most recent wins."""
-    if isinstance(value, str):
-        return value.strip() if value.strip().startswith(("http", "data:")) else ""
-    if isinstance(value, list):
-        for item in reversed(value):
-            if isinstance(item, str) and item.strip():
-                return item.strip()
-            url = _md_image_url(text_of(item))
-            if url:
-                return url
-    return ""
 
 
 class MeshConfig(BaseModel):
@@ -142,9 +114,12 @@ class MeshNode(BaseNode):
                 f"unknown 3D model {cfg.model!r} — choose one of {', '.join(MESH_MODELS)}"
             )
         client = mesh_model_for_node(ctx, cfg.model)
+        # See the Video node: the blocks this one is downstream of, so two Image → 3D branches
+        # don't both build from the same picture.
+        sources = set(ctx.upstream_ids)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
-            image_url = _image_url_from(state.get(cfg.image_channel))
+            image_url = image_url_from(state.get(cfg.image_channel), sources)
             # Where the image came from decides whether it is worth showing again. From the
             # `images` channel (an Upload node) it is *not* in the transcript, so the run would
             # otherwise never say what it was built from. From `messages` it already is — and
@@ -152,9 +127,9 @@ class MeshNode(BaseNode):
             # `Image → 3D` template does.
             # True also when `image_channel` *is* `messages` — the source is what matters, not
             # which branch found it.
-            from_transcript = bool(image_url) and cfg.image_channel == _MESSAGES
-            if not image_url and cfg.image_channel != _MESSAGES:
-                image_url = _image_url_from(state.get(_MESSAGES))
+            from_transcript = bool(image_url) and cfg.image_channel == MESSAGES
+            if not image_url and cfg.image_channel != MESSAGES:
+                image_url = image_url_from(state.get(MESSAGES), sources)
                 from_transcript = bool(image_url)
             if not image_url:
                 return {}
@@ -215,11 +190,13 @@ class MeshNode(BaseNode):
             "import fal_client",
             "from langchain_core.messages import AIMessage",
         ]
+        sources = list(getattr(ctx, "image_sources", []) or [])
+        if sources:
+            imports.append("import re")
         lines = [
             f"def {fn_name}(state: State) -> dict:",
             f'    """{_DOCSTRING}"""',
-            f'    value = state.get("{cfg.image_channel}")',
-            '    image_url = value if isinstance(value, str) else (value[-1] if value else "")',
+            *image_pick_lines(cfg.image_channel, sources, "image_url"),
             "    if not image_url:",
             "        return {}",
             "    result = fal_client.subscribe(",

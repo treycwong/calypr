@@ -153,11 +153,16 @@ def has_roundtrip(plan: str | None) -> bool:
 
 
 #: Node types only a paid plan may run. The expensive generative media blocks: a 3D mesh costs
-#: real money per generation, unlike every other block whose cost is bounded by tokens.
+#: real money per generation and a video costs it per *second*, unlike every other block whose
+#: cost is bounded by tokens.
+#:
+#: Plan and key are separate axes. Video is also bring-your-own-fal-key
+#: (`model_access.BYO_KEY_ONLY_NODES`), so a Plus subscriber still needs their own key — and a Free
+#: user with a fal key still can't run it. Both gates apply; neither substitutes for the other.
 #:
 #: Free users still *see* these in the palette — locked, with an upgrade prompt. A block nobody
 #: can discover sells nothing, and hiding it would make the canvas silently different per plan.
-PLUS_NODE_TYPES = frozenset({"mesh"})
+PLUS_NODE_TYPES = frozenset({"mesh", "video"})
 
 
 def has_media_nodes(plan: str | None) -> bool:

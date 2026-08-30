@@ -238,12 +238,16 @@ test("hiding the left panel leaves the graph where it was", async ({ page }) => 
   expect(Math.abs(afterShow!.x - before!.x)).toBeLessThan(2);
 });
 
-test("the rail panel is 240px, and Templates headings match the Connectors ones", async ({
+test("the rail panel is 272px, and Templates headings match the Connectors ones", async ({
   page,
 }) => {
+  // One shared width for every rail tab, which is the point: the panels used to size themselves
+  // (w-52 / w-72 / w-80) and the canvas jumped sideways every time you switched. It went 240 → 272
+  // when the Media panel grew a fifth filter and clipped "Video" off the end of its tab strip.
+  // `LEFT_PANEL_PX` in app/canvas/page.tsx must match, or the canvas stops compensating correctly.
   await openCanvas(page);
   const panel = page.locator("aside").filter({ has: page.getByTestId("add-input") });
-  expect((await panel.boundingBox())!.width).toBe(240);
+  expect((await panel.boundingBox())!.width).toBe(272);
 
   await page.getByTestId("tab-templates").click();
   const heading = page

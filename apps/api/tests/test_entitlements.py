@@ -492,6 +492,23 @@ def test_paid_plans_may_run_a_3d_block(plan):
     assert entitlements.gated_nodes_in(_graph_with("mesh"), plan) == []
 
 
+def test_free_may_not_run_a_video_block():
+    assert entitlements.gated_nodes_in(_graph_with("video"), entitlements.FREE) == ["video"]
+
+
+@pytest.mark.parametrize("plan", [entitlements.PLUS, entitlements.BETA])
+def test_paid_plans_may_run_a_video_block(plan):
+    """The plan gate opens. The *key* gate is a separate axis and still applies — see
+    `test_run_access.test_plus_without_a_fal_key_is_refused_a_video_block`."""
+    assert entitlements.gated_nodes_in(_graph_with("video"), plan) == []
+
+
+def test_both_paid_blocks_are_named_in_one_refusal():
+    """The message names blocks, so a graph with both should list both rather than refusing twice
+    or naming only the first."""
+    assert entitlements.gated_nodes_in(_graph_with("mesh", "video"), "free") == ["mesh", "video"]
+
+
 def test_unpaid_blocks_are_never_gated():
     """The gate is an allowlist of *paid* types, not a general node filter — an ordinary graph
     must sail through on every plan."""

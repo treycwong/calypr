@@ -111,11 +111,43 @@ _MOST_EXPENSIVE = ModelPrice(
 # workspace. A separate table keeps the fail-closed rate an honest token rate.
 #
 # There is no fail-closed rate for an unknown *media* id (a token rate applied to "1 unit" rounds to
-# nothing), so media models are an allowlist instead: `calypr_model.MESH_MODELS` is validated at
-# node compile time, and a test asserts every entry there is priced here.
+# nothing), so media models are an allowlist instead: `calypr_model.MESH_MODELS` and
+# `VIDEO_MODELS` × `VIDEO_RESOLUTIONS` are validated at node compile time, and tests assert every
+# entry there is priced here.
 MEDIA_PRICES: dict[str, float] = {
-    # fal image→3D. Verified 2026-08-21 against https://fal.ai/models/fal-ai/trellis
+    # fal image→3D, USD per generation.
+    # Verified 2026-08-21 against https://fal.ai/models/fal-ai/trellis
     "fal-ai/trellis": 0.02,
+    # --- fal video (ByteDance Seedance), USD per SECOND, keyed "<endpoint>@<resolution>" ---
+    #
+    # Video is the first modality whose price isn't a function of the model id alone: fal bills
+    # per second and the rate scales with the frame, so 480p costs roughly half of 720p on the
+    # same endpoint. One price per model would therefore over-bill at one resolution and
+    # under-bill at the other — hence the compound key, built by `calypr_model.priced_model` and
+    # reported by the Video node as its `model`. `_resolve` matches these exactly, as it does
+    # every media id, so the extra `@` segment needs no new lookup path.
+    #
+    # Seedance 1.0 Pro Fast: fal charges $1 per 1M video tokens where
+    # tokens = (height × width × fps × duration) / 1024, at 24 fps. The per-second figures below
+    # are that formula at the 16:9 frame for each tier, and they reconcile with the one price fal
+    # publishes directly — a 1080p 5-second clip at $0.0486/s is $0.243, against their ~$0.245.
+    # Verified 2026-08-28 against
+    # https://fal.ai/models/fal-ai/bytedance/seedance/v1/pro/fast/text-to-video
+    "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video@480p": 0.0096,
+    "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video@720p": 0.0216,
+    "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video@1080p": 0.0486,
+    "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video@480p": 0.0096,
+    "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video@720p": 0.0216,
+    "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video@1080p": 0.0486,
+    # Seedance 2.0 Fast: fal publishes $0.2419/second at 720p. The 480p entry is that rate scaled
+    # by the pixel ratio the same token formula implies (854×480 ÷ 1280×720 = 0.4449), since fal
+    # quotes only the 720p figure. Ten times the 1.0 tier — it is the quality step, not the
+    # default. Verified 2026-08-28 against
+    # https://fal.ai/models/bytedance/seedance-2.0/fast/image-to-video
+    "bytedance/seedance-2.0/fast/text-to-video@480p": 0.1076,
+    "bytedance/seedance-2.0/fast/text-to-video@720p": 0.2419,
+    "bytedance/seedance-2.0/fast/image-to-video@480p": 0.1076,
+    "bytedance/seedance-2.0/fast/image-to-video@720p": 0.2419,
 }
 
 

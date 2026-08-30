@@ -11,6 +11,7 @@ from calypr_dsl.spec import (
     NodeSpec,
     Reducer,
     StateChannel,
+    ancestors,
 )
 
 __version__ = "0.0.0"
@@ -22,4 +23,5 @@ __all__ = [
     "NodeSpec",
     "EdgeSpec",
     "GraphSpec",
+    "ancestors",
 ]

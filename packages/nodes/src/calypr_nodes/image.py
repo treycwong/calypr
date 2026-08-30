@@ -23,7 +23,13 @@ from pydantic import BaseModel, Field
 from calypr_nodes._assets import store_asset
 from calypr_nodes._codegen import assign_str
 from calypr_nodes._context import current_node_id
-from calypr_nodes._convert import safe_stream_writer, text_of
+from calypr_nodes._convert import safe_stream_writer
+from calypr_nodes._media import (
+    PROMPT_INSTRUCTIONS,
+    prompt_from,
+    tag_producer,
+    with_instructions,
+)
 from calypr_nodes._parse import (
     calls_named,
     docstring,
@@ -63,15 +69,6 @@ class ImageConfig(BaseModel):
             "to pass the user's prompt through unchanged."
         ),
     )
-
-
-def _prompt_from(value: Any) -> str:
-    """Resolve the prompt: a plain string channel, or the last message's text."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, list) and value:
-        return text_of(value[-1])
-    return ""
 
 
 def _apply_style(style: str, prompt: str) -> str:
@@ -115,10 +112,14 @@ class ImageNode(BaseNode):
         client = image_model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
-            raw = _prompt_from(state.get(cfg.prompt_channel))
+            raw = prompt_from(state.get(cfg.prompt_channel))
             if not raw:
                 return {}
-            prompt = _apply_style(cfg.style, raw)  # what the model sees (raw + fixed style)
+            # Style first, then the run's Prompt Instructions. The block's own `style` governs
+            # the *form* of the prompt — on the shipped Image → 3D template it is what makes the
+            # mesh usable — so the Input field adds criteria after it rather than replacing it.
+            prompt = _apply_style(cfg.style, raw)
+            prompt = with_instructions(prompt, state.get(PROMPT_INSTRUCTIONS))
             writer = safe_stream_writer()
             result = await client.generate(
                 model=cfg.model,
@@ -164,7 +165,16 @@ class ImageNode(BaseNode):
             markdown = "\n\n".join(f"![{alt}]({a.url})" for a in stored)
             # Stream it so the Playground renders the image live (token → <Markdown>).
             writer({"type": "token", "text": markdown})
-            return {cfg.output_channel: [AIMessage(content=markdown)]}
+            # Tagged with the node that made it, so a media block downstream can tell this
+            # branch's picture from a parallel branch's — see `_media.image_url_from`.
+            return {
+                cfg.output_channel: [
+                    AIMessage(
+                        content=markdown,
+                        additional_kwargs=tag_producer(current_node_id.get(None)),
+                    )
+                ]
+            }
 
         return _run
 
@@ -189,6 +199,15 @@ class ImageNode(BaseNode):
             lines.append('    styled = f"{style}, {prompt}"')
         else:
             lines.append("    styled = prompt")
+        if ctx is not None and getattr(ctx, "graph_instructions", False):
+            # Emitted *after* the prompt read above, and it has to stay that way: `parse` recovers
+            # the prompt channel as `state_get_keys(fn)[0]`, so an earlier read here would hand it
+            # the wrong channel.
+            lines += [
+                f'    instructions = state.get("{PROMPT_INSTRUCTIONS}") or ""',
+                "    if instructions:",
+                '        styled = f"{styled}. {instructions}"',
+            ]
         lines += [
             "    resp = OpenAI().images.generate(",
             f"        model={cfg.model!r}, prompt=styled, size={cfg.size!r}, "

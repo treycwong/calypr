@@ -18,6 +18,7 @@ export type CalyprNodeType =
   | "retriever"
   | "image"
   | "mesh"
+  | "video"
   | "tts"
   | "upload";
 
@@ -28,9 +29,12 @@ export type NodeData = {
   // Display-only run state injected at render time (see canvas decoration). Never persisted:
   // `buildGraphSpec` reads only `config`, so a run's status never leaks into the saved graph.
   status?: NodeStatus;
-  // The GLB this 3D block produced on the last run, so the block can show it in place. Same
-  // render-time-only contract as `status` — it is a run result, not part of the graph.
+  // What each media block produced on the last run, so the block can show it in place. Same
+  // render-time-only contract as `status` — these are run results, not part of the graph, and
+  // `buildGraphSpec` reads only `config`.
   meshUrl?: string;
+  videoUrl?: string;
+  imageUrl?: string;
 };
 
 export const NODE_LABELS: Record<CalyprNodeType, string> = {
@@ -47,6 +51,7 @@ export const NODE_LABELS: Record<CalyprNodeType, string> = {
   retriever: "Knowledge",
   image: "Image",
   mesh: "3D",
+  video: "Video",
   tts: "Voice",
   upload: "Upload",
 };
@@ -154,6 +159,77 @@ export const MESH_TEXTURE_SIZE_OPTIONS = [
   { value: "2048", label: "2048 · sharpest" },
 ];
 
+// Seedance endpoints a Video block can run. An allowlist, and a short one, for two reasons: a
+// per-second model has no honest fail-closed price (`calypr_model.VIDEO_MODELS` refuses anything it
+// doesn't know), and text-to-video vs image-to-video is a *different endpoint* rather than a mode
+// flag — picking the model is how you choose which one this block is. Keep in sync with the engine.
+export const VIDEO_MODEL_OPTIONS = [
+  { value: "fake", label: "Fake (no key, placeholder clip)" },
+  {
+    value: "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+    label: "Seedance 1.0 Pro Fast · text → video",
+  },
+  {
+    value: "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video",
+    label: "Seedance 1.0 Pro Fast · image → video",
+  },
+  {
+    value: "bytedance/seedance-2.0/fast/text-to-video",
+    label: "Seedance 2.0 Fast · text → video (10× the price)",
+  },
+  {
+    value: "bytedance/seedance-2.0/fast/image-to-video",
+    label: "Seedance 2.0 Fast · image → video (10× the price)",
+  },
+];
+
+/** Whether this endpoint animates a supplied image rather than a bare prompt. Mirrors
+ *  `calypr_model.is_image_to_video` — derived from the id so the canvas never stores a second
+ *  copy of the fact and lets the two drift. */
+export const isImageToVideo = (model: string) =>
+  model.trim().toLowerCase().endsWith("/image-to-video");
+
+// Resolutions per model. Seedance 2.0 has no 1080p tier and answers a validation error for it —
+// after the queue has been joined and, in an Image → Video graph, after the Image block has
+// already generated and billed. Mirrors `calypr_model.VIDEO_RESOLUTIONS`.
+export const VIDEO_RESOLUTION_OPTIONS: {
+  value: string;
+  label: string;
+  models?: string[];
+}[] = [
+  { value: "480p", label: "480p · cheapest" },
+  { value: "720p", label: "720p · default" },
+  {
+    value: "1080p",
+    label: "1080p · Seedance 1.0 only",
+    models: [
+      "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+      "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video",
+      "fake",
+    ],
+  },
+];
+
+// Clip lengths, in seconds. Strings because that is what fal's schema declares — and because this
+// is the billable unit, the list is short on purpose. Mirrors `calypr_model.VIDEO_DURATIONS`.
+export const VIDEO_DURATION_OPTIONS = [
+  { value: "4", label: "4 seconds" },
+  { value: "5", label: "5 seconds" },
+  { value: "8", label: "8 seconds" },
+  { value: "10", label: "10 seconds" },
+];
+
+// The frame shapes every Seedance endpoint accepts. `auto` is deliberately absent: exactly one of
+// the four endpoints rejects it.
+export const VIDEO_ASPECT_OPTIONS = [
+  { value: "21:9", label: "21:9 · cinematic" },
+  { value: "16:9", label: "16:9 · landscape" },
+  { value: "4:3", label: "4:3" },
+  { value: "1:1", label: "1:1 · square" },
+  { value: "3:4", label: "3:4" },
+  { value: "9:16", label: "9:16 · vertical" },
+];
+
 export const TTS_MODEL_OPTIONS = [
   { value: "fake", label: "Fake (no key, silent preview)" },
   { value: "gpt-4o-mini-tts", label: "OpenAI · gpt-4o-mini-tts" },
@@ -194,7 +270,7 @@ export const AGENT_TYPE_OPTIONS = [
 ];
 
 export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
-  input: { input_channel: "input", target_channel: "messages" },
+  input: { input_channel: "input", target_channel: "messages", prompt_instructions: "" },
   agent: {
     agent_type: "model_based",
     model: "",
@@ -214,6 +290,15 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     output_channel: "messages",
     texture_size: 1024,
     mesh_simplify: 0.95,
+  },
+  video: {
+    model: "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+    prompt_channel: "messages",
+    image_channel: "images",
+    output_channel: "messages",
+    resolution: "720p",
+    duration: "5",
+    aspect_ratio: "16:9",
   },
   code: {
     code: 'last = state["messages"][-1]\nreturn {"messages": [AIMessage(content=last.content.upper())]}',
@@ -294,6 +379,11 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     max_images: 4,
   },
 };
+
+// Blocks that fold the Input block's Prompt Instructions into their prompt. Mirrors the
+// consumers in the engine (`calypr_nodes.image` / `.video`, via `_media.PROMPT_INSTRUCTIONS`).
+// The 3D block is absent on purpose: it takes an image, not a prompt, so it has nothing to steer.
+export const PROMPT_INSTRUCTION_CONSUMERS: CalyprNodeType[] = ["image", "video"];
 
 export const ROUTER_DEFAULT_BRANCH = String(DEFAULT_CONFIG.router.default);
 

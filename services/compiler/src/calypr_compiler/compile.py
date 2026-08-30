@@ -9,7 +9,7 @@ from __future__ import annotations
 import functools
 from dataclasses import replace
 
-from calypr_dsl import GraphSpec
+from calypr_dsl import GraphSpec, ancestors
 from calypr_nodes import NodeContext, NodeFn, current_node_id, get_node, graph_channels, has_node
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
@@ -125,17 +125,20 @@ def compile_graph(
     builder = StateGraph(state_type)
 
     bound_tools, tool_owners = _tools_bound_to(spec)
+    upstream = ancestors(spec)
 
     compiled: dict[str, tuple] = {}
     for node in spec.nodes:
         node_cls = get_node(node.type)
         cfg = node_cls.config_model.model_validate(node.config)
-        # Inject the node's bound tools (if any) so it binds + routes like the generated code.
-        node_ctx = (
-            replace(ctx, tools=bound_tools[node.id], tool_owners=tool_owners.get(node.id))
-            if node.id in bound_tools
-            else ctx
-        )
+        # Inject the node's bound tools (if any) so it binds + routes like the generated code,
+        # and the ids upstream of it so a media block can tell its own branch's output from a
+        # parallel branch's (they share the `messages` channel).
+        node_ctx = replace(ctx, upstream_ids=upstream.get(node.id, frozenset()))
+        if node.id in bound_tools:
+            node_ctx = replace(
+                node_ctx, tools=bound_tools[node.id], tool_owners=tool_owners.get(node.id)
+            )
         compiled[node.id] = (node_cls, cfg, node_ctx)
         builder.add_node(node.id, _with_node_id(node.id, node_cls.compile(cfg, node_ctx)))
 

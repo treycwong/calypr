@@ -56,6 +56,7 @@ _RECOGNITION_ORDER = (
     "memory",
     "image",
     "mesh",
+    "video",
     "tts",
     "upload",
 )

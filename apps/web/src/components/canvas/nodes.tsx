@@ -13,6 +13,7 @@ import {
   type CalyprNodeType,
   type NodeData,
   type NodeStatus,
+  isImageToVideo,
   routerHandleNames,
 } from "@/lib/graph";
 import { useConnectors } from "@/lib/use-connectors";
@@ -327,13 +328,78 @@ export function RevisorNodeView({ data, selected }: NodeProps) {
   );
 }
 
+/** The picture an Image block produced, shown in place after a run.
+ *
+ *  The lightest of the three previews: a plain `<img>`, no dialog of its own — clicking it opens
+ *  the shared `MediaViewer`, the same window the chat and the Media rail use. `nodrag` keeps the
+ *  click from being read as the start of a canvas drag.
+ */
+function ImagePreview({ src }: { src: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function download() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await downloadUrl(src, filenameFrom("image", "png"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="nodrag relative mt-2 w-56 overflow-hidden rounded" data-testid="node-image-preview">
+      {/* Not `next/image`: these are arbitrary blob URLs, which the optimizer would need
+          `remotePatterns` for — the same call `ChatImage` and the Media grid already made. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt="Generated image"
+        onClick={() => setExpanded(true)}
+        className="w-full cursor-zoom-in rounded object-cover"
+      />
+      {/* Always visible rather than hover-revealed — see `MeshPreview` for why. */}
+      <div className="absolute top-1 right-1 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          data-testid="node-image-expand"
+          aria-label="View image full size"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={download}
+          disabled={saving}
+          data-testid="node-image-download"
+          aria-label="Download image"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <MediaViewer
+        open={expanded}
+        onOpenChange={setExpanded}
+        kind="image"
+        src={src}
+        caption="Generated image"
+      />
+    </div>
+  );
+}
+
 export function ImageNodeView({ data, selected }: NodeProps) {
-  const config = (data as NodeData).config;
+  const { config, imageUrl } = data as NodeData;
   return (
     <>
       <Handle type="target" position={Position.Left} style={handleStyle} />
       <Shell title="Image" type="image" selected={selected} status={statusOf(data)} testid="node-image">
         {String(config.model ?? "gpt-image-2")} · {String(config.size ?? "1024x1024")}
+        {imageUrl ? <ImagePreview src={imageUrl} /> : null}
       </Shell>
       <Handle type="source" position={Position.Right} style={handleStyle} />
     </>
@@ -442,6 +508,100 @@ export function MeshNodeView({ data, selected }: NodeProps) {
   );
 }
 
+/** The clip a Video block produced, playing in place.
+ *
+ *  A plain `<video>`, unlike its 3D sibling: there is no WebGL context to budget and no heavy
+ *  chunk to defer, so the element can simply be here. `nodrag`/`nowheel` still matter — without
+ *  them React Flow reads a scrub of the timeline as dragging the block across the canvas.
+ *
+ *  Muted and unautoplayed on purpose. Several of these can end up on one canvas, and a graph that
+ *  starts talking the moment a run finishes is not a graph anyone leaves open.
+ */
+function VideoPreview({ src }: { src: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  async function download() {
+    if (saving) return;
+    setSaving(true);
+    try {
+      await downloadUrl(src, filenameFrom("video", "mp4"));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="nodrag nowheel relative mt-2 w-56 overflow-hidden rounded"
+      data-testid="node-video-preview"
+    >
+      <video
+        src={src}
+        controls
+        muted
+        playsInline
+        preload="metadata"
+        className="h-auto w-full rounded"
+      />
+      {/* Always visible rather than hover-revealed — see `MeshPreview` for why: `group-hover:`
+          emits no rule in this stylesheet, and a hover-only control is unreachable on touch. */}
+      <div className="absolute top-1 right-1 flex gap-1">
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          data-testid="node-video-expand"
+          aria-label="View video full size"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground"
+        >
+          <Maximize2 className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={download}
+          disabled={saving}
+          data-testid="node-video-download"
+          aria-label="Download video"
+          className="rounded bg-background/80 p-1 text-muted-foreground shadow-sm transition hover:text-foreground disabled:opacity-50"
+        >
+          <Download className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <MediaViewer
+        open={expanded}
+        onOpenChange={setExpanded}
+        kind="video"
+        src={src}
+        caption="Generated video"
+      />
+    </div>
+  );
+}
+
+export function VideoNodeView({ data, selected }: NodeProps) {
+  const { config, videoUrl } = data as NodeData;
+  const model = String(config.model ?? "");
+  // The endpoint id is long and its only readable part is the tail, which happens to be exactly
+  // the fact worth showing: whether this block takes a picture or a prompt.
+  const direction = isImageToVideo(model) ? "image → video" : "text → video";
+  return (
+    <>
+      <Handle type="target" position={Position.Left} style={handleStyle} />
+      <Shell
+        title="Video"
+        type="video"
+        selected={selected}
+        status={statusOf(data)}
+        testid="node-video"
+      >
+        {direction} · {String(config.duration ?? "5")}s {String(config.resolution ?? "720p")}
+        {videoUrl ? <VideoPreview src={videoUrl} /> : null}
+      </Shell>
+      <Handle type="source" position={Position.Right} style={handleStyle} />
+    </>
+  );
+}
+
 export function UploadNodeView({ data, selected }: NodeProps) {
   const max = (data as NodeData).config.max_images ?? 4;
   return (
@@ -478,6 +638,7 @@ export const nodeTypes: Record<CalyprNodeType, ComponentType<NodeProps>> = {
   retriever: RetrieverNodeView,
   image: ImageNodeView,
   mesh: MeshNodeView,
+  video: VideoNodeView,
   tts: TTSNodeView,
   upload: UploadNodeView,
 };

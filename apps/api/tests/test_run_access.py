@@ -58,6 +58,30 @@ def test_runs_on_own_key(model: str, providers: set[str] | None, expected: bool)
     assert runs_on_own_key(model, providers) is expected
 
 
+def test_a_fal_media_id_is_not_covered_by_an_openai_key() -> None:
+    """The bug this fixes, and it was live. `provider_of` fell through to "openai" for anything it
+    didn't recognise, so `fal-ai/trellis` resolved to the OpenAI provider — and a workspace holding
+    only an OpenAI key had its 3D generations, run on *our* FAL_KEY, recorded at $0 and debited
+    zero credits. Video would have multiplied that by a hundred: fal bills per second.
+
+    The `some-unreleased-model` case above is the flip side and stays true: an unknown *text* id
+    really is served by the OpenAI client, so an OpenAI key really does cover it. The fal ids are
+    not text models and never were."""
+    assert runs_on_own_key("fal-ai/trellis", {"openai"}) is False
+    assert runs_on_own_key("fal-ai/trellis", {"fal"}) is True
+    # The Video node reports its price key, resolution and all — prefix matching has to survive it.
+    video = "bytedance/seedance-2.0/fast/text-to-video@720p"
+    assert runs_on_own_key(video, {"openai"}) is False
+    assert runs_on_own_key(video, {"fal"}) is True
+
+
+def test_a_fal_generation_on_our_key_is_charged() -> None:
+    """The other half of the same fix: with no fal key on file the workspace is not paying the
+    provider, so the credits have to land somewhere."""
+    assert platform_credits_for("fal-ai/trellis", 1, 0, own_key=False) > 0
+    assert platform_credits_for("fal-ai/trellis", 1, 0, own_key=True) == 0.0
+
+
 def test_own_key_is_broader_than_frontier() -> None:
     """The bug this replaced: zero-rating only frontier models. An ordinary model on a stored key
     is still the customer's spend, not ours."""
@@ -310,6 +334,56 @@ def test_the_block_gate_outranks_the_credit_gate(monkeypatch, ws_factory) -> Non
     gate = run_access.check_run_gates(wid, _mesh_graph())
     assert gate is not None
     assert gate[0] == "plan_required"
+
+
+def _video_graph():
+    """The shipped Text to video template."""
+    from calypr_compiler.templates import text_to_video
+
+    return text_to_video()
+
+
+@requires_db
+def test_free_is_refused_a_video_block(monkeypatch, ws_factory) -> None:
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE, providers=("fal",))
+    gate = run_access.check_run_gates(wid, _video_graph())
+    assert gate is not None
+    # Plan first: a fal key doesn't buy the block, exactly as it doesn't buy the 3D block.
+    assert gate[0] == "plan_required"
+    assert "Video" in gate[1]
+
+
+@requires_db
+def test_plus_without_a_fal_key_is_refused_a_video_block(monkeypatch, ws_factory) -> None:
+    """Video is the first block that is BYO-key **only**: at up to $0.24 a second it never runs on
+    the platform key, so a paid plan alone isn't enough. And the refusal has to say *that* — an
+    unkeyed frontier chat model quietly degrades to gpt-4o-mini, which for a video block would
+    mean an opaque engine error instead of "add your fal key"."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS, providers=("openai",))
+    gate = run_access.check_run_gates(wid, _video_graph())
+    assert gate is not None
+    assert gate[0] == "provider_key_required"
+    assert "fal" in gate[1] and "Video" in gate[1]
+
+
+@requires_db
+def test_plus_with_a_fal_key_may_run_a_video_block(monkeypatch, ws_factory) -> None:
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS, providers=("openai", "fal"))
+    assert run_access.check_run_gates(wid, _video_graph()) is None
+
+
+@requires_db
+def test_the_key_gate_outranks_the_credit_gate(monkeypatch, ws_factory) -> None:
+    """Same reasoning as the block gate above: an exhausted balance is not why this run can't
+    happen, and saying so sends the user to wait for a reset that will not help."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS, providers=("openai",), exhausted=True)
+    gate = run_access.check_run_gates(wid, _video_graph())
+    assert gate is not None
+    assert gate[0] == "provider_key_required"
 
 
 @requires_db

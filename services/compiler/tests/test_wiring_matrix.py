@@ -30,7 +30,13 @@ import pytest
 from calypr_compiler import STARTERS, validate_graph
 from calypr_compiler import validate as validate_module
 from calypr_dsl import EdgeSpec, GraphSpec, NodeSpec, Reducer, StateChannel
-from calypr_model import FakeImageClient, FakeMeshClient, FakeModelClient, FakeTTSClient
+from calypr_model import (
+    FakeImageClient,
+    FakeMeshClient,
+    FakeModelClient,
+    FakeTTSClient,
+    FakeVideoClient,
+)
 from calypr_nodes import NodeContext
 from calypr_nodes.registry import all_node_types, graph_channels
 from calypr_runtime import run
@@ -72,6 +78,7 @@ def _fake_ctx() -> NodeContext:
         image_model=FakeImageClient(),
         tts_model=FakeTTSClient(),
         mesh_model=FakeMeshClient(),
+        video_model=FakeVideoClient(),
     )
 
 
@@ -218,10 +225,30 @@ def _unreachable() -> GraphSpec:
 
 
 def _undeclared_channel() -> GraphSpec:
-    """A node writing a channel the caller never declared. `graph_channels` is what normally
-    backfills it, so this builds the spec without that repair."""
-    spec = _linear(("a", "memory"))
-    spec.state = [c for c in BASE_STATE if c.key != "memory"]
+    """A node writing a channel that will not exist at run time.
+
+    A **Code** node, deliberately: it is the one block that writes wherever its config says and
+    owns nothing, so nothing backfills the channel for it. A Memory node used to stand here, but
+    Memory *declares* `memory` — `graph_channels` repairs that case and the rule was warning about
+    a graph that runs fine."""
+    spec = _linear(("a", "code"))
+    spec.nodes[1] = NodeSpec(
+        id="a", type="code", config={**REPRESENTATIVE["code"], "output_channel": "nowhere"}
+    )
+    return spec
+
+
+def _ambiguous_image_source() -> GraphSpec:
+    """Two Image blocks feeding one Video block. The fan-out fix picks the picture a block's own
+    branch produced, and here *both* are its branch — so which one wins is decided by whichever
+    generation finished first, and the canvas cannot say."""
+    spec = _linear(("vid", "video"))
+    for i in (1, 2):
+        spec.nodes.append(
+            NodeSpec(id=f"img{i}", type="image", config=REPRESENTATIVE["image"])
+        )
+        spec.edges.append(EdgeSpec(id=f"fan{i}", source="in", target=f"img{i}"))
+        spec.edges.append(EdgeSpec(id=f"join{i}", source=f"img{i}", target="vid"))
     return spec
 
 
@@ -290,6 +317,7 @@ VIOLATIONS = {
     "cyclic_graph": _cyclic,
     "unreachable": _unreachable,
     "undeclared_channel": _undeclared_channel,
+    "ambiguous_image_source": _ambiguous_image_source,
     "router_no_branches": _router_no_branches,
     "router_branch_unwired": _router_branch_unwired,
     "react_branches_unwired": _react_branches_unwired,

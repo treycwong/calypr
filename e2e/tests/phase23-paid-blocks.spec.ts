@@ -2,10 +2,10 @@ import { expect, test } from "@playwright/test";
 
 import { openCanvas, signInAt, waitForHydration } from "./helpers";
 
-// The 3D block is Plus-only, and the palette says so rather than hiding it. A block nobody can
-// discover sells nothing, and hiding it would make the canvas silently different per plan — so
-// someone opening a shared graph or the "Image to 3D" template would meet a block that doesn't
-// exist in their own sidebar.
+// The 3D and Video blocks are Plus-only, and the palette says so rather than hiding them. A block
+// nobody can discover sells nothing, and hiding it would make the canvas silently different per
+// plan — so someone opening a shared graph or the "Image to 3D" template would meet a block that
+// doesn't exist in their own sidebar.
 //
 // This covers the *surface*. The paywall itself is `run_access.check_run_gates`, which refuses the
 // run with a `plan_required` code whoever's key would have paid for it — a client-side lock is not
@@ -67,12 +67,43 @@ test("a plus workspace can place the 3D block", async ({ page }) => {
   await expect(page.locator(".react-flow__node")).toHaveCount(before + 1);
 });
 
+test("a free workspace sees the Video block locked, and cannot place it", async ({ page }) => {
+  await withPlan(page, "free");
+  await openCanvas(page);
+
+  const tile = page.getByTestId("add-video");
+  await expect(tile).toBeVisible();
+  await expect(tile).toHaveAttribute("data-locked", "true");
+  await expect(tile).toHaveJSProperty("draggable", false);
+
+  const before = await page.locator(".react-flow__node").count();
+  await tile.click();
+  await expect(page.getByTestId("upgrade-dialog")).toContainText("Video block is part of Plus");
+  expect(await page.locator(".react-flow__node").count()).toBe(before);
+});
+
+test("a plus workspace can place the Video block", async ({ page }) => {
+  // The plan gate opens here. The *key* gate does not live in the palette at all — a Plus user
+  // with no fal key places the block fine and is refused at Run, by `run_access`, with a message
+  // naming the key. Two axes, deliberately, and only the first one is a client-side lock.
+  await withPlan(page, "plus");
+  await openCanvas(page);
+
+  const tile = page.getByTestId("add-video");
+  await expect(tile).not.toHaveAttribute("data-locked", "true");
+
+  const before = await page.locator(".react-flow__node").count();
+  await tile.click();
+  await expect(page.getByTestId("upgrade-dialog")).toHaveCount(0);
+  await expect(page.locator(".react-flow__node")).toHaveCount(before + 1);
+});
+
 test("every other block stays unlocked on free", async ({ page }) => {
   await withPlan(page, "free");
   await openCanvas(page);
   // The gate is an allowlist of paid types, not a general filter — if it ever widened, this is
-  // where a free canvas quietly losing its blocks would show up.
-  await expect(page.locator('[data-locked="true"]')).toHaveCount(1);
+  // where a free canvas quietly losing its blocks would show up. Two locked tiles: 3D and Video.
+  await expect(page.locator('[data-locked="true"]')).toHaveCount(2);
 });
 
 test("the sign-in page still renders with the paid block in the palette", async ({ page }) => {
