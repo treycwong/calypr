@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-29.
+> record — what shipped and why. Updated 2026-08-30.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -29,8 +29,10 @@ uploads write no row so those blobs survive deletion (**image/TTS output fixed 2
 `0019`'s `asset` table**; share-page uploads still unattributable); the Usage tab renders `3 of 1`
 as an ordinary meter when over-limit; and **Vercel preview deployments have been failing all day
 while production is fine** — proven environmental with a control branch, still true on 2026-08-06
-(#73 and #74 both showed a red Vercel check and merged and deployed cleanly), but worth a look at
-the dashboard.
+(#73 and #74 both showed a red Vercel check and merged and deployed cleanly).
+**Resolved and then recurred (2026-08-30):** previews passed cleanly on #88 and #89, then began
+failing again with "Resource provisioning failed" — the Hobby **branch limit**. So the long-running
+"previews are just broken" folklore was a quota all along; see §NEXT.
 
 **Playground history + media shipped 2026-08-06** (PRs #73, #74 — both live and verified in
 production): Playground conversations are now durable and per-project, generated images and audio
@@ -49,42 +51,47 @@ Evaluator was streaming its private "SCORE: 5" onto the end of the user's answer
 links for a graph the canvas had already moved past, and the card specimen taught its own subject
 so a German deck came back in Chinese. See the section below.
 
-**One unmerged branch carries the whole 2026-08-28/29 canvas + media pass.** Five pieces, and one
-of them changes what existing customers are billed — read that first. Each has its own section
-below.
+**The 2026-08-28/30 media pass is merged and live** — four PRs, #88, #89, #91 and #92, all
+deployed with green CI. Each has its own section below.
 
-1. **The Video block.** ByteDance **Seedance** on fal, one node covering both text→video and
-   image→video, gated **Plus *and* bring-your-own-fal-key**, priced per second and per resolution.
-   Ships with `Text to video` and `Image to video` templates.
+1. **The Video block** — ByteDance Seedance on fal, one node covering text→video and
+   image→video, Plus-only and metered in credits, with `Text to video` and `Image to video`
+   templates. Plus **Prompt Instructions** on the Input block, **duplicate + a right-click menu**
+   on the canvas, and the **landing page rebuilt** as composed sections.
 
-2. **⚠️ It uncovered a live billing bug in the 3D block, and merging fixes it in customers'
-   favour — but not silently.** `provider_of` fell through to `openai` for `fal-ai/…` ids, so any
-   workspace holding an OpenAI key had its meshes — generated on *our* `FAL_KEY` — recorded at $0
-   and debited **zero credits**. After the merge those workspaces pay the 10 credits they always
-   owed. **This belongs in the PR description, not just the diff.**
+2. **Two bugs that produced silently wrong output.** `provider_of` fell through to `openai` for
+   `fal-ai/…` ids, so any workspace with an OpenAI key had its meshes recorded at $0 — and a
+   fan-out fed two Video blocks the *same* image, because a wire carried control flow but no data.
+   Both fixed with tests that were confirmed to fail first.
 
-3. **Prompt Instructions on the Input block** — criteria written once at the entry, folded into
-   every generation. They travel on their own state channel rather than in the user's message,
-   which is the whole design: the obvious implementation would have made the Text-to-speech
-   template **read the criteria aloud**. Fixed a false positive in the graph validator on the way.
+3. **Media is credit-only and is never billed when it can't be delivered.** A production 3D run
+   charged 10 credits for a mesh that was then discarded; `usage` now fires only once the file is
+   durable.
 
-4. **A fan-out bug that produced silently wrong output.** Two Image blocks feeding two Video blocks
-   made two clips from the **same picture** — the media blocks resolved their source from a shared
-   channel, so a wire carried control flow but no data. The wires now carry the data. Fixed with a
-   canvas animation bug that made a fan-out look sequential, and two UI fixes (scrollbars, a taller
-   Prompt Instructions box).
+### ⚠️ Blocking: the Vercel blob store is suspended until 29 September
 
-5. **Blocks can be duplicated** — ⌘D, and ⌘C/⌘V through the real system clipboard so blocks carry
-   between projects and tabs, plus a **right-click menu** (Duplicate, Copy, Copy/Paste settings,
-   Delete) that makes them discoverable and adds settings transfer between blocks.
+`calypr-media` hit its **Hobby usage limit**, so `PUT` returns `403 store_suspended` and **3D and
+Video cannot succeed in production** until it is reactivated — upgrade to Pro, or point
+`calypr_storage` at another provider (R2 has no egress charge, which suits a media app far
+better). Nothing in the repo can fix it. Until then both blocks fail cleanly and cost nothing.
 
-**State of the branch:** 1,922 Python tests and 187/188 e2e pass, web typecheck/lint/build clean.
-The single e2e failure is pre-existing and unrelated — `phase12-pricing.spec.ts` asserts a
-"Templates" header link that the (also uncommitted) landing redesign removed from `site/nav.ts`.
-Nothing here needs an ops step: video is BYO-key only, so no `FAL_KEY` is required in production,
-and `fal` is already an accepted provider key.
+What consumed the allowance is fixed either way: **1,930 orphaned blobs (112.7 MB) swept**, and
+the Media grid no longer serves 2.7 MB originals as 180px thumbnails.
 
-**The canvas toolbar shipped 2026-08-13** (on branch, not yet merged): React Flow's stock
+**Also on Vercel:** previews hit a **branch limit**. Twelve merged branches were deleted and 20
+dead Error-state preview deployments removed; production history was untouched. Previews were
+still failing at end of day, and #91 and #92 were both merged with `--admin` past a red Vercel
+check — `build-test` was green on the exact commits and the failure reproduced as "Resource
+provisioning failed" before the build started, but that bypass is not a habit worth keeping.
+
+**`FAL_KEY` and `BLOB_READ_WRITE_TOKEN` are both correctly set on Railway.** `FAL_KEY` is now
+load-bearing with no fallback and is documented in `apps/api/.env.example`.
+
+**One stale branch left:** `feat/usage-display-and-nav` (PR #52, open since 23 July). It predates
+the account/workspace split and would likely need rebuilding rather than rebasing.
+
+**The canvas toolbar shipped 2026-08-13** (merged; this entry said "on branch" until 08-30,
+when `CanvasToolbar.tsx` was confirmed tracked in `origin/main`): React Flow's stock
 `<Controls />` and `<MiniMap />` are replaced by one weavy-style bar centred on the canvas —
 arrow/hand tools, undo/redo, and a live zoom readout — with V/H/⌘Z/⌘⇧Z/+/− shortcuts and
 Figma-style scrolling. See the section below; note that `.react-flow__controls` was the e2e
@@ -348,11 +355,14 @@ Build order (each step is useful on its own):
       Media panel (row + object together), cascades when its conversation is deleted, is counted
       in the storage figure, and is collected on account deletion. Failed object deletes park in
       `orphan_blob` and are retried by `POST /internal/gc/orphan-blobs` nightly.
-      **What is still open:** an **orphan sweep for objects written before `0019`** — those have
-      no row and are unattributable and unrecoverable, exactly like the pre-`0016` uploads. And
-      media generated where `BLOB_READ_WRITE_TOKEN` is unset is deliberately not recorded (it is
-      inlined as a `data:` URI instead), which is correct but means a deployment that later gains
-      a token has a gap either side of that change.
+      **The orphan sweep is now DONE (2026-08-30):** `apps/api/scripts/purge_orphan_blobs.py`
+      lists the store and deletes anything no `asset` or `upload` row references. Run against
+      production it removed **1,930 of 1,937 objects (112.7 MB)** — the database knew about seven.
+      Dry run by default, and the keep-set comes from the database rather than a pathname pattern.
+      Still open here: media generated where
+      `BLOB_READ_WRITE_TOKEN` is unset is deliberately not recorded (it is inlined as a `data:`
+      URI instead), which is correct but means a deployment that later gains a token has a gap
+      either side of that change.
 - [ ] **FORCE RLS on `run` / `run_usage`** — isolation is app-level `workspace_id` filtering and
       billing will read these tables. Give the platform-wide `SUM(cost_usd)` spend-cap query a
       bypass path when forcing.
@@ -473,7 +483,108 @@ Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the s
 
 ---
 
-## 🟢 Right-click menu on a block — DONE (2026-08-29), on branch
+## 🟢 Media is credit-only, and never billed when it can't be delivered — DONE (2026-08-30), merged + live (PRs #91, #92)
+
+Two changes to how 3D and Video are paid for, and a production incident that forced the second.
+
+### fal BYO-key removed; credits are the only path (#91)
+
+Both blocks now run on the platform's fal key. No workspace can store a fal key and none needs
+one — `fal` is out of `PROVIDER_KEY_PROVIDERS`, and `BYO_KEY_ONLY_NODES` /
+`missing_media_keys` / the `provider_key_required` code are gone with it.
+
+**Why that is safe, given the BYO rule existed to protect COGS.** It was guarding the monthly
+spend kill-switch, but the credit grant binds tighter *and per account*: credits carry a 5×
+margin, so a Plus subscriber spending their whole 2,000 on media costs about **$4** of fal spend
+against $20 of revenue. The plan gate is untouched — Free still cannot run either block.
+
+**The config panel now quotes the cost before the run.** These are the only blocks whose price
+isn't bounded by tokens, and nothing said so until the balance moved:
+
+| Generation | Credits | Per 2,000-credit grant |
+| --- | --- | --- |
+| 3D mesh | 10 | 200 |
+| Seedance 1.0, 720p, 5s | 54 | 37 clips |
+| Seedance 2.0, 720p, 5s | 605 | 3.3 clips |
+| Seedance 2.0, 720p, 10s | 1,209 | 1.6 clips |
+
+The rate is served from the API (`GET /media-prices`), never mirrored in `graph.ts`: a copy would
+be right the day it was written and wrong the next time a rate moved — in the direction of quoting
+a price we don't honour. An unpriced model shows *no* estimate rather than a guess.
+
+### The incident: charged for a mesh that was thrown away (#92)
+
+A production 3D run returned "the 3D model was generated, but file storage isn't configured" —
+**after billing**. The order was `usage` → `store_asset` → discover there was nowhere to put it.
+Image and Voice survive this by inlining a `data:` URI; a GLB or mp4 is far too large, so the
+artifact was genuinely lost and the customer paid for it.
+
+Root cause was **not** a missing token. `BLOB_READ_WRITE_TOKEN` and `FAL_KEY` are both correctly
+set on Railway. The blob store `calypr-media` was **suspended** — Hobby plan usage limit, "access
+resumes 9/29/26" — so uploads returned `403 store_suspended`.
+
+That also defeated the pre-flight guard shipped hours earlier: `blob_configured()` answers "is a
+token set?", and one is. It cannot see a token the store *refuses*.
+
+**The fix is ordering, not another precondition.** `usage` is emitted only once `stored.durable`
+is true. A generation that cannot be kept is not billed. It costs us the fal call already made;
+billing for a file the customer never received costs more. Two tests simulate a 403 and assert no
+charge — both confirmed to fail against the old ordering before being kept.
+
+### What actually drained the blob allowance
+
+- **1,930 of 1,937 objects were orphans.** The database knew about seven; the rest predate
+  migration `0019` or came from paths that never recorded a row. `scripts/purge_orphan_blobs.py`
+  removed them — 112.7 MB — and closes the long-standing item in §3.
+- **The Media grid served originals as thumbnails.** `<img src={asset.url}>` with no resizing: a
+  ~2.7 MB PNG drawn into a ~180px tile, so one page of sixty pulled 100 MB+ of transfer to draw
+  postage stamps. Now `next/image` with the blob host in `remotePatterns` — roughly 100× less.
+  `sizes` is the load-bearing part; without it the optimizer serves a viewport-width variant.
+
+### Operational, and still blocking
+
+- **3D and Video cannot succeed until the store is reactivated** (29 September, or a Pro upgrade,
+  or pointing `calypr_storage` at another provider). Until then they fail cleanly at zero cost.
+- **`FAL_KEY` is now load-bearing with no fallback** and was undocumented; it is in
+  `apps/api/.env.example` with that stated.
+- Diagnostics worth keeping: while suspended, `PUT` → 403 but list and `DELETE` still work, which
+  is the only reason the sweep could run.
+
+### Verified
+
+1,925 Python tests, 192/192 e2e, web build clean. Production CI green on both merges.
+
+## 🟢 Landing page rebuilt as composed sections — DONE (2026-08-29), merged + live (PR #89)
+
+~220 lines of inline hero-and-pillars markup in `page.tsx` replaced by eight composed sections,
+with `Eyebrow` and `Section` extracted so the header, every section and the footer finally share
+one container — the footer logo now lines up with the hero's. New: Capabilities (a tile per
+generative block), TemplatesShowcase (a scroll-snap carousel over six real starters),
+ModelsConnectors, UiBuilderTeaser, LandingCta, plus Marquee and TemplateArt.
+
+**Motion is split by cost.** One-shot entrance animation is `motion` behind LazyMotion in `strict`
+mode, so only `m.` components compile and the page carries the ~15kB `domAnimation` set rather than
+the whole library; every section stays a server component. Continuous motion — marquees, the
+equalizer, the glow — is pure CSS keyframes, because the WebGL hero backdrop already proved that
+per-frame React work on this page saturates the main thread and took thirteen unrelated e2e specs
+down with it. Transform/opacity only, so no CLS, and it collapses to opacity under
+`prefers-reduced-motion`.
+
+**The "Templates" nav link came back, and the failing test was right all along.** It had been
+dropped while the redesign was in progress, which is what broke `phase12-pricing`'s mobile-nav
+assertion for days. But the redesign *adds* the anchor it points at — `TemplatesShowcase` renders
+`<Section id="templates">` — so the link had a valid destination and removing it was the mistake.
+With it restored, `nav.ts` is byte-identical to main and the suite went green at 188/188.
+
+A **Video tile** was added to Capabilities afterwards: the grid advertised image, 3D, voice,
+knowledge and code but not the block that had shipped an hour earlier. Six tiles don't fit the old
+7+5 / 4+4+4 rhythm, so the rows rebalanced to 7+5 / 7+5 / 6+6 — which groups the four generative
+media blocks and leaves knowledge and code as an even pair.
+
+**Worth knowing:** nothing enforces that the six template ids the showcase names still exist in
+`STARTERS`. They were checked by hand; a renamed template would break the page silently.
+
+## 🟢 Right-click menu on a block — DONE (2026-08-29), merged + live (PR #88)
 
 The discoverable half of the duplicate shortcuts. Duplicate, Copy, Copy/Paste settings, Delete —
 with the shortcuts printed beside the two that have them, so the menu teaches them.
@@ -526,7 +637,7 @@ with the shortcuts printed beside the two that have them, so the menu teaches th
 - **The canvas pane itself has no menu.** A right-click on empty canvas still shows the browser's.
   Paste, Select all and Fit view would be the natural items.
 
-## 🟢 Duplicating blocks — DONE (2026-08-28), on branch
+## 🟢 Duplicating blocks — DONE (2026-08-28), merged + live (PR #88)
 
 Blocks could be deleted with Backspace but not copied, so building anything repetitive meant
 dragging a block out and re-typing its settings.
@@ -580,7 +691,7 @@ dragging a block out and re-typing its settings.
 - **Discoverability.** Both are keyboard-only. A right-click context menu on a block (Duplicate /
   Delete) would be the conventional home for them, and the canvas has no context menu at all yet.
 
-## 🟢 Fan-out fix + UI polish — DONE (2026-08-28), on branch
+## 🟢 Fan-out fix + UI polish — DONE (2026-08-28), merged + live (PR #88)
 
 Three things found by actually using the Video block on a branching graph. The third was a real
 defect that produced **silently wrong output**.
@@ -648,7 +759,7 @@ retired the instant branch B began. Two blocks generating, one wire glowing. Eac
   (`maxSimultaneousActiveEdges: 2`), both Image previews render, and both Video blocks light up
   together.
 
-## 🟢 Prompt Instructions on the Input block — DONE (2026-08-28), on branch
+## 🟢 Prompt Instructions on the Input block — DONE (2026-08-28), merged + live (PR #88)
 
 One field, on the block where a user actually looks: criteria written once at the entry —
 "no text or logos; warm natural light" — that every generative block downstream folds into its
@@ -741,7 +852,7 @@ bug.
 - `e2e/tests/phase12-pricing.spec.ts` fails, pre-existing and unrelated (the landing redesign
   removed the "Templates" header link it asserts).
 
-## 🟢 Video block (Seedance on fal) — DONE (2026-08-28), on branch
+## 🟢 Video block (Seedance on fal) — DONE (2026-08-28), merged + live (PR #88)
 
 The fourth media block, after Image, Voice and 3D, and the one the 3D pass deliberately deferred.
 It follows the 3D seam exactly — a provider-neutral client in `services/model`, a node in
@@ -1035,7 +1146,7 @@ Verified live: same-email GitHub → Google folded into one account, plan and wo
 
 ---
 
-## 🟢 Canvas & dashboard UI pass — DONE (2026-08-13), on branch
+## 🟢 Canvas & dashboard UI pass — DONE (2026-08-13), merged + live (PR #79)
 
 A day of design work bringing the canvas and dashboard toward the weavy.ai language. The toolbar
 (section below) was the first piece; everything here rode after it, on the same branch.
@@ -1132,7 +1243,7 @@ A day of design work bringing the canvas and dashboard toward the weavy.ai langu
 
 ---
 
-## 🟢 Canvas toolbar — DONE (2026-08-13), on branch
+## 🟢 Canvas toolbar — DONE (2026-08-13), merged + live
 
 React Flow's stock chrome is gone. `<Controls />` (the vertical zoom/fit strip, bottom-left) and
 `<MiniMap />` (bottom-right) are replaced by one floating bar centred on the bottom edge of the
