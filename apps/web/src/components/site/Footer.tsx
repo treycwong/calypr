@@ -2,6 +2,7 @@ import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 
 import { SiteLogo } from "@/components/site/Logo";
+import { SECTION_INNER } from "@/components/site/Section";
 
 // Shared site footer (marketing pages). v0-style multi-column layout: brand mark on the
 // left, link columns on the right. `mt-auto` + the flex-column page layout keep it pinned
@@ -82,7 +83,9 @@ function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) 
 export function SiteFooter() {
   return (
     <footer className="mt-auto border-t border-border">
-      <div className="mx-auto w-full max-w-6xl px-5 py-14">
+      {/* Same container as `Section`/`LandingHeader` so the footer's logo lines up with the
+          hero's and with every section edge above it. */}
+      <div className={`${SECTION_INNER} py-14`}>
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div className="space-y-3">
             <SiteLogo className="h-5 w-auto" />
