@@ -7,7 +7,7 @@ import { Section } from "@/components/site/Section";
 import { cn } from "@/lib/utils";
 
 /**
- * Capabilities — a bento of what the canvas can actually render: image generation, 3D,
+ * Capabilities — a bento of what the canvas can actually render: image generation, 3D, video,
  * text-to-speech, RAG, and the code you take with you. Each tile is a real node type on the
  * canvas (its mono chip names it), not marketing abstraction. All visuals are inline SVG/CSS —
  * decorative, aria-hidden, and never a canvas/WebGL layer (one of those once swallowed clicks
@@ -104,6 +104,60 @@ function MeshVisual() {
   );
 }
 
+/** Filmstrip for the Video tile — four frames, sprocket holes, and a playhead that sweeps on
+ *  hover (`.playhead`, keyframed in globals.css). Each frame is one notch further into the same
+ *  pan, so the strip reads as motion rather than four unrelated pictures. */
+function FilmVisual() {
+  const frames = [0, 1, 2, 3];
+  return (
+    <div aria-hidden className="pointer-events-none relative flex h-28 items-center justify-center px-6">
+      <svg viewBox="0 0 220 78" className="h-full w-auto opacity-90">
+        {/* sprocket rails */}
+        {[4, 68].map((y) => (
+          <g key={y}>
+            {Array.from({ length: 11 }, (_, i) => (
+              <rect
+                key={i}
+                x={8 + i * 19}
+                y={y}
+                width="7"
+                height="6"
+                rx="1.5"
+                fill="none"
+                stroke="rgba(255,255,255,0.22)"
+                strokeWidth="0.75"
+              />
+            ))}
+          </g>
+        ))}
+        {frames.map((f) => {
+          const x = 10 + f * 51;
+          return (
+            <g key={f}>
+              <rect x={x} y="16" width="46" height="46" rx="2" fill="none" stroke="rgba(255,255,255,0.3)" strokeWidth="0.75" />
+              {/* a horizon and a subject, nudged one step per frame — the pan */}
+              <line x1={x + 5} y1="46" x2={x + 41} y2="46" stroke="rgba(255,255,255,0.16)" strokeWidth="0.75" />
+              <circle cx={x + 14 + f * 5} cy="38" r="4" fill="#22d3ee" opacity={0.35 + f * 0.2} />
+              <path
+                d={`M${x + 5} 46 L${x + 17} 31 L${x + 27} 46 Z`}
+                fill="none"
+                stroke="rgba(255,255,255,0.24)"
+                strokeWidth="0.75"
+              />
+            </g>
+          );
+        })}
+      </svg>
+      {/* The playhead. A DOM element rather than an SVG line so the CSS keyframe animates a
+          compositor-only transform; `--playhead-travel` is the strip's width. */}
+      <span
+        className="playhead absolute bottom-3 left-6 top-3 w-px bg-brand"
+        style={{ "--playhead-travel": "calc(100% - 3rem)" } as React.CSSProperties}
+      />
+    </div>
+  );
+}
+
 /** Equalizer bars for the Voice tile — animates on hover via the `.eq-bar` CSS keyframe. */
 function WaveVisual() {
   // deterministic pseudo-random heights, tallest mid-field
@@ -163,8 +217,8 @@ export function Capabilities() {
           Speak it. Search it. Render it. Ship it.
         </h2>
         <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          One canvas for learners, creatives and builders — voice, retrieval, images and 3D are
-          nodes you wire together, not products you subscribe to separately.
+          One canvas for learners, creatives and builders — voice, retrieval, images, video and
+          3D are nodes you wire together, not products you subscribe to separately.
         </p>
         <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
           01 draw the graph <span className="text-brand">·</span> 02 run &amp; inspect{" "}
@@ -201,10 +255,21 @@ export function Capabilities() {
         </Tile>
 
         <Tile
+          chip="video"
+          title="Video generation"
+          body="Seedance on fal — write a shot, or animate a still the Image node just made. Plus, on your own fal key."
+          className="lg:col-span-7"
+        >
+          <div className="pt-6">
+            <FilmVisual />
+          </div>
+        </Tile>
+
+        <Tile
           chip="voice"
           title="Text to speech"
           body="Agents that talk back — gpt-4o-mini-tts up to tts-1-hd."
-          className="lg:col-span-4"
+          className="lg:col-span-5"
         >
           <div className="pt-6">
             <WaveVisual />
@@ -215,7 +280,7 @@ export function Capabilities() {
           chip="knowledge"
           title="RAG on your notes"
           body="A Knowledge node retrieves from your own material — pgvector or the built-in demo source."
-          className="lg:col-span-4"
+          className="lg:col-span-6"
         >
           <div className="pt-6">
             <RagVisual />
@@ -226,7 +291,7 @@ export function Capabilities() {
           chip="code"
           title="Own the code"
           body="Every graph compiles to LangGraph Python. No ceiling, no lock-in."
-          className="lg:col-span-4"
+          className="lg:col-span-6"
         >
           <div aria-hidden className="pointer-events-none m-6 mb-0 overflow-hidden rounded-lg border border-border bg-background/60">
             <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">

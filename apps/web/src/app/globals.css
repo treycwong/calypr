@@ -331,7 +331,25 @@
   animation-delay: var(--eq-delay, 0s);
 }
 
+/* The Video tile's playhead — sweeps across the filmstrip while the tile is hovered, the same
+   hover-gated pattern the equalizer above uses. Transform only, so it composites off the main
+   thread; this page has already learned what per-frame JS costs it. */
+@keyframes playhead-sweep {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(var(--playhead-travel, 100%));
+  }
+}
+.group:hover .playhead {
+  animation: playhead-sweep 2.6s linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .group:hover .playhead {
+    animation: none;
+  }
   .marquee-track {
     animation: none;
   }
