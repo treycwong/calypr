@@ -99,7 +99,7 @@ export const NODE_STYLE: Record<
     // the same canvas as the pink image wire and `Upload → Video` puts it next to the orange one.
     edge: "#b45309",
     description:
-      "Generates a short video from a prompt, or animates an image. Plus, and needs your own fal key.",
+      "Generates a short video from a prompt, or animates an image. Plus only, billed per second in credits.",
   },
   tts: {
     icon: AudioLines,

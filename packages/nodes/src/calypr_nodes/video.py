@@ -21,10 +21,12 @@ megabytes, the assistant turn is persisted (`conversations.py`) so the base64 wo
 `message` row, and the chat renderer refuses `data:` hrefs by construction — it would print the
 base64 as text. When blob storage isn't configured the run says the clip wasn't saved.
 
-Video is **Plus and bring-your-own-fal-key**: `entitlements.PLUS_NODE_TYPES` gates the plan and
-`model_access.missing_media_keys` refuses a run with no workspace fal key on file, so a clip always
-runs on the customer's own key and contributes $0 to platform COGS. At $0.02–$0.24 a second that is
-the difference between a block and a liability.
+Video is **Plus-only and paid for in credits**: `entitlements.PLUS_NODE_TYPES` is the whole gate,
+and the clip runs on the platform's fal key. There is no bring-your-own path — the credit grant is
+what bounds our spend, and it binds tighter than the kill-switch a BYO-key rule would protect:
+2,000 credits at a 5× margin is about $4 of real fal cost against $20 of revenue. The config panel
+quotes the cost before the run, because at $0.0096–$0.24 a second one clip can be a third of a
+month.
 """
 
 from __future__ import annotations

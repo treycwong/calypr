@@ -441,7 +441,10 @@ class NotionCallback(BaseModel):
 #: maps the tool providers (`unsplash`) onto the Tool nodes that use them.
 #: `moonshot` is mandatory rather than optional — kimi-k3 is a frontier model and runs *only*
 #: on a workspace's own key (see `model_access`).
-PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash", "fal")
+# `fal` is deliberately absent: 3D and Video run on the platform key and are paid for in
+# credits, so there is nothing for a workspace key to do. A stored row from before that
+# decision is simply never listed.
+PROVIDER_KEY_PROVIDERS = ("openai", "anthropic", "moonshot", "tavily", "unsplash")
 
 
 class ProviderKeyInfo(BaseModel):

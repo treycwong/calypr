@@ -355,35 +355,25 @@ def test_free_is_refused_a_video_block(monkeypatch, ws_factory) -> None:
 
 
 @requires_db
-def test_plus_without_a_fal_key_is_refused_a_video_block(monkeypatch, ws_factory) -> None:
-    """Video is the first block that is BYO-key **only**: at up to $0.24 a second it never runs on
-    the platform key, so a paid plan alone isn't enough. And the refusal has to say *that* — an
-    unkeyed frontier chat model quietly degrades to gpt-4o-mini, which for a video block would
-    mean an opaque engine error instead of "add your fal key"."""
+def test_plus_runs_a_video_block_with_no_fal_key_of_its_own(monkeypatch, ws_factory) -> None:
+    """3D and Video are credit-only: they run on the *platform* fal key, so a workspace never
+    needs one. This replaces a gate that refused the run without a BYO key — the credit grant
+    turned out to be the tighter bound on our fal spend anyway (2,000 credits at a 5× margin is
+    about $4 of cost against $20 of revenue)."""
     monkeypatch.setattr(settings, "internal_key", "prod-key")
     wid = ws_factory(entitlements.PLUS, providers=("openai",))
-    gate = run_access.check_run_gates(wid, _video_graph())
-    assert gate is not None
-    assert gate[0] == "provider_key_required"
-    assert "fal" in gate[1] and "Video" in gate[1]
-
-
-@requires_db
-def test_plus_with_a_fal_key_may_run_a_video_block(monkeypatch, ws_factory) -> None:
-    monkeypatch.setattr(settings, "internal_key", "prod-key")
-    wid = ws_factory(entitlements.PLUS, providers=("openai", "fal"))
     assert run_access.check_run_gates(wid, _video_graph()) is None
 
 
 @requires_db
-def test_the_key_gate_outranks_the_credit_gate(monkeypatch, ws_factory) -> None:
-    """Same reasoning as the block gate above: an exhausted balance is not why this run can't
-    happen, and saying so sends the user to wait for a reset that will not help."""
+def test_a_video_block_is_charged_rather_than_refused(monkeypatch, ws_factory) -> None:
+    """The other half: since it runs on our key, an exhausted balance *is* the thing that stops
+    it — the credit gate, not a key gate."""
     monkeypatch.setattr(settings, "internal_key", "prod-key")
-    wid = ws_factory(entitlements.PLUS, providers=("openai",), exhausted=True)
+    wid = ws_factory(entitlements.PLUS, exhausted=True)
     gate = run_access.check_run_gates(wid, _video_graph())
     assert gate is not None
-    assert gate[0] == "provider_key_required"
+    assert gate[0] == credits.INSUFFICIENT_CREDITS
 
 
 @requires_db

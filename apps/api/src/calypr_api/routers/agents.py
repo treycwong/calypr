@@ -360,6 +360,23 @@ def list_assistant_models() -> list[AssistantModelOption]:
     return assistant_model_options()
 
 
+@router.get("/media-prices", response_model=dict[str, float], tags=["workspace"])
+def media_prices() -> dict[str, float]:
+    """Credits per billable unit for every flat-rate media generation, keyed the way the node
+    reports it (`fal-ai/trellis`, `<endpoint>@<resolution>`).
+
+    Served rather than mirrored in the canvas so the number a user is shown before running is the
+    same number they are charged. A copy in `graph.ts` would be right on the day it was written
+    and wrong the next time a rate moved — and it would be wrong in the direction of quoting a
+    price we don't honour.
+
+    A *unit* differs per modality: one generation for a mesh, one second for video. The caller
+    multiplies by the length it is about to ask for."""
+    from calypr_api.pricing import MEDIA_PRICES, credits_for
+
+    return {key: credits_for(key, 1, 0) for key in MEDIA_PRICES}
+
+
 @router.get("/llm-providers", response_model=list[LLMProvider], tags=["workspace"])
 def list_llm_providers() -> list[LLMProvider]:
     """The BYO-key provider list for Settings, each row carrying whether it's wired up yet."""

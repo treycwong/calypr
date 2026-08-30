@@ -750,12 +750,10 @@ Half of that string is **negatives**, and they are not padding. The user's messa
 def text_to_video() -> GraphSpec:
     """Prompt → video. The thinnest Seedance pipeline: whatever the user types becomes the clip.
 
-    A **Plus** template, and additionally **bring-your-own-fal-key**: video is the one block whose
-    cost is measured per second rather than per call, so it never runs on the platform key
-    (`model_access.BYO_KEY_ONLY_NODES`). Defaults to Seedance 1.0 Pro Fast at 720p for five
-    seconds — about 11¢ — because the tier above it is roughly ten times the price per second and
-    nobody should meet that by accident. Switch the Video block to `fake` for a keyless
-    placeholder clip.
+    A **Plus** template, billed in credits: video is the one block whose cost is measured per
+    second rather than per call. Defaults to Seedance 1.0 Pro Fast at 720p for five seconds — 54
+    credits — because the tier above it is roughly ten times the price per second and nobody
+    should meet that by accident. Switch the Video block to `fake` for a free placeholder clip.
 
     **The prompt is a shot description, not an instruction.** Seedance reads the message verbatim,
     so "make me a video of a dog" tends to produce something that has taken the words literally.
@@ -804,7 +802,7 @@ def image_to_video() -> GraphSpec:
     Image node appends a Markdown image and the Video node picks that URL back out of `messages`,
     so the edge between them is the whole wiring.
 
-    **Plus, and bring-your-own-fal-key** — see `text_to_video`.
+    **Plus, billed in credits** — see `text_to_video`.
 
     Unlike the 3D template, the Image block's `style` here is not doing quality control. Trellis
     *reconstructs* what it is shown, so a shadow becomes geometry and a flat white background is

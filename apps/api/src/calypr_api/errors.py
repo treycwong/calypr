@@ -26,12 +26,6 @@ WORKSPACE_LOCKED = "workspace_locked"
 #: the web app keys its upgrade prompt off this code rather than off the message text.
 PLAN_REQUIRED = "plan_required"
 
-#: The graph uses a block that is bring-your-own-key *only* and the workspace has no key on file
-#: for it (`model_access.missing_media_keys`). Distinct from `PROVIDER_KEY_REJECTED`: nothing was
-#: rejected, there is simply nothing to reject yet. The web renders the same "check your API keys"
-#: affordance for both, because the fix is the same screen.
-PROVIDER_KEY_REQUIRED = "provider_key_required"
-
 _KEY_REJECTED = (
     "Your {provider} API key was rejected. Check the key saved for this workspace — "
     "it may be revoked, expired, or missing a billing plan."

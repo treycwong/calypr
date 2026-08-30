@@ -100,25 +100,32 @@ def mesh_model_for(
     model_id: str, keys: dict[str, str] | None = None
 ) -> FalMeshClient | FakeMeshClient:
     """Resolve a 3D-model id to a client — the mesh sibling of `image_model_for`. `fake` → keyless
-    deterministic client (tests/CI); everything else → fal, on the workspace's BYO key if set else
-    the env. Separate seam because mesh generation returns a GLB file and is billed per generation
-    rather than per token."""
+    deterministic client (tests/CI); everything else → fal on the **platform** key.
+
+    Separate seam because mesh generation returns a GLB file and is billed per generation rather
+    than per token."""
     if model_id.lower().strip() == "fake":
         return FakeMeshClient()
-    return FalMeshClient(api_key=_key("fal", keys, "FAL_KEY"))
+    # The platform key, never a workspace one: 3D and Video are credit-only, so there is no
+    # BYO path to prefer. `keys` stays in the signature to match its image/tts siblings.
+    return FalMeshClient(api_key=os.environ.get("FAL_KEY"))
 
 
 def video_model_for(
     model_id: str, keys: dict[str, str] | None = None
 ) -> FalVideoClient | FakeVideoClient:
     """Resolve a video-model id to a client — the fourth modality sibling of `mesh_model_for`.
-    `fake` → keyless deterministic client (tests/CI); everything else → fal, on the workspace's
-    BYO key if set else the env. Note that video is BYO-key-*only* by policy — `run_access`
-    refuses the run before it reaches here when no workspace fal key is on file — so in practice
-    the env fallback covers local dev and nothing else."""
+    `fake` → keyless deterministic client (tests/CI); everything else → fal on the **platform**
+    key.
+
+    There is no BYO path: 3D and Video are paid for in credits, which is a tighter bound on our
+    fal spend than the kill-switch the BYO-key policy was protecting — a Plus grant is 2,000
+    credits, and credits carry a 5× margin, so a subscriber who spends the whole grant on media
+    costs about $4 against $20 of revenue."""
     if model_id.lower().strip() == "fake":
         return FakeVideoClient()
-    return FalVideoClient(api_key=_key("fal", keys, "FAL_KEY"))
+    # Platform key only — see `mesh_model_for`.
+    return FalVideoClient(api_key=os.environ.get("FAL_KEY"))
 
 
 def tts_model_for(
