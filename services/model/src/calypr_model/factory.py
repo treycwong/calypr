@@ -19,6 +19,7 @@ from calypr_model.image_client import FakeImageClient, OpenAIImageClient
 from calypr_model.mesh_client import FakeMeshClient, FalMeshClient
 from calypr_model.openai_client import OpenAIModelClient
 from calypr_model.tts_client import FakeTTSClient, OpenAITTSClient
+from calypr_model.video_client import FakeVideoClient, FalVideoClient
 
 # Current defaults (verify against provider docs; override via env if they move).
 _MOONSHOT_BASE_URL = "https://api.moonshot.ai/v1"
@@ -105,6 +106,19 @@ def mesh_model_for(
     if model_id.lower().strip() == "fake":
         return FakeMeshClient()
     return FalMeshClient(api_key=_key("fal", keys, "FAL_KEY"))
+
+
+def video_model_for(
+    model_id: str, keys: dict[str, str] | None = None
+) -> FalVideoClient | FakeVideoClient:
+    """Resolve a video-model id to a client — the fourth modality sibling of `mesh_model_for`.
+    `fake` → keyless deterministic client (tests/CI); everything else → fal, on the workspace's
+    BYO key if set else the env. Note that video is BYO-key-*only* by policy — `run_access`
+    refuses the run before it reaches here when no workspace fal key is on file — so in practice
+    the env fallback covers local dev and nothing else."""
+    if model_id.lower().strip() == "fake":
+        return FakeVideoClient()
+    return FalVideoClient(api_key=_key("fal", keys, "FAL_KEY"))
 
 
 def tts_model_for(

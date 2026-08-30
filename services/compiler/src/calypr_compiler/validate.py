@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from typing import Literal
 
-from calypr_dsl import GraphSpec
-from calypr_nodes import NodeContext, get_node, has_node
+from calypr_dsl import GraphSpec, ancestors
+from calypr_nodes import NodeContext, get_node, graph_channels, has_node
 from pydantic import BaseModel, ValidationError
 
 
@@ -335,8 +335,44 @@ def validate_graph(spec: GraphSpec) -> list[Issue]:
                     )
                 )
 
-    # Nodes writing channels the state never declares (likely a mistake).
-    declared = {c.key for c in spec.state}
+    # A media block fed by more than one Image block.
+    #
+    # A fan-out is resolved by preferring the picture the block's *own* branch produced
+    # (`_media.image_url_from`), which handles the common shape — two Image blocks, each feeding
+    # its own Video block. It cannot help when a single Video block sits downstream of *two* Image
+    # blocks: both are its branch, they share a channel, and "the most recent of mine" is then
+    # decided by whichever generation finished first. That is the one arrangement left where the
+    # canvas cannot say what the run will do, so it is named rather than guessed at.
+    producers = {n.id for n in spec.nodes if n.type == "image"}
+    if len(producers) > 1:
+        upstream = ancestors(spec)
+        for n in spec.nodes:
+            if n.type not in ("video", "mesh"):
+                continue
+            feeding = sorted(upstream.get(n.id, frozenset()) & producers)
+            if len(feeding) > 1:
+                issues.append(
+                    Issue(
+                        severity="warning",
+                        code="ambiguous_image_source",
+                        message=(
+                            f"Node {n.id!r} is downstream of several Image blocks "
+                            f"({', '.join(feeding)}); it will use whichever finishes last. "
+                            "Wire it to one, or give each branch its own image channel."
+                        ),
+                        node_id=n.id,
+                    )
+                )
+
+    # Nodes writing channels that will not exist at run time (likely a mistake).
+    #
+    # Checked against `graph_channels`, not `spec.state`, because that is what the compiler
+    # actually builds the graph with: a node that *owns* a channel has declared it, and the
+    # engine backfills it whether or not the caller listed it. Comparing against the raw spec
+    # warned about channels that work perfectly — a Memory node on a graph whose state omitted
+    # `memory`, or an Input node carrying Prompt Instructions — while the genuine case this rule
+    # is for, a Code node writing somewhere nothing owns, still fires.
+    declared = {c.key for c in graph_channels(spec.nodes, spec.state)}
     for n in spec.nodes:
         if not has_node(n.type):
             continue

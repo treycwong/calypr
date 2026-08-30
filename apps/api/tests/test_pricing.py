@@ -140,6 +140,50 @@ def test_the_plus_grant_buys_a_sane_amount_of_3d():
     assert 2000 / pricing.credits_for("fal-ai/trellis", 1, 0) > 50
 
 
+def test_a_five_second_video_is_priced_per_second_at_the_chosen_resolution():
+    """The whole reason the price key carries a resolution: the same endpoint, the same length,
+    twice the money. `input_tokens` is the clip length in seconds."""
+    from calypr_model import priced_model
+
+    model = "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video"
+    assert pricing.cost_usd(priced_model(model, "720p"), 5, 0) == pytest.approx(0.108)
+    assert pricing.cost_usd(priced_model(model, "480p"), 5, 0) == pytest.approx(0.048)
+    # 500 credits to the dollar, as everywhere else.
+    assert pricing.credits_for(priced_model(model, "720p"), 5, 0) == pytest.approx(54.0)
+
+
+def test_the_seedance_tiers_are_an_order_of_magnitude_apart():
+    """Not a rounding difference — the 2.0 label in the picker says '10× the price' and this is
+    what makes that claim true. If the tables are ever edited so the cheap tier isn't cheap, the
+    default a user meets first stops being the affordable one."""
+    from calypr_model import priced_model
+
+    cheap = pricing.cost_usd(
+        priced_model("fal-ai/bytedance/seedance/v1/pro/fast/text-to-video", "720p"), 5, 0
+    )
+    dear = pricing.cost_usd(priced_model("bytedance/seedance-2.0/fast/text-to-video", "720p"), 5, 0)
+    assert dear > cheap * 8
+
+
+def test_every_selectable_video_model_and_resolution_is_priced():
+    """The video sibling of the mesh check below, and it has to be the *product* of the two lists:
+    a model priced at 720p and unpriced at 480p would record a real clip at ~$0 the moment someone
+    changed the dropdown."""
+    from calypr_model import VIDEO_MODELS, VIDEO_RESOLUTIONS, priced_model
+
+    for model in VIDEO_MODELS:
+        for resolution in VIDEO_RESOLUTIONS[model]:
+            key = priced_model(model, resolution)
+            assert key in pricing.MEDIA_PRICES, f"{key} is selectable but unpriced"
+
+
+def test_video_prices_stay_out_of_the_token_table():
+    """`_MOST_EXPENSIVE` is the max over `MODEL_PRICES`, so $0.24/second written there (as
+    $240,000 per 1M) would become the fail-closed rate for every unknown *text* model and could
+    trip the month's spend cap for every workspace. The mesh entry is pinned the same way."""
+    assert not any(k.startswith(("fal-ai/", "bytedance/")) for k in pricing.MODEL_PRICES)
+
+
 def test_every_selectable_mesh_model_is_priced():
     """`calypr_nodes` can't import this module (wrong direction), so the node validates against
     `MESH_MODELS` and the prices live here. This is what keeps the two tables honest: adding a

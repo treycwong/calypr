@@ -36,3 +36,30 @@ def assign_str(name: str, value: str, indent: str = "    ") -> list[str]:
         *[f"{inner}{json.dumps(chunk)}" for chunk in chunks(value)],
         f"{indent})",
     ]
+
+def image_pick_lines(channel: str, sources: list[str], var: str) -> list[str]:
+    """The generated lines that resolve a source image from `channel`.
+
+    With one Image block in the graph this is the plain "last value wins" read. With several, the
+    read has to say *which* branch's picture it wants: they all append to the same channel, so the
+    unqualified version hands two parallel Video blocks the same image. The producing node stamps
+    each message it writes, and this filters on that.
+    """
+    if not sources:
+        return [
+            f'    source = state.get("{channel}")',
+            f'    {var} = source if isinstance(source, str) else (source[-1] if source else "")',
+        ]
+    md = r'r"!\[[^\]]*\]\(([^)]+)\)"'
+    return [
+        "    # This graph has more than one Image block and they share a channel, so take the",
+        "    # picture *this* branch produced rather than whichever was written last.",
+        f"    sources = {tuple(sources)!r}",
+        "    mine = [",
+        "        m",
+        f'        for m in state.get("{channel}") or []',
+        '        if getattr(m, "additional_kwargs", {}).get("calypr_node") in sources',
+        "    ]",
+        f'    found = re.findall({md}, str(mine[-1].content) if mine else "")',
+        f'    {var} = found[-1] if found else ""',
+    ]

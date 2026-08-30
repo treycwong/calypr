@@ -746,7 +746,7 @@ export type ConversationDetail = ConversationSummary & {
 
 export type StoredAsset = {
   id: string;
-  kind: "image" | "audio" | "3d";
+  kind: "image" | "audio" | "3d" | "video";
   url: string;
   caption: string;
   content_type: string | null;

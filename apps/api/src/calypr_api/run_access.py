@@ -39,8 +39,13 @@ from calypr_api.config import settings
 from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal
-from calypr_api.errors import PLAN_REQUIRED, WORKSPACE_LOCKED
-from calypr_api.model_access import platform_key_models, runs_on_own_key
+from calypr_api.errors import PLAN_REQUIRED, PROVIDER_KEY_REQUIRED, WORKSPACE_LOCKED
+from calypr_api.model_access import (
+    media_key_error,
+    missing_media_keys,
+    platform_key_models,
+    runs_on_own_key,
+)
 from calypr_api.provider_keys import byok_providers
 
 log = logging.getLogger(__name__)
@@ -54,7 +59,7 @@ _PLAN_FOR_WORKSPACE = (
 
 #: Palette labels for the gated block types, so the refusal names what the user actually dragged
 #: onto the canvas rather than an internal node type.
-_BLOCK_LABELS = {"mesh": "3D"}
+_BLOCK_LABELS = {"mesh": "3D", "video": "Video"}
 
 
 def _plan_required_message(types: list[str]) -> str:
@@ -108,9 +113,16 @@ def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[s
             ).scalar_one_or_none()
             if gated := entitlements.gated_nodes_in(graph, plan):
                 return (PLAN_REQUIRED, _plan_required_message(gated))
-            on_platform = platform_key_models(
-                graph, byok_providers(workspace_id), workspace.default_model or ""
-            )
+            # One lookup, two questions: which BYO-key-only blocks are unkeyed, and what still
+            # lands on our keys. Both need the same provider-name set.
+            providers = byok_providers(workspace_id)
+            # A BYO-key-only block with no key can't run at all, so it is refused here rather than
+            # degraded like an unkeyed frontier *model* — there is nothing sensible to fall back
+            # to. Above the credit check for the same reason the entitlement gate is: no balance
+            # makes a missing key work.
+            if unkeyed := missing_media_keys(graph, providers):
+                return (PROVIDER_KEY_REQUIRED, media_key_error(unkeyed))
+            on_platform = platform_key_models(graph, providers, workspace.default_model or "")
             if not on_platform:
                 return None  # every node runs on their own key — nothing of ours is being spent
     except Exception:

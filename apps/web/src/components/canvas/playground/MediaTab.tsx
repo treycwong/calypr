@@ -1,6 +1,14 @@
 "use client";
 
-import { AudioLines, Box, Download, ExternalLink, MoreHorizontal, Trash2 } from "lucide-react";
+import {
+  AudioLines,
+  Box,
+  Clapperboard,
+  Download,
+  ExternalLink,
+  MoreHorizontal,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -24,12 +32,14 @@ const KINDS = [
   { id: "image", label: "Images" },
   { id: "audio", label: "Audio" },
   { id: "3d", label: "3D" },
+  { id: "video", label: "Video" },
 ] as const;
 
 function extFor(a: StoredAsset): string {
   // `model/gltf-binary` is the one content type whose subtype isn't the extension anyone wants —
   // a file called `model.gltf-binary` opens in nothing.
   if (a.kind === "3d") return "glb";
+  if (a.kind === "video") return "mp4";
   const fromType = a.content_type?.split("/")[1];
   if (fromType) return fromType === "mpeg" ? "mp3" : fromType;
   return a.kind === "audio" ? "mp3" : "png";
@@ -177,11 +187,19 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
   const [viewing, setViewing] = useState(false);
   const isImage = asset.kind === "image";
   const is3d = asset.kind === "3d";
+  const isVideo = asset.kind === "video";
   // Audio has no viewer — its player is the chat bubble, and "Open" in the menu hands the file to
-  // the browser. Only the two visual kinds get a full-size window.
-  const viewable = isImage || is3d;
+  // the browser. Only the visual kinds get a full-size window.
+  const viewable = isImage || is3d || isVideo;
   const caption =
-    asset.caption || (isImage ? "Untitled" : is3d ? "Untitled model" : "Untitled audio");
+    asset.caption ||
+    (isImage
+      ? "Untitled"
+      : is3d
+        ? "Untitled model"
+        : isVideo
+          ? "Untitled video"
+          : "Untitled audio");
   // Time and model moved off the face of the tile and into its tooltip: at this size they were a
   // third line of grey text competing with the one line that identifies the clip.
   const meta = [relativeTime(asset.created_at), asset.model].filter(Boolean).join(" · ");
@@ -207,17 +225,23 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
         />
       ) : (
         <div className="flex aspect-square w-full items-center justify-center bg-muted/40">
-          {/* A glyph, not a render: a GLB has no thumbnail of its own, and spinning up WebGL for
-              every cell in a grid to make one would cost far more than the tile is worth. */}
-          {is3d ? (
+          {/* A glyph, not a render. A GLB has no thumbnail of its own and spinning up WebGL for
+              every cell to make one would cost far more than the tile is worth; a video *could*
+              show a first frame, but only by fetching enough of every clip in the grid to decode
+              one — the same trade, and the same answer. Click to open the real viewer. */}
+          {is3d || isVideo ? (
             <button
               type="button"
               onClick={() => setViewing(true)}
-              aria-label={`View ${asset.caption || "3D model"}`}
+              aria-label={`View ${asset.caption || (isVideo ? "video" : "3D model")}`}
               data-testid="media-thumb"
               className="flex h-full w-full cursor-zoom-in items-center justify-center"
             >
-              <Box className="h-7 w-7 text-muted-foreground" />
+              {isVideo ? (
+                <Clapperboard className="h-7 w-7 text-muted-foreground" />
+              ) : (
+                <Box className="h-7 w-7 text-muted-foreground" />
+              )}
             </button>
           ) : (
             <AudioLines className="h-7 w-7 text-muted-foreground" />
@@ -267,7 +291,7 @@ function MediaCell({ asset, onDelete }: { asset: StoredAsset; onDelete: () => vo
         <MediaViewer
           open={viewing}
           onOpenChange={setViewing}
-          kind={isImage ? "image" : "3d"}
+          kind={isImage ? "image" : isVideo ? "video" : "3d"}
           src={asset.url}
           caption={caption}
         />

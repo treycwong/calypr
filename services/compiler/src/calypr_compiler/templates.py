@@ -747,6 +747,108 @@ Half of that string is **negatives**, and they are not padding. The user's messa
     )
 
 
+def text_to_video() -> GraphSpec:
+    """Prompt → video. The thinnest Seedance pipeline: whatever the user types becomes the clip.
+
+    A **Plus** template, and additionally **bring-your-own-fal-key**: video is the one block whose
+    cost is measured per second rather than per call, so it never runs on the platform key
+    (`model_access.BYO_KEY_ONLY_NODES`). Defaults to Seedance 1.0 Pro Fast at 720p for five
+    seconds — about 11¢ — because the tier above it is roughly ten times the price per second and
+    nobody should meet that by accident. Switch the Video block to `fake` for a keyless
+    placeholder clip.
+
+    **The prompt is a shot description, not an instruction.** Seedance reads the message verbatim,
+    so "make me a video of a dog" tends to produce something that has taken the words literally.
+    Camera language is what the model was trained on — "slow dolly in", "handheld", "golden hour"
+    — which is why this template exists at all rather than being left to a bare Video block: the
+    Agent in front of it rewrites a request into that language before the expensive call is made.
+    """
+    return GraphSpec(
+        id="tpl-text-to-video",
+        name="Text to video",
+        description="Describe a shot; get back a short generated video.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            _agent(
+                "model_based",
+                system_prompt=(
+                    "You turn a request into ONE short video prompt for a text-to-video model. "
+                    "Reply with the prompt alone — no preamble, no quotes, no options, no "
+                    "explanation. Describe a single continuous shot in one or two sentences: the "
+                    "subject, what it is doing, the setting, the lighting, and one camera move "
+                    "(for example 'slow dolly in', 'static wide', 'handheld follow'). Keep it "
+                    "concrete and physical. Never write instructions to the model, questions, or "
+                    "meta-commentary about video."
+                ),
+            ),
+            NodeSpec(
+                id="video",
+                type="video",
+                config={
+                    "model": "fal-ai/bytedance/seedance/v1/pro/fast/text-to-video",
+                    "resolution": "720p",
+                    "duration": "5",
+                    "aspect_ratio": "16:9",
+                },
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "agent", "video", "out"),
+        entry="in",
+    )
+
+
+def image_to_video() -> GraphSpec:
+    """Prompt → image → video. Two media blocks chained, the same trick `image_to_3d` uses: the
+    Image node appends a Markdown image and the Video node picks that URL back out of `messages`,
+    so the edge between them is the whole wiring.
+
+    **Plus, and bring-your-own-fal-key** — see `text_to_video`.
+
+    Unlike the 3D template, the Image block's `style` here is not doing quality control. Trellis
+    *reconstructs* what it is shown, so a shadow becomes geometry and a flat white background is
+    worth more than any parameter; Seedance *animates* what it is shown, and a photograph with
+    depth and atmosphere moves better than a cut-out on white. So the style asks for a real scene
+    and the video prompt supplies the motion, which is the division of labour the two models
+    actually want.
+    """
+    return GraphSpec(
+        id="tpl-image-to-video",
+        name="Image to video",
+        description="Describe a scene; get back a generated still and a video that animates it.",
+        state=_BASE_STATE,
+        nodes=[
+            _input(),
+            NodeSpec(
+                id="image",
+                type="image",
+                config={
+                    "model": "gpt-image-2",
+                    "style": (
+                        "{prompt} — a single cinematic still frame, photographic, natural depth "
+                        "of field, one clear subject, room around the subject to move within the "
+                        "frame, no text, no labels, no watermark, no collage, no split screen"
+                    ),
+                },
+            ),
+            NodeSpec(
+                id="video",
+                type="video",
+                config={
+                    "model": "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video",
+                    "resolution": "720p",
+                    "duration": "5",
+                    "aspect_ratio": "16:9",
+                },
+            ),
+            _output(),
+        ],
+        edges=_chain("in", "image", "video", "out"),
+        entry="in",
+    )
+
+
 def text_to_speech() -> GraphSpec:
     """The thinnest voice pipeline: text in, spoken audio out. The Voice node streams a Markdown
     audio link the playground renders as a player. Defaults to `gpt-4o-mini-tts` (needs
@@ -1090,6 +1192,8 @@ TEMPLATES: list[GraphSpec] = [
     trip_planner(),
     image_generation(),
     image_to_3d(),
+    text_to_video(),
+    image_to_video(),
     text_to_speech(),
     translate_and_speak(),
     label_reader(),
@@ -1129,6 +1233,8 @@ TEMPLATE_CATEGORIES: dict[str, str] = {
     "tpl-study-notion": "Study & revision",
     "tpl-image-generation": "Images & audio",
     "tpl-image-to-3d": "Images & audio",
+    "tpl-text-to-video": "Images & audio",
+    "tpl-image-to-video": "Images & audio",
     "tpl-street-photography": "Images & audio",
     "tpl-image-finder": "Images & audio",
     "tpl-alt-text": "Images & audio",

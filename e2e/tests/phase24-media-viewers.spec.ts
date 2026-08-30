@@ -4,7 +4,8 @@ import { openCanvas } from "./helpers";
 
 // Generated media used to be a dead end in the chat: an image you could only squint at, and a 3D
 // model that rendered as a bare link to a file the browser cannot display. Both now open a full
-// viewer, and it is the *same* viewer either way.
+// viewer, and it is the *same* viewer either way — as does a generated video, which plays in the
+// transcript rather than opening anything, because a <video> costs no WebGL context to keep alive.
 //
 // The fake model echoes whatever it is sent, so both cases are driven by typing markdown into the
 // chat — no keys, no provider, and it tests the exact path a real run takes: the node streams
@@ -95,12 +96,29 @@ test("a .glb link renders as a model card, not a bare anchor", async ({ page }) 
   }
 });
 
+test("an .mp4 link renders as an inline player, not a bare anchor", async ({ page }) => {
+  const mp4 = "https://store.public.blob.vercel-storage.com/runs/mp4/abc123.mp4";
+  await echoTemplate(page, `[▶ Play video.mp4](${mp4})`);
+
+  const bubble = page.getByTestId("msg-assistant").last();
+  const player = bubble.getByTestId("video-open");
+  await expect(player).toBeVisible({ timeout: 15_000 });
+  await expect(player).toHaveAttribute("src", mp4);
+  // Same point as the .glb case: it is not the plain <a> every other link gets.
+  await expect(bubble.locator(`a[href="${mp4}"]`)).toHaveCount(0);
+  // The ▶ is stripped from the label so it doesn't reach the download filename.
+  const download = page.waitForEvent("download");
+  await bubble.getByTestId("video-download").click();
+  expect((await download).suggestedFilename()).not.toContain("▶");
+});
+
 test("an ordinary link is still an ordinary link", async ({ page }) => {
-  // The .glb branch lives inside the generic link alternative, so it is one bad regex away from
-  // eating every link in the chat.
+  // The .glb and .mp4 branches live inside the generic link alternative, so they are one bad
+  // regex away from eating every link in the chat.
   const url = "https://example.com/notes/model.glb.txt";
   await echoTemplate(page, `[my notes](${url})`);
   const bubble = page.getByTestId("msg-assistant").last();
   await expect(bubble.locator(`a[href="${url}"]`)).toBeVisible({ timeout: 15_000 });
   await expect(bubble.getByTestId("mesh-open")).toHaveCount(0);
+  await expect(bubble.getByTestId("video-open")).toHaveCount(0);
 });

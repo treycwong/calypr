@@ -30,6 +30,7 @@ from calypr_nodes.registry import (
     parse_config,
     register,
     tts_model_for_node,
+    video_model_for_node,
 )
 from calypr_nodes.responder import ResponderConfig, ResponderNode
 from calypr_nodes.retriever import RetrieverConfig, RetrieverNode
@@ -38,6 +39,7 @@ from calypr_nodes.router import Branch, RouterConfig, RouterNode
 from calypr_nodes.tool import ToolConfig, ToolsNode
 from calypr_nodes.tts import TTSConfig, TTSNode
 from calypr_nodes.upload import UploadConfig, UploadNode
+from calypr_nodes.video import VideoConfig, VideoNode
 
 __all__ = [
     # execution context
@@ -60,6 +62,7 @@ __all__ = [
     "image_model_for_node",
     "mesh_model_for_node",
     "tts_model_for_node",
+    "video_model_for_node",
     # node types + configs
     "InputNode",
     "InputConfig",
@@ -86,6 +89,8 @@ __all__ = [
     "TTSConfig",
     "UploadNode",
     "UploadConfig",
+    "VideoNode",
+    "VideoConfig",
     "ResponderNode",
     "ResponderConfig",
     "RevisorNode",

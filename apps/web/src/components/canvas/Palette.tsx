@@ -26,7 +26,7 @@ export const TILE_CLASS =
 export const PALETTE_DND_TYPE = "application/calypr-block";
 
 /** Blocks a plan can withhold. Mirrors `entitlements.PLUS_NODE_TYPES` on the API. */
-const PAID_TYPES = new Set<CalyprNodeType>(["mesh"]);
+const PAID_TYPES = new Set<CalyprNodeType>(["mesh", "video"]);
 
 export function Palette({ onAdd, plan }: { onAdd: (type: CalyprNodeType) => void; plan?: string }) {
   // Which paid block was reached for, so the paywall can name it. `null` closes the dialog.

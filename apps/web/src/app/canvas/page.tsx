@@ -43,6 +43,18 @@ import { CanvasToolbar, type CanvasTool } from "@/components/canvas/CanvasToolba
 import { CodeView } from "@/components/canvas/CodeView";
 import { NODE_STYLE } from "@/components/canvas/node-style";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
+import {
+  type ContextTarget,
+  NodeContextMenu,
+} from "@/components/canvas/NodeContextMenu";
+import {
+  type ClipboardPayload,
+  copySelection,
+  materialize,
+  parsePayload,
+  type SettingsClipboard,
+  settingsFor,
+} from "@/lib/canvas-clipboard";
 import { nodeTypes } from "@/components/canvas/nodes";
 import { PALETTE_DND_TYPE, Palette } from "@/components/canvas/Palette";
 import { Playground } from "@/components/canvas/Playground";
@@ -66,6 +78,7 @@ import {
   type CalyprNodeType,
   DEFAULT_CONFIG,
   graphToCanvas,
+  NODE_LABELS,
   type NodeData,
   type NodeStatus,
 } from "@/lib/graph";
@@ -119,9 +132,9 @@ function RailButton({
   );
 }
 
-/** Width of the rail-selected left panel, in pixels — must equal the `w-60` on the `<aside>`.
+/** Width of the rail-selected left panel, in pixels — must equal the `w-68` on the `<aside>`.
  *  The canvas reads it to cancel the sideways shift when the panel opens or closes. */
-const LEFT_PANEL_PX = 240;
+const LEFT_PANEL_PX = 272;
 
 /** Panel titles live in the shell, not in the panels — see the header comment below. Keyed by
  *  the rail tab, and worded to match the rail's own tooltips. */
@@ -472,13 +485,222 @@ function CanvasInner() {
     [record, onEdgesChange],
   );
 
+  // --- Copy / paste / duplicate ----------------------------------------------
+  // How many times the payload now on the clipboard has been pasted, so repeated pastes fan out
+  // instead of landing on top of each other. Reset by each new copy.
+  const pasteRun = useRef(0);
+  /** Add a payload's blocks to the canvas and leave them selected. */
+  const pasteFragment = useCallback(
+    (payload: ClipboardPayload, step: number) => {
+      const made = materialize(payload, nodes, step);
+      if (!made.nodes.length) return;
+      record();
+      // Deselect what was there: the pasted blocks are the new selection, so the next drag (or
+      // duplicate) acts on the copy rather than silently on both.
+      setNodes((nds) => [...nds.map((n) => ({ ...n, selected: false })), ...made.nodes]);
+      setEdges((eds) => [...eds, ...made.edges]);
+      // The properties panel follows a single pasted block; with several there is no one node to
+      // show, so it is left alone rather than picked arbitrarily.
+      if (made.nodes.length === 1) setSelectedId(made.nodes[0].id);
+    },
+    [nodes, record, setNodes, setEdges],
+  );
+
+  // --- The right-click menu --------------------------------------------------
+  const [menuTarget, setMenuTarget] = useState<ContextTarget | null>(null);
+  // Settings copied from one block, waiting to be applied to another. A ref, not state: nothing
+  // renders from it except the menu's enabled/disabled state, which is computed when the menu
+  // opens. See `SettingsClipboard` for why these don't go to the system clipboard.
+  const settingsClip = useRef<SettingsClipboard | null>(null);
+
+  /** The blocks an action should touch: the whole selection when the right-clicked block is part
+   *  of it, otherwise just that block. Every canvas tool behaves this way, and it is what stops a
+   *  menu acting on a selection scrolled off screen. */
+  const targetsOf = useCallback(
+    (nodeId: string) => {
+      const selected = nodes.filter((n) => n.selected);
+      return selected.length > 1 && selected.some((n) => n.id === nodeId)
+        ? selected
+        : nodes.filter((n) => n.id === nodeId);
+    },
+    [nodes],
+  );
+
+  const openMenuFor = useCallback(
+    (e: React.MouseEvent, node: Node) => {
+      e.preventDefault();
+      // Select what was right-clicked unless it is already inside the selection — acting on a
+      // block the user cannot see highlighted is how a menu deletes the wrong thing.
+      const inSelection = nodes.some((n) => n.id === node.id && n.selected);
+      if (!inSelection) {
+        setNodes((nds) => nds.map((n) => ({ ...n, selected: n.id === node.id })));
+        setSelectedId(node.id);
+      }
+      const count = inSelection ? nodes.filter((n) => n.selected).length : 1;
+      setMenuTarget({
+        nodeId: node.id,
+        x: e.clientX,
+        y: e.clientY,
+        count,
+        canPasteSettings: !!settingsFor(settingsClip.current, node as Node<NodeData>),
+      });
+    },
+    [nodes, setNodes],
+  );
+  const onNodeContextMenu = useCallback(
+    (e: React.MouseEvent, node: Node) => openMenuFor(e, node),
+    [openMenuFor],
+  );
+  // A marquee selection is covered by React Flow's own `.react-flow__nodesselection-rect`, which
+  // sits above the cards and swallows their events — so without this, right-clicking *inside* a
+  // multi-selection (the case the menu's "Duplicate 3 blocks" exists for) does nothing at all.
+  // The rect reports the selected nodes; the menu is keyed on one of them, and the action
+  // resolves the rest through `targetsOf`.
+  const onSelectionContextMenu = useCallback(
+    (e: React.MouseEvent, selected: Node[]) => {
+      if (!selected.length) return;
+      openMenuFor(e, selected[0]);
+    },
+    [openMenuFor],
+  );
+
+  /** Copy the menu target's blocks to the system clipboard.
+   *
+   *  `navigator.clipboard.writeText` rather than the `copy` event used by ⌘C: a menu click is not
+   *  a copy gesture, so there is no event to ride. Writing is permitted on a user gesture without
+   *  a prompt — it is *reading* that prompts, and paste still comes in through the paste event. */
+  const copyTargets = useCallback(
+    async (nodeId: string) => {
+      const targets = targetsOf(nodeId);
+      const payload = copySelection(
+        nodes.map((n) => ({ ...n, selected: targets.some((t) => t.id === n.id) })),
+        edges,
+      );
+      if (!payload) return;
+      try {
+        await navigator.clipboard.writeText(JSON.stringify(payload));
+        pasteRun.current = 0;
+        setSaveMsg(`Copied ${payload.nodes.length} block${payload.nodes.length > 1 ? "s" : ""}`);
+      } catch {
+        setSaveMsg("Couldn't reach the clipboard");
+      }
+    },
+    [nodes, edges, targetsOf],
+  );
+
+  const duplicateTargets = useCallback(
+    (nodeId: string) => {
+      const targets = targetsOf(nodeId);
+      const payload = copySelection(
+        nodes.map((n) => ({ ...n, selected: targets.some((t) => t.id === n.id) })),
+        edges,
+      );
+      if (payload) pasteFragment(payload, 1);
+    },
+    [nodes, edges, targetsOf, pasteFragment],
+  );
+
+  const deleteTargets = useCallback(
+    (nodeId: string) => {
+      const ids = new Set(targetsOf(nodeId).map((n) => n.id));
+      if (!ids.size) return;
+      record();
+      setNodes((nds) => nds.filter((n) => !ids.has(n.id)));
+      // The wires go with them. A graph left holding an edge to a block that no longer exists is
+      // one React Flow renders as a stub pointing at nothing.
+      setEdges((eds) => eds.filter((e) => !ids.has(e.source) && !ids.has(e.target)));
+      setSelectedId((cur) => (cur && ids.has(cur) ? null : cur));
+    },
+    [targetsOf, record, setNodes, setEdges],
+  );
+
+  const copySettings = useCallback(
+    (nodeId: string) => {
+      const node = nodes.find((n) => n.id === nodeId);
+      if (!node?.type) return;
+      settingsClip.current = { type: node.type, config: { ...node.data.config } };
+      setSaveMsg(`Copied ${NODE_LABELS[node.type as CalyprNodeType]} settings`);
+    },
+    [nodes],
+  );
+
+  const pasteSettings = useCallback(
+    (nodeId: string) => {
+      const clip = settingsClip.current;
+      if (!clip) return;
+      // Every selected block of the same type, so one configured block can set up a row of them.
+      const ids = new Set(
+        targetsOf(nodeId)
+          .filter((n) => n.type === clip.type)
+          .map((n) => n.id),
+      );
+      if (!ids.size) return;
+      record();
+      setNodes((nds) =>
+        nds.map((n) => (ids.has(n.id) ? { ...n, data: { ...n.data, config: { ...clip.config } } } : n)),
+      );
+      setSaveMsg(`Applied settings to ${ids.size} block${ids.size > 1 ? "s" : ""}`);
+    },
+    [targetsOf, record, setNodes],
+  );
+
+  // Ride the browser's own `copy`/`paste` events rather than watching for ⌘C/⌘V. Two reasons, and
+  // the second is the one that matters: the key combination differs per platform and per keyboard
+  // layout, and clipboard access inside these events is granted as part of the user's gesture —
+  // so a fragment can go to the *real* clipboard and come back in another project or another tab,
+  // with no permissions prompt. `navigator.clipboard.readText()` is the API that prompts, and is
+  // deliberately not used.
+  useEffect(() => {
+    function onCopy(e: ClipboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      // A real text selection wins. Copying blocks out from under someone who highlighted a label
+      // would make the canvas the one place on the web where ⌘C doesn't copy the text you picked.
+      if (window.getSelection()?.toString()) return;
+      const payload = copySelection(nodes, edges);
+      if (!payload || !e.clipboardData) return;
+      e.preventDefault();
+      e.clipboardData.setData("text/plain", JSON.stringify(payload));
+      pasteRun.current = 0;
+      setSaveMsg(`Copied ${payload.nodes.length} block${payload.nodes.length > 1 ? "s" : ""}`);
+    }
+    function onPaste(e: ClipboardEvent) {
+      if (isTypingTarget(e.target)) return;
+      const payload = parsePayload(e.clipboardData?.getData("text/plain") ?? "");
+      if (!payload) return; // not ours — let the page have it
+      e.preventDefault();
+      pasteFragment(payload, ++pasteRun.current);
+    }
+    window.addEventListener("copy", onCopy);
+    window.addEventListener("paste", onPaste);
+    return () => {
+      window.removeEventListener("copy", onCopy);
+      window.removeEventListener("paste", onPaste);
+    };
+  }, [nodes, edges, pasteFragment]);
+
   // Every canvas hotkey, in one listener: V/H switch tool, ⌘/Ctrl+Z undoes, ⌘/Ctrl+Shift+Z (or
-  // Ctrl+Y) redoes, +/− zoom. All ignored while typing in a field.
+  // Ctrl+Y) redoes, ⌘/Ctrl+D duplicates the selection, +/− zoom. All ignored while typing in a
+  // field. Copy and paste are not here — they ride the clipboard events above.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (isTypingTarget(e.target)) return;
       const mod = e.metaKey || e.ctrlKey;
       const key = e.key.toLowerCase();
+      const typing = isTypingTarget(e.target);
+
+      // ⌘D is swallowed everywhere, including inside a text field, and that is the one hotkey
+      // handled before the typing guard. There is no useful native ⌘D in a textarea — the browser
+      // opens its bookmark dialog — so leaving it through would mean a user who has just typed a
+      // prompt and reaches for "duplicate" gets a bookmark prompt over the canvas. It is
+      // *prevented* while typing but does not act: the selection is not what the user is looking
+      // at, and duplicating a block they cannot see would be worse than doing nothing.
+      if (mod && key === "d") {
+        e.preventDefault();
+        if (typing) return;
+        const payload = copySelection(nodes, edges);
+        if (payload) pasteFragment(payload, 1);
+        return;
+      }
+      if (typing) return;
 
       if (mod && (key === "z" || key === "y")) {
         e.preventDefault();
@@ -505,7 +727,7 @@ function CanvasInner() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [undo, redo, zoomIn, zoomOut]);
+  }, [undo, redo, zoomIn, zoomOut, nodes, edges, pasteFragment]);
   // Replace the canvas with a graph produced elsewhere — the AI assistant, or the reverse
   // round-trip's "Apply to canvas". Records an undo point first, so either is reversible.
   const applyGraphToCanvas = useCallback(
@@ -606,6 +828,11 @@ function CanvasInner() {
   }, [shareOpen]);
 
   const selected = nodes.find((n) => n.id === selectedId) ?? null;
+  // Which block types are on the canvas. The config panel only ever sees the selected node,
+  // and the Input block's Prompt Instructions field needs to know whether anything in the
+  // *graph* would read them.
+  // `nodeTypes` is taken — React Flow's component map imports under that name.
+  const graphNodeTypes = useMemo(() => nodes.map((n) => n.type ?? ""), [nodes]);
 
   // --- Live run animation ----------------------------------------------------
   // Per-node run status, driven by node events streamed from the Playground. Kept out of the
@@ -615,29 +842,35 @@ function CanvasInner() {
   const onNodeEvent = useCallback((nodeId: string, phase: "start" | "end") => {
     setRunStatus((prev) => {
       const next = { ...prev };
-      if (phase === "start") {
-        // The prior active node has finished once the next one begins.
-        for (const k in next) if (next[k] === "active") next[k] = "done";
-        next[nodeId] = "active";
-      } else if (next[nodeId] === "active") {
-        next[nodeId] = "done";
-      }
+      // Each node's own `start`/`end` decides its state, and nothing else touches it.
+      //
+      // This used to sweep every *other* active node to "done" on each `start`, on the
+      // assumption that one block runs at a time. That holds for a chain and is false the moment
+      // a block fans out: the engine runs those branches concurrently and emits
+      // `a start, b start, a end, b end`, so the sweep retired branch A the instant branch B
+      // began. Two blocks would be generating and only one wire ever glowed — the canvas
+      // reported the graph as more sequential than it is.
+      if (phase === "start") next[nodeId] = "active";
+      else if (next[nodeId] === "active") next[nodeId] = "done";
       return next;
     });
   }, []);
-  // The GLB each 3D block produced, so the block can show it in place rather than making the
-  // user open the chat. Keyed by node id and kept beside `runStatus` for the same reason: it is a
-  // run result, and `buildGraphSpec` must never see it.
+  // What each media block produced, so the block can show it in place rather than making the user
+  // open the chat. Keyed by node id and kept beside `runStatus` for the same reason: it is a run
+  // result, and `buildGraphSpec` must never see it.
   //
-  // Only `kind === "3d"` is kept. Images already render in the chat at full size, and a second
-  // copy on the canvas would be noise; a mesh is the case where the chat can only offer a link.
-  const [meshPreviews, setMeshPreviews] = useState<Record<string, string>>({});
+  // Every visual kind is kept. This started as 3D only, on the reasoning that images already
+  // render in the chat and a second copy would be noise — which turned out to be wrong in
+  // practice: a chain like Image → Video is read on the *canvas*, and seeing each block's output
+  // beside the block that made it is how you tell which step went astray. Audio is still absent;
+  // there is nothing to look at.
+  const [previews, setPreviews] = useState<Record<string, Record<string, string>>>({});
   const onAssetGenerated = useCallback((asset: Record<string, unknown>) => {
     setMediaTick((n) => n + 1);
     const { kind, node_id: nodeId, url } = asset;
-    if (kind === "3d" && typeof nodeId === "string" && typeof url === "string") {
-      setMeshPreviews((prev) => ({ ...prev, [nodeId]: url }));
-    }
+    if (typeof nodeId !== "string" || typeof url !== "string") return;
+    if (kind !== "3d" && kind !== "video" && kind !== "image") return;
+    setPreviews((prev) => ({ ...prev, [kind]: { ...prev[kind], [nodeId]: url } }));
   }, []);
 
   const onRunReset = useCallback((opts?: { error?: boolean }) => {
@@ -659,12 +892,16 @@ function CanvasInner() {
     () =>
       nodes.map((n) => {
         const status = runStatus[n.id];
-        const meshUrl = meshPreviews[n.id];
+        const meshUrl = previews["3d"]?.[n.id];
+        const videoUrl = previews.video?.[n.id];
+        const imageUrl = previews.image?.[n.id];
         // Identity is preserved for untouched nodes so React Flow re-renders minimally — which
-        // matters more now that a node can own a WebGL context.
-        return status || meshUrl ? { ...n, data: { ...n.data, status, meshUrl } } : n;
+        // matters more now that a node can own a WebGL context or a decoding video.
+        return status || meshUrl || videoUrl || imageUrl
+          ? { ...n, data: { ...n.data, status, meshUrl, videoUrl, imageUrl } }
+          : n;
       }),
-    [nodes, runStatus, meshPreviews],
+    [nodes, runStatus, previews],
   );
   // A wire takes the colour of the block it *leaves*, so you can trace what feeds what on a graph
   // too big to read label by label. Run state still wins: an active or finished edge is carrying
@@ -897,13 +1134,15 @@ function CanvasInner() {
 
         {/* The single rail-selected left panel. One shell for every tab: the width used to be set
             per tab (w-52 / w-72 / w-80), so the canvas jumped sideways every time you switched
-            rails. `w-60` (240px) is the shared width — narrow enough to leave the canvas the room,
-            wide enough that the two-column tile grids and the Connectors rows still read.
+            rails. `w-68` (272px) is the shared width — narrow enough to leave the canvas the room,
+            wide enough that the two-column tile grids and the Connectors rows still read. It was
+            240px until the Media panel grew a fifth filter and clipped "Video" off the end of the
+            strip; the width is shared, so a tab that outgrows it is everyone's problem.
             `LEFT_PANEL_PX` below must track it: the canvas compensates its viewport by exactly
             this many pixels when the panel opens or closes. */}
         {activePanel ? (
           <aside
-            className="flex w-60 shrink-0 flex-col border-r border-border"
+            className="flex w-68 shrink-0 flex-col border-r border-border"
             data-testid={
               activePanel === "ai"
                 ? "assistant"
@@ -972,6 +1211,8 @@ function CanvasInner() {
             onNodeDragStart={onNodeDragStart}
             onConnect={onConnect}
             onNodeClick={onNodeClick}
+            onNodeContextMenu={onNodeContextMenu}
+            onSelectionContextMenu={onSelectionContextMenu}
             onPaneClick={onPaneClick}
             onDragOver={onDragOver}
             onDrop={onDrop}
@@ -996,6 +1237,17 @@ function CanvasInner() {
           >
             {/* Subtle grey dots — visible as texture (Railway-style), not bright specks. */}
             <Background gap={22} size={1} color="#4a4a52" />
+            {/* The right-click menu. Rendered once for the whole canvas and anchored to the
+                pointer — see `NodeContextMenu` for why it isn't a trigger around each card. */}
+            <NodeContextMenu
+              target={menuTarget}
+              onClose={() => setMenuTarget(null)}
+              onDuplicate={() => menuTarget && duplicateTargets(menuTarget.nodeId)}
+              onCopy={() => menuTarget && void copyTargets(menuTarget.nodeId)}
+              onCopySettings={() => menuTarget && copySettings(menuTarget.nodeId)}
+              onPasteSettings={() => menuTarget && pasteSettings(menuTarget.nodeId)}
+              onDelete={() => menuTarget && deleteTargets(menuTarget.nodeId)}
+            />
             {/* Replaces React Flow's stock <Controls /> and <MiniMap />: one horizontal bar
                 carrying the tool switch, history and zoom. Centred on the bottom edge rather than
                 cornered, so it stays equidistant from both side panels as they open and close. */}
@@ -1064,7 +1316,11 @@ function CanvasInner() {
             {rightTab === "properties" ? (
               selected ? (
                 <div className="h-full overflow-auto p-3" data-testid="config-panel">
-                  <ConfigPanel node={selected} onChange={updateConfig} />
+                  <ConfigPanel
+                    node={selected}
+                    onChange={updateConfig}
+                    nodeTypes={graphNodeTypes}
+                  />
                 </div>
               ) : (
                 <div className="p-8 text-center text-sm text-muted-foreground">

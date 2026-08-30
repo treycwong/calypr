@@ -15,7 +15,11 @@ const ModelViewer = dynamic(() => import("@/components/ModelViewer"), {
   loading: () => <div className="aspect-square w-full animate-pulse rounded-md bg-white/5" />,
 });
 
-export type MediaKind = "image" | "3d";
+export type MediaKind = "image" | "3d" | "video";
+
+/** What a saved file is called. A map rather than a chain of ternaries: the next modality
+ *  should be one line here, not another branch to get wrong. */
+const EXTENSION: Record<MediaKind, string> = { image: "png", "3d": "glb", video: "mp4" };
 
 /**
  * The one full-size viewer, shared by the chat and the Media rail.
@@ -50,7 +54,7 @@ export function MediaViewer({
     if (busy) return;
     setBusy(true);
     try {
-      await downloadUrl(src, filenameFrom(caption, kind === "3d" ? "glb" : "png"));
+      await downloadUrl(src, filenameFrom(caption, EXTENSION[kind]));
     } finally {
       setBusy(false);
     }
@@ -67,6 +71,17 @@ export function MediaViewer({
             alt={caption}
             className="max-h-[70vh] w-full rounded-md object-contain"
             data-testid="media-viewer-image"
+          />
+        ) : kind === "video" ? (
+          // Autoplayed here and *only* here: opening the viewer is an explicit request to watch
+          // the thing, unlike the inline previews, which stay quiet on a canvas full of them.
+          <video
+            src={src}
+            controls
+            autoPlay
+            playsInline
+            className="max-h-[70vh] w-full rounded-md"
+            data-testid="media-viewer-video"
           />
         ) : (
           <ModelViewer src={src} alt={caption} className="h-[60vh] w-full" />

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
-import { PROVIDER_KEY_REJECTED } from "@/lib/errors";
+import { isKeyProblem } from "@/lib/errors";
 import { type ConversationDetail, runAgent } from "@/lib/api";
 
 import { HistoryTab } from "./playground/HistoryTab";
@@ -160,7 +160,7 @@ export function Playground({
           onRunReset?.({ error: true });
           append(`⚠️ ${ev.message}`);
           toast(ev.message, "error");
-          if (ev.code === PROVIDER_KEY_REJECTED) {
+          if (isKeyProblem(ev.code)) {
             patch((prev) => ({ ...prev, keyRejected: true }));
           }
         }

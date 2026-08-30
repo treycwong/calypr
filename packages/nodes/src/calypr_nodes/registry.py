@@ -13,7 +13,14 @@ from dataclasses import dataclass, field
 from typing import Any, ClassVar
 
 from calypr_dsl import StateChannel
-from calypr_model import ModelClient, image_model_for, mesh_model_for, model_for, tts_model_for
+from calypr_model import (
+    ModelClient,
+    image_model_for,
+    mesh_model_for,
+    model_for,
+    tts_model_for,
+    video_model_for,
+)
 from pydantic import BaseModel
 
 # A compiled node: reads the graph state, returns a partial state update.
@@ -41,9 +48,10 @@ class NodeContext:
 
     Carries the model client and, for an LLM node wired to Tool nodes, the bound tool
     schemas (`{name, description, input_schema}`) the compiler resolves from the graph.
-    `image_model`/`tts_model`/`mesh_model` are the same injection seam for the Image/Voice/3D
-    nodes (tests inject a Fake client so the starter/template test matrix never makes a real,
-    billed API call regardless of the node's configured model — see `image_model_for_node`).
+    `image_model`/`tts_model`/`mesh_model`/`video_model` are the same injection seam for the
+    Image/Voice/3D/Video nodes (tests inject a Fake client so the starter/template test matrix
+    never makes a real, billed API call regardless of the node's configured model — see
+    `image_model_for_node`).
     KB retrievers and a credential vault are added in later phases.
     """
 
@@ -60,10 +68,16 @@ class NodeContext:
     image_model: Any | None = None
     tts_model: Any | None = None
     mesh_model: Any | None = None
+    video_model: Any | None = None
     # A workspace's BYO provider keys ({provider: api_key}), resolved from the vault at run
     # time. Used only when no client is directly injected — overrides the server env per
     # provider (self-serve BYO-key). Empty/None → the server env, exactly as before.
     model_keys: dict[str, str] | None = None
+    #: Every node id upstream of this one (transitively), resolved from the graph's edges by the
+    #: compiler. A media block uses it to pick the image *its own branch* produced: two Image
+    #: blocks share the `messages` channel, so without this a fan-out silently fed both Video
+    #: blocks the same picture. Empty for a node with nothing before it.
+    upstream_ids: frozenset[str] = frozenset()
 
 
 @dataclass
@@ -81,6 +95,15 @@ class CodegenContext:
     #: binding the same server. Ordinal 0 stays unsuffixed so single-server output (the common
     #: case, and every existing fixture) is unchanged; later nodes get `_2`, `_3`, …
     mcp_ordinal: int = 0
+    #: Whether the Input node in this graph carries Prompt Instructions. A graph-level fact a
+    #: media node can't see from its own config, resolved once by the codegen service — the same
+    #: reason `tool_refs` lives here. Gating on it is what keeps a graph that doesn't use the
+    #: field generating byte-for-byte the code it always did.
+    graph_instructions: bool = False
+    #: Ids of the Image nodes upstream of this one, when the graph has **more than one** producing
+    #: into the same channel. Only then does the generated code need to disambiguate, so a
+    #: single-branch export keeps the plain "last image wins" read it always had.
+    image_sources: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -270,6 +293,14 @@ def mesh_model_for_node(ctx: NodeContext, model_id: str):
     if ctx.mesh_model is not None:
         return ctx.mesh_model
     return mesh_model_for(model_id, ctx.model_keys)
+
+
+def video_model_for_node(ctx: NodeContext, model_id: str):
+    """Resolve the video client for a Video node: the injected client (tests) if present,
+    otherwise the node's own provider from its `model` id. Mirrors `mesh_model_for_node`."""
+    if ctx.video_model is not None:
+        return ctx.video_model
+    return video_model_for(model_id, ctx.model_keys)
 
 
 def tts_model_for_node(ctx: NodeContext, model_id: str):
