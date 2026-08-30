@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-20.
+> record — what shipped and why. Updated 2026-08-29.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -48,6 +48,41 @@ stub is a real workflow gallery, and a free account out of project slots is offe
 Evaluator was streaming its private "SCORE: 5" onto the end of the user's answer, Share minted
 links for a graph the canvas had already moved past, and the card specimen taught its own subject
 so a German deck came back in Chinese. See the section below.
+
+**One unmerged branch carries the whole 2026-08-28/29 canvas + media pass.** Five pieces, and one
+of them changes what existing customers are billed — read that first. Each has its own section
+below.
+
+1. **The Video block.** ByteDance **Seedance** on fal, one node covering both text→video and
+   image→video, gated **Plus *and* bring-your-own-fal-key**, priced per second and per resolution.
+   Ships with `Text to video` and `Image to video` templates.
+
+2. **⚠️ It uncovered a live billing bug in the 3D block, and merging fixes it in customers'
+   favour — but not silently.** `provider_of` fell through to `openai` for `fal-ai/…` ids, so any
+   workspace holding an OpenAI key had its meshes — generated on *our* `FAL_KEY` — recorded at $0
+   and debited **zero credits**. After the merge those workspaces pay the 10 credits they always
+   owed. **This belongs in the PR description, not just the diff.**
+
+3. **Prompt Instructions on the Input block** — criteria written once at the entry, folded into
+   every generation. They travel on their own state channel rather than in the user's message,
+   which is the whole design: the obvious implementation would have made the Text-to-speech
+   template **read the criteria aloud**. Fixed a false positive in the graph validator on the way.
+
+4. **A fan-out bug that produced silently wrong output.** Two Image blocks feeding two Video blocks
+   made two clips from the **same picture** — the media blocks resolved their source from a shared
+   channel, so a wire carried control flow but no data. The wires now carry the data. Fixed with a
+   canvas animation bug that made a fan-out look sequential, and two UI fixes (scrollbars, a taller
+   Prompt Instructions box).
+
+5. **Blocks can be duplicated** — ⌘D, and ⌘C/⌘V through the real system clipboard so blocks carry
+   between projects and tabs, plus a **right-click menu** (Duplicate, Copy, Copy/Paste settings,
+   Delete) that makes them discoverable and adds settings transfer between blocks.
+
+**State of the branch:** 1,922 Python tests and 187/188 e2e pass, web typecheck/lint/build clean.
+The single e2e failure is pre-existing and unrelated — `phase12-pricing.spec.ts` asserts a
+"Templates" header link that the (also uncommitted) landing redesign removed from `site/nav.ts`.
+Nothing here needs an ops step: video is BYO-key only, so no `FAL_KEY` is required in production,
+and `fal` is already an accepted provider key.
 
 **The canvas toolbar shipped 2026-08-13** (on branch, not yet merged): React Flow's stock
 `<Controls />` and `<MiniMap />` are replaced by one weavy-style bar centred on the canvas —
@@ -437,6 +472,403 @@ RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, C
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
 
 ---
+
+## 🟢 Right-click menu on a block — DONE (2026-08-29), on branch
+
+The discoverable half of the duplicate shortcuts. Duplicate, Copy, Copy/Paste settings, Delete —
+with the shortcuts printed beside the two that have them, so the menu teaches them.
+
+### What shipped
+
+- **Duplicate ⌘D / Copy ⌘C / Delete ⌫**, plus **Copy settings / Paste settings**: a block's
+  configuration on its own, so one set-up block can configure the others without replacing them or
+  their wiring. Paste applies to every *selected* block of the same type, which is the point — one
+  Image block can set up a row of them.
+- **Right-clicking inside a multi-selection acts on the whole selection**; right-clicking outside
+  it moves the selection to what was clicked. The items say which ("Duplicate 3 blocks"), so the
+  menu never acts on more than it names.
+- Delete takes the block's wires with it, and everything is undoable.
+
+### The decisions worth keeping
+
+- **Anchored to the cursor, not wrapped around each card.** React Flow owns each node's DOM
+  wrapper, so a `ContextMenu.Trigger` per card would have meant threading the node id through
+  `Shell` and all sixteen node views — the duplication shape that has bitten this repo before.
+  React Flow's own `onNodeContextMenu` reports the node and the point; Base UI positions the menu
+  against a virtual element there. One menu for the canvas, and **`nodes.tsx` is untouched**.
+- **`onSelectionContextMenu` is required, not optional.** React Flow lays a
+  `.react-flow__nodesselection-rect` over a marquee selection and it swallows the cards' pointer
+  events — so without it, right-clicking *inside* a multi-selection (the case "Duplicate 3 blocks"
+  exists for) does nothing at all. Found by an e2e test failing on "element intercepts pointer
+  events", which is the only way this shows up.
+- **Paste settings is type-matched and disabled rather than hidden.** Writing an Image config onto
+  a Video block would set fields it doesn't have and drop every field it does, leaving a block that
+  looks configured and cannot run. Disabled, because a menu whose items move between right-clicks
+  is one you have to re-read every time.
+- **Settings live in memory, not on the system clipboard**, unlike a copied block. A menu click is
+  not a copy gesture, so the synchronous clipboard access that makes ⌘C prompt-free isn't
+  available; and answering "can this block accept these?" when the menu opens would need
+  `navigator.clipboard.readText()`, which is the call that prompts. Carrying whole blocks between
+  projects already works through ⌘C/⌘V.
+- Menu **Copy** uses `navigator.clipboard.writeText` — writing is permitted on a user gesture
+  without a prompt; it is reading that prompts, and paste still arrives through the paste event.
+
+### Verified
+
+- `e2e/tests/phase27-node-context-menu.spec.ts`, seven cases: the items and their disabled state,
+  duplicate/delete/undo, wires removed with the block, settings transfer, the type-match refusal,
+  the unselected-block rule, and the multi-selection rule.
+- **187/188 e2e pass**; the one failure is the pre-existing `phase12-pricing` nav link. 1922 Python
+  tests unaffected.
+
+### Still open
+
+- **The canvas pane itself has no menu.** A right-click on empty canvas still shows the browser's.
+  Paste, Select all and Fit view would be the natural items.
+
+## 🟢 Duplicating blocks — DONE (2026-08-28), on branch
+
+Blocks could be deleted with Backspace but not copied, so building anything repetitive meant
+dragging a block out and re-typing its settings.
+
+### What shipped
+
+- **⌘/Ctrl+D** duplicates the selection in place, offset so the copy reads as a second block.
+- **⌘/Ctrl+C / ⌘/Ctrl+V** through the **real system clipboard**, so a block can be carried between
+  projects and between tabs. Repeated pastes step further out instead of stacking.
+- Works on a **marquee selection**, not just one block, and carries the wires *inside* the
+  selection. A wire leaving the selection is dropped: it would either dangle or silently re-point
+  at the original, and re-pointing is the worse of the two — it looks connected and feeds the
+  wrong branch.
+- Undoable, and the copy becomes the selection, so a second duplicate compounds rather than
+  re-copying the original.
+
+### The decisions worth keeping
+
+- **It rides the browser's `copy`/`paste` events rather than watching for ⌘C/⌘V.** Clipboard
+  access inside those events is granted as part of the user's gesture, so a fragment reaches the
+  real clipboard with **no permissions prompt** — `navigator.clipboard.readText()` is the API that
+  prompts, and it is deliberately unused. It also sidesteps per-platform and per-layout key
+  differences entirely.
+- **Only `config` travels.** A node's `data` also holds run results — the status glow and the
+  image, video or mesh it last produced. A copy that arrived already showing the original's output
+  would be claiming to have generated something it never ran.
+- **New ids are checked against the ids on the canvas**, not taken from `counter.current`. That
+  counter is reseeded to the node count on every load, so on a graph whose blocks came from a
+  template (`in`, `image`, `out`) it can hand out an id already in use — and a duplicate node id
+  is the one thing the whole canvas is keyed on. Pre-existing latent bug; duplication is where it
+  would have surfaced first.
+- **A real text selection wins over copying blocks.** Otherwise the canvas becomes the one place
+  on the web where ⌘C doesn't copy the text you just highlighted.
+- **Foreign clipboard content falls through untouched.** The paste handler is strict about the
+  payload envelope, so a URL or a paragraph pasted onto the canvas is not coerced into a block.
+- **⌘D is swallowed even inside a text field** — the one hotkey handled *before* the typing guard.
+  There is no useful native ⌘D in a textarea; the browser opens its bookmark dialog. It is
+  prevented while typing but does not act, because the selection is not what the user is looking
+  at.
+
+### Verified
+
+- `e2e/tests/phase26-duplicate-blocks.spec.ts`, six cases including a real ⌘C/⌘V round trip through
+  the system clipboard, the marquee/edge rule, undo, the typing guard, and config isolation
+  (editing the copy must not reach back into the original).
+- **180/181 e2e pass**; 1922 Python tests unaffected. The one failure is the pre-existing
+  `phase12-pricing` nav link.
+
+### Still open
+
+- **Discoverability.** Both are keyboard-only. A right-click context menu on a block (Duplicate /
+  Delete) would be the conventional home for them, and the canvas has no context menu at all yet.
+
+## 🟢 Fan-out fix + UI polish — DONE (2026-08-28), on branch
+
+Three things found by actually using the Video block on a branching graph. The third was a real
+defect that produced **silently wrong output**.
+
+### The bug: two branches, one picture
+
+A user wired `Input → Image1 → Video1` and `Input → Image2 → Video2` and got two clips built from
+the *same* image. Reproduced exactly:
+
+```
+video call 1: image_url=…/img2.png
+video call 2: image_url=…/img2.png
+```
+
+**Cause.** Every Image block appends to the shared `messages` channel, and every media consumer
+resolved its source by taking the *most recent* image in that channel. So the edge from a producer
+to its consumer carried control flow and **no data** — whichever branch finished last won for
+both. Inherited from the 3D block, where "it just works with no wiring" was only ever true because
+there was one image-producing branch. The canvas looked correct, which is what made it dangerous.
+
+**Fix: the wires carry the data.** The Image block stamps each message it writes with its node id
+(in `additional_kwargs`, *not* the message's `name` field — `name` is part of the provider wire
+format and would be sent to OpenAI if that message later reached an LLM block). The compiler
+resolves each node's transitive ancestors and injects them as `NodeContext.upstream_ids`, and a
+media block prefers an image produced by one of them. The unfiltered scan stays as the fallback,
+which is what keeps `Upload → Video` and every single-branch graph on exactly the path they had.
+
+`ancestors()` lives in **`calypr_dsl`**: it is pure topology and both the compiler and the code
+generator need the same answer, and they do not depend on each other.
+
+**The export mirrors it.** With one Image block the generated code keeps the plain "last image
+wins" read it always had; with two or more it filters on the producer stamp. Gated through
+`CodegenContext.image_sources`, so a single-branch export is unchanged. Verified as a codegen fixed
+point, and the generated file compiles.
+
+**And what the fix deliberately cannot resolve** is now named: two Image blocks feeding *one*
+Video block are both its branch, so "the most recent of mine" still turns on which finished first.
+New validator warning `ambiguous_image_source`, with a fixture in the wiring matrix.
+
+### The wire that only ever showed one branch
+
+`onNodeEvent` swept **every** active node to "done" whenever any node started — an assumption that
+one block runs at a time. It holds for a chain and is false the moment a block fans out: the engine
+runs those branches concurrently and emits `a start, b start, a end, b end`, so branch A was
+retired the instant branch B began. Two blocks generating, one wire glowing. Each node's own
+`start`/`end` now decides its state and nothing else touches it.
+
+### Two UI fixes
+
+- **Scrollbars were the browser default**, which on a dark surface renders as a near-black bar that
+  reads as a seam in the layout. Now the design tokens, in `globals.css`. Both syntaxes are set:
+  `scrollbar-color` is the standard (Firefox), the `::-webkit-scrollbar` pseudo-elements are what
+  Chrome/Safari implement, and neither alone covers the browsers this app runs in.
+- **The Prompt Instructions box is taller** (192px). Worth knowing: `ui/textarea` sets
+  `field-sizing-content`, which sizes the box to its content and makes the **`rows` attribute
+  inert** — every `rows={n}` elsewhere in `ConfigPanel.tsx` is decorative. A `min-h-*` class is the
+  lever, and it still lets the box grow as you type.
+
+### Verified
+
+- **1922 Python tests pass.** `packages/nodes/tests/test_fanout_media.py` is the new file; it was
+  confirmed to *fail* against the old resolution logic before being kept.
+- **174/175 e2e pass** (the one failure is the pre-existing `phase12-pricing` nav link).
+- **On the real canvas**, on the user's exact graph: two edges animate simultaneously
+  (`maxSimultaneousActiveEdges: 2`), both Image previews render, and both Video blocks light up
+  together.
+
+## 🟢 Prompt Instructions on the Input block — DONE (2026-08-28), on branch
+
+One field, on the block where a user actually looks: criteria written once at the entry —
+"no text or logos; warm natural light" — that every generative block downstream folds into its
+prompt, instead of being retyped on each one.
+
+### The question that shaped it: "does this work across all our other templates?"
+
+**Not the obvious way, no.** Prepending the criteria to the `HumanMessage` the Input node seeds
+reaches every downstream block, which reads as the feature and behaves as a bug. Of the 31
+templates built on `_input()`, three families break:
+
+| Template | First hop | What prepending does |
+| --- | --- | --- |
+| `text_to_speech`, `translate_and_speak` | `tts` | **the criteria are read aloud** |
+| `customer_support` | `router` (llm) | the classifier branches on them |
+| `rag`, `notion_assistant`, `study_notion` | `retriever` | retrieval runs against user-text-plus-criteria |
+
+`memory` and `evaluator` are degraded rather than broken. So the text travels on a dedicated
+`prompt_instructions` **state channel** and only the blocks that opt in ever read it.
+
+### What shipped
+
+- **`InputConfig.prompt_instructions`**, written to the channel and declared via `channels()`
+  **only when non-empty** — a graph that doesn't use it declares nothing new and generates
+  byte-for-byte the code it always did. That property has a test.
+- **Consumers: Image and Video.** Not 3D — it takes an image, not a prompt, so it has nothing to
+  steer. The Video block had no steering of its own at all; this is now where it gets it.
+- **Appended after the block's own settings.** The Image block's `style` governs the *form* of the
+  prompt and is load-bearing on the shipped `Image → 3D` and `Image → Video` templates; the run's
+  criteria are added after it rather than replacing it.
+- **The field is hidden unless the graph contains a consumer**, and names them ("Used by: Image,
+  Video"). Hiding never clears the value — deleting the last Image block hides the control and
+  keeps the text.
+- **Code export carries it**: Input writes the channel from a named literal, Image/Video read it
+  and fold it in. Verified as a codegen fixed point through the round-trip parser.
+
+### The validator false-positive it exposed
+
+`validate.py`'s `undeclared_channel` rule compared `writes()` against **`spec.state`** — the raw
+declared state — while the compiler actually builds the graph from **`graph_channels`**, which
+backfills any channel a node *owns*. So the rule warned about graphs that run perfectly: a Memory
+node on a state without `memory`, and now every Input node carrying instructions.
+
+Fixed to compare against `graph_channels`. The genuine case still fires — a **Code** node writes
+wherever its config says and owns nothing — and the wiring matrix's provoking fixture moved from
+`memory` to `code` accordingly. Worth knowing: the old fixture only ever passed *because* of the
+bug.
+
+### Traps worth not rediscovering
+
+- **`last_return_dict` matches only a single-key return.** Input now returns two keys when
+  instructions are set, and its `parse()` bailed on `None` — so without switching to
+  `last_return_dict_items`, **every Input node using the feature would have degraded to a `code`
+  node** on the way back from the editor, silently. There is a test named for exactly this.
+- **The consumers recover channels positionally** (`state_get_keys(fn)[0]` is the prompt channel,
+  `[1]` the image channel for image-to-video), so the emitted `state.get("prompt_instructions")`
+  must come *after* those reads or the parser recovers the wrong wiring. Also tested.
+- **`CodegenContext` is the seam for graph-level facts.** A media node can't see the Input node's
+  config, so `graph_instructions` is resolved once in the codegen service and passed down — the
+  same mechanism `tool_refs` and `mcp_ordinal` already use. It is what keeps an unused field out
+  of the export entirely.
+- **The config-panel coverage test's dispatch regex needs `? <` on one line.** A multi-line
+  `type === "input" ? (` hides the block from it, and the field reads as unreachable.
+- **`nodeTypes` is already taken** in `app/canvas/page.tsx` — it is React Flow's component map.
+  The graph's node types are `graphNodeTypes`.
+- **Named `prompt_instructions`, not `instructions`.** `TTSConfig.instructions` already exists and
+  means tone and pacing for the voice; the testid would have collided outright.
+
+### Verified
+
+- **1916 Python tests pass**, 6 skipped. `packages/nodes/tests/test_prompt_instructions.py` is the
+  new file, and its most important case is a negative one: a Text-to-speech graph with
+  instructions set speaks **only** the user's words.
+- **174/175 e2e pass**, including a new `phase25-prompt-instructions.spec.ts` covering the
+  hide/show rule and the text-survives-hiding guarantee. The one failure is pre-existing (see
+  below).
+- **By hand in the browser**: the field is absent on a bare Input, absent with only an Agent,
+  appears once an Image block exists, and the Code tab shows the Input block writing the channel
+  and the Image block reading it *after* its prompt.
+
+### Still open on this work
+
+- Not committed or merged; ships with the Video block.
+- **Agent blocks deliberately don't read the channel.** On a text-only template the field stays
+  hidden, so "always cite your sources" is not yet expressible here. Extending it to
+  Agent/Responder/Revisor system prompts is a real option, and the reason it was left out is that
+  it changes the behaviour of ~20 existing agent templates.
+- `test_config_panel_coverage.py:53` still references a `test_no_new_inert_config_fields` that
+  does not exist — nothing currently fails a config field that is read by nothing.
+- `e2e/tests/phase12-pricing.spec.ts` fails, pre-existing and unrelated (the landing redesign
+  removed the "Templates" header link it asserts).
+
+## 🟢 Video block (Seedance on fal) — DONE (2026-08-28), on branch
+
+The fourth media block, after Image, Voice and 3D, and the one the 3D pass deliberately deferred.
+It follows the 3D seam exactly — a provider-neutral client in `services/model`, a node in
+`packages/nodes`, metering through the existing `usage` event, blob storage, an `asset` event for
+the Media rail — so no new SSE event type, no new billing path and no new export mechanism.
+
+### What shipped
+
+- **A `video` block** (`type: "video"`, label "Video") covering **both** Seedance directions from
+  one config. Which one applies is read off the endpoint id (`is_image_to_video`) rather than
+  stored as a `mode` field — the id already carries the fact, and a second copy of it drifts.
+- **Four endpoints**, two tiers: `fal-ai/bytedance/seedance/v1/pro/fast/{text,image}-to-video`
+  (the default — 720p is $0.0216/s, so a 5-second clip is ~11¢) and
+  `bytedance/seedance-2.0/fast/{text,image}-to-video` ($0.2419/s at 720p — **ten times** the
+  price, and the picker says so). Plus `fake` for keyless previews.
+- **Two templates**: `Text to video` (with an Agent in front that rewrites a request into camera
+  language) and `Image to video`. A starter is **mandatory**, not decorative — see the traps.
+- **Three canonical wirings, no producer changed**: `Input → Video`, `Upload → Video` and
+  `Image → Video`, the last two resolving the source picture exactly the way the 3D block does.
+- **In-node previews for every visual block.** The Video and (new this pass) **Image** blocks now
+  show what they produced on the canvas, beside the block that made it, opening the same shared
+  `MediaViewer` the chat and Media rail use. The 3D block already did.
+- **Chat, viewer and Media rail** all learned `video`: an `.mp4` link renders as an inline player
+  (no WebGL context to budget, unlike a mesh), the viewer gained a `<video>` arm, and the rail
+  gained a Video filter.
+
+### Gating: plan and key are separate axes
+
+Video is in `entitlements.PLUS_NODE_TYPES` **and** in the new
+`model_access.BYO_KEY_ONLY_NODES`. A Plus subscriber still needs their own fal key; a Free user
+with a fal key still can't run it. At $0.0096–$0.24 per **second**, a handful of clips on the
+platform key could trip the month's spend cap for everyone.
+
+**`FRONTIER_MODELS` is the wrong mechanism for this and was deliberately not used.** It enforces
+itself by *substitution* — swap the unkeyed model for `gpt-4o-mini`, emit a notice — which is right
+for a chat model and wrong for a media block: the swapped id fails the Video node's own
+compile-time allowlist, so the user's actionable "add your fal key" would arrive as an opaque
+engine error. `missing_media_keys` refuses up front instead, with a new `provider_key_required`
+code that reuses the existing "check your API keys" affordance.
+
+### The 3D billing bug this uncovered
+
+`provider_of("fal-ai/trellis")` fell through to the `"openai"` default, so `runs_on_own_key`
+returned **True** for any workspace holding an OpenAI key — meaning a 3D mesh generated on the
+*platform's* `FAL_KEY` was recorded at $0 and debited **zero credits**. Fixed with an explicit
+`fal-ai/` / `bytedance/` branch in `factory.provider_of`, pinned in both directions.
+
+**This changes existing customer billing** — affected workspaces start paying the 10 credits they
+always owed. It belongs in the PR description, not just the diff.
+
+### Pricing needed a compound key
+
+fal bills video per *second* and the rate roughly doubles between 480p and 720p, so one price per
+model would be a lie at one of them. `MEDIA_PRICES` gained `"<endpoint>@<resolution>"` entries in
+USD/second and the node reports that string as its `model` (`calypr_model.priced_model`), which
+also puts the resolution in front of the customer on the Usage tab. `_resolve` needed no change.
+The flat rates still must never enter `MODEL_PRICES` — `$0.24/s` written there as `$240,000/1M`
+would become `_MOST_EXPENSIVE`, the fail-closed rate for every unknown *text* model. A test pins
+it, and another asserts every (model × resolution) pair is priced.
+
+### The bug the first real run surfaced
+
+**The Video node was sending fal the Markdown image string — blob URL and all — as its motion
+prompt.** In `Image → Video` the last message *is* the Image node's `![alt](url)`, and
+`prompt_from` took the last message outright. The run succeeded anyway, which is what made it easy
+to miss; the only visible symptom was a `![` at the front of the generated clip's caption.
+
+Fixed with `_media.text_prompt_from`, which strips Markdown embeds and walks back to the last
+message with words left — **and the generated export does the same**, so a downloaded script
+doesn't carry the bug the product just fixed. Three regression tests.
+
+### Traps worth not rediscovering
+
+- **A new node type must appear in a STARTER or the wiring matrix dies.**
+  `test_wiring_matrix._representatives()` harvests one config per type from `STARTERS` while
+  `MIDDLE_TYPES` comes from `all_node_types()`, so a type with no template raises `KeyError` and
+  takes the whole suite down. The template is load-bearing.
+- **`test_config_panel_coverage` parses `ConfigPanel.tsx`** and fails on any config field with no
+  control — but it only detects `set({ key: … })` written literally. A ternary *around* the object
+  hides the field from it.
+- **`kwarg_const` cannot read a dict literal.** `MeshNode.parse`'s recovery of
+  `texture_size`/`mesh_simplify` from `arguments={…}` has therefore always been dead code (mesh
+  codegen never emits them either). Added `_parse.kwarg_dict`; the Video node uses it and really
+  does round-trip `resolution`/`duration`/`aspect_ratio` — which matters, because resolution is
+  half the price. Mesh left alone.
+- **fal's model *pages* omit the optional parameters**; `openapi.json?endpoint_id=…` has them.
+  `resolution` and `duration` are **string** enums (`"720p"`, `"5"`) — the mirror image of the
+  `texture_size` int trap the 3D block lost a run to.
+- **The two Seedance families don't share a schema**: 1.0 takes `camera_fixed` and reaches 1080p;
+  2.0 takes `generate_audio` and stops at 720p; only 2.0 accepts `"auto"`. The block sends the
+  intersection only, and `VIDEO_DURATIONS` is likewise an intersection (1.0: 2–12, 2.0: 4–15) with
+  a test that bites if someone widens it to one family's range.
+- **`duration="auto"` is deliberately not offered.** The length *is* the billable unit.
+- **Seedance 1.0 Lite is deprecated** on fal and re-routes to Pro Fast. Don't add it back.
+- **The left rail panel is one shared width.** Media's fifth filter clipped "Video" off the tab
+  strip, so `w-60` → `w-68`; `LEFT_PANEL_PX` must track it or the canvas jumps sideways when the
+  panel opens.
+
+### Verified
+
+- **1903 Python tests pass**, 6 skipped. Round-trip mutation corpus grew 378 → **530** pairs,
+  still **100% robustness / 100% clean absorption**; the video export is a codegen fixed point.
+- **171/172 e2e pass**, including new specs for the Video palette lock and the inline `.mp4`
+  player. The one failure is **pre-existing and unrelated** — see "Still open".
+- **By hand in the browser**: placed the block; confirmed the resolution guard (switching to
+  Seedance 2.0 with 1080p selected both removes the option *and* falls the value back, rather than
+  stranding a setting fal would reject); ran `Input → Image → Video → Output` on `fake` models and
+  watched both in-node previews populate and the shared viewer open from each.
+- **Through the real engine**: `usage` reports `<model>@720p` with the clip length in seconds, and
+  `Image → Video` picks the Image node's URL out of `messages` with nothing but an edge between
+  them.
+
+### Still open on this work
+
+- **Not committed or merged.** No `FAL_KEY` is needed in production — video is BYO-key only — and
+  `schemas.PROVIDER_KEY_PROVIDERS` already accepts `fal`, so there is no ops step beyond merging.
+- **Assets generated before the prompt fix keep their bad captions** (`![Create a drea…`). Cosmetic
+  and historical; new runs are clean.
+- **The Video wire colour is `#b45309` (amber-700)** and the sixteen-block wheel is genuinely full
+  once cyan is reserved for run state. Worth a look next to Upload's orange-500 and the Evaluator's
+  amber-500 on a busy canvas.
+- **`e2e/tests/phase12-pricing.spec.ts` fails, pre-existing**: it asserts a "Templates" header link
+  that the uncommitted landing redesign removed from `site/nav.ts`. Either restore the link or
+  update the spec — a product call, so it was left alone.
+- **Per-family knobs are a later pass** (`camera_fixed`, `generate_audio`, 1.0's `num_frames`).
+  Adding one means widening the config, the codegen fragment and the parser together — they
+  round-trip as a set.
 
 ## 🟢 Study mode, Workflows library, project-cap upsell — DONE (2026-08-20), merged + live
 
