@@ -55,6 +55,19 @@ def _auth(token: str | None) -> str:
     return auth
 
 
+def blob_configured() -> bool:
+    """Whether a durable upload is even possible on this deployment.
+
+    Asked *before* an expensive generation rather than discovered after it. The media blocks with
+    no `data:` fallback — 3D and Video, whose files are too large to inline — would otherwise
+    generate, bill, and then throw the artifact away: the customer pays credits for a file that no
+    longer exists and we pay fal for producing it.
+
+    Reads the same env var and applies the same stripping as `_auth`, so it can't disagree with
+    the upload it is predicting."""
+    return bool((os.environ.get(_TOKEN_ENV) or "").strip().strip("'\""))
+
+
 def _headers(auth: str) -> dict[str, str]:
     """The two headers every Vercel Blob call carries."""
     return {

@@ -46,6 +46,7 @@ from calypr_model import (
     is_image_to_video,
     priced_model,
 )
+from calypr_storage import blob_configured
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
@@ -168,6 +169,22 @@ class VideoNode(BaseNode):
             raise ValueError(
                 f"unsupported aspect ratio {cfg.aspect_ratio!r} — choose one of "
                 f"{', '.join(VIDEO_ASPECT_RATIOS)}"
+            )
+        # Refuse *before* generating when there is nowhere durable to put the result.
+        #
+        # These two blocks have no `data:` fallback — a GLB or an mp4 is too large to inline into a
+        # persisted message — so without storage the artifact is produced, billed, and then thrown
+        # away. That charged the customer credits for a file that no longer existed and cost us
+        # the fal call to make it. Checked here rather than after the fact so neither happens.
+        #
+        # `fake` is exempt — keyless, free, unpriced, and what CI and local dev run on, where blob
+        # is never configured — as is an injected client, the same test seam the allowlist above
+        # honours.
+        if not injected and model != "fake" and not blob_configured():
+            raise ValueError(
+                "File storage isn't configured on this deployment, so there would be nowhere to "
+                "keep the result. Set BLOB_READ_WRITE_TOKEN, or switch this block to the `fake` "
+                "model."
             )
         client = video_model_for_node(ctx, cfg.model)
         wants_image = is_image_to_video(cfg.model)

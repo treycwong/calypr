@@ -30,6 +30,7 @@ from typing import Any
 
 from calypr_dsl import Reducer, StateChannel
 from calypr_model import DEFAULT_MESH_SIMPLIFY, DEFAULT_TEXTURE_SIZE, MESH_MODELS
+from calypr_storage import blob_configured
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel
 
@@ -109,9 +110,26 @@ class MeshNode(BaseNode):
     def compile(cls, cfg: MeshConfig, ctx: NodeContext) -> NodeFn:
         # Fail at compile time, not mid-run: an unpriced mesh model would be recorded at a token
         # rate (≈ $0) rather than its real flat cost. See `MESH_MODELS`.
-        if ctx.mesh_model is None and cfg.model.lower().strip() not in (*MESH_MODELS, "fake"):
+        injected = ctx.mesh_model is not None
+        if not injected and cfg.model.lower().strip() not in (*MESH_MODELS, "fake"):
             raise ValueError(
                 f"unknown 3D model {cfg.model!r} — choose one of {', '.join(MESH_MODELS)}"
+            )
+        # Refuse *before* generating when there is nowhere durable to put the result.
+        #
+        # These two blocks have no `data:` fallback — a GLB or an mp4 is too large to inline into a
+        # persisted message — so without storage the artifact is produced, billed, and then thrown
+        # away. That charged the customer credits for a file that no longer existed and cost us
+        # the fal call to make it. Checked here rather than after the fact so neither happens.
+        #
+        # `fake` is exempt — keyless, free, unpriced, and what CI and local dev run on, where blob
+        # is never configured — as is an injected client, the same test seam the allowlist above
+        # honours.
+        if not injected and cfg.model.lower().strip() != "fake" and not blob_configured():
+            raise ValueError(
+                "File storage isn't configured on this deployment, so there would be nowhere to "
+                "keep the result. Set BLOB_READ_WRITE_TOKEN, or switch this block to the `fake` "
+                "model."
             )
         client = mesh_model_for_node(ctx, cfg.model)
         # See the Video node: the blocks this one is downstream of, so two Image → 3D branches

@@ -132,3 +132,34 @@ def test_the_ordinary_chain_is_not_flagged():
     — a warning on a graph that now works would be noise."""
     codes = [i.code for i in validate_graph(_fan_out(2))]
     assert "ambiguous_image_source" not in codes
+
+
+# --- nothing is billed for an artifact that can't be kept ----------------------------------------
+
+
+def test_a_real_media_model_refuses_when_there_is_nowhere_to_store_the_result(monkeypatch):
+    """3D and Video have no `data:` fallback — a GLB or an mp4 is too large to inline — so without
+    blob storage the file is generated, billed, and thrown away. In production that charged the
+    customer credits for a file that no longer existed *and* cost us the fal call to make it.
+
+    Refused at compile time, before either happens. `conftest.py` already unsets the token, which
+    is the unconfigured deployment this reproduces."""
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    from calypr_nodes.mesh import MeshConfig, MeshNode
+    from calypr_nodes.video import VideoConfig, VideoNode
+
+    with pytest.raises(ValueError, match="File storage isn't configured"):
+        MeshNode.compile(MeshConfig(model="fal-ai/trellis"), NodeContext())
+    with pytest.raises(ValueError, match="File storage isn't configured"):
+        VideoNode.compile(VideoConfig(model=I2V), NodeContext())
+
+
+def test_the_fake_models_still_run_without_storage(monkeypatch):
+    """The exemption that keeps CI, local dev and the keyless preview working — `fake` costs
+    nothing, so there is no charge to be unfair about."""
+    monkeypatch.delenv("BLOB_READ_WRITE_TOKEN", raising=False)
+    from calypr_nodes.mesh import MeshConfig, MeshNode
+    from calypr_nodes.video import VideoConfig, VideoNode
+
+    assert MeshNode.compile(MeshConfig(model="fake"), NodeContext()) is not None
+    assert VideoNode.compile(VideoConfig(model="fake"), NodeContext()) is not None
