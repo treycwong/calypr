@@ -525,3 +525,40 @@ def test_an_unknown_plan_gets_the_free_answer():
     """`limits()` fails to the smallest set, so a null or garbage plan opens no paid block."""
     assert entitlements.gated_nodes_in(_graph_with("mesh"), None) == ["mesh"]
     assert entitlements.gated_nodes_in(_graph_with("mesh"), "enterprise") == ["mesh"]
+
+
+# --- BYO provider keys a plan can actually spend -------------------------------------------------
+
+
+def test_free_is_not_offered_the_fal_key():
+    """`fal` powers only the 3D and Video blocks, both Plus-gated, so on Free the field is
+    somewhere to paste a credential that can never be spent."""
+    offered = entitlements.usable_providers(entitlements.FREE)
+    assert "fal" not in offered
+    # Everything else is untouched — this is one provider, not a general lockdown.
+    assert {"openai", "anthropic", "tavily", "unsplash"} <= set(offered)
+
+
+@pytest.mark.parametrize("plan", [entitlements.PLUS, entitlements.BETA])
+def test_paid_plans_are_offered_every_provider(plan):
+    from calypr_api.schemas import PROVIDER_KEY_PROVIDERS
+
+    assert entitlements.usable_providers(plan) == list(PROVIDER_KEY_PROVIDERS)
+
+
+def test_a_stored_key_stays_visible_after_a_downgrade():
+    """The case hiding it would otherwise create: a workspace that had Plus, saved a fal key and
+    lapsed would be left holding a credential it can neither see nor delete."""
+    assert "fal" in entitlements.usable_providers(entitlements.FREE, on_file={"fal"})
+
+
+def test_hidden_providers_are_only_ever_used_by_plus_blocks():
+    """The rule behind `PLUS_ONLY_PROVIDERS`, not just its current contents. Wire a fal-powered
+    block that Free can run and this fails — which is the moment the key must stop being hidden."""
+    from calypr_api.provider_keys import _TOOL_KEY_PROVIDERS
+
+    assert entitlements.PLUS_ONLY_PROVIDERS == {"fal"}
+    # `fal` reaches the engine only through the 3D and Video nodes…
+    assert {"mesh", "video"} <= entitlements.PLUS_NODE_TYPES
+    # …and never through a Tool provider, which any plan can run.
+    assert "fal" not in set(_TOOL_KEY_PROVIDERS.values())

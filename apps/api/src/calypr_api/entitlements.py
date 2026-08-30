@@ -165,6 +165,34 @@ def has_roundtrip(plan: str | None) -> bool:
 PLUS_NODE_TYPES = frozenset({"mesh", "video"})
 
 
+#: BYO provider keys only a paid plan can put to use.
+#:
+#: `fal` powers the 3D and Video blocks and nothing else — both are in `PLUS_NODE_TYPES` above, and
+#: no Tool provider routes to it (`provider_keys._TOOL_KEY_PROVIDERS`). So on Free the key is dead
+#: config: somewhere to paste a credential that can never be spent. Offering it reads as a feature
+#: the plan includes, and the refusal only arrives at Run.
+#:
+#: Unlike `PLUS_NODE_TYPES`, these are *hidden* rather than shown locked. A palette tile advertises
+#: a block worth upgrading for; an empty key field advertises nothing, and a paid plan is not
+#: something you sell in a credentials form.
+PLUS_ONLY_PROVIDERS = frozenset({"fal"})
+
+
+def usable_providers(plan: str | None, on_file: set[str] | None = None) -> list[str]:
+    """The provider keys this plan should be offered, in catalogue order.
+
+    `on_file` is what the workspace has already stored: a provider stays visible when a key exists
+    for it, even if the plan no longer covers it. A workspace that downgrades from Plus with a fal
+    key saved would otherwise be left holding a credential it can neither see nor delete.
+    """
+    from calypr_api.schemas import PROVIDER_KEY_PROVIDERS
+
+    stored = on_file or set()
+    if has_media_nodes(plan):
+        return list(PROVIDER_KEY_PROVIDERS)
+    return [p for p in PROVIDER_KEY_PROVIDERS if p not in PLUS_ONLY_PROVIDERS or p in stored]
+
+
 def has_media_nodes(plan: str | None) -> bool:
     """Whether this plan may run the paid media blocks (`PLUS_NODE_TYPES`)."""
     return limits(plan).media_nodes

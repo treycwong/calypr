@@ -58,8 +58,20 @@ const CONNECTOR_CATALOG: {
   mark: string;
   auth: "oauth" | "token";
 }[] = [
-  { kind: "notion", label: "Notion", category: "Web", mark: "N", auth: "oauth" },
-  { kind: "github", label: "GitHub", category: "Dev", mark: "GH", auth: "token" },
+  {
+    kind: "notion",
+    label: "Notion",
+    category: "Web",
+    mark: "N",
+    auth: "oauth",
+  },
+  {
+    kind: "github",
+    label: "GitHub",
+    category: "Dev",
+    mark: "GH",
+    auth: "token",
+  },
 ];
 
 // GitHub scopes its MCP tools by URL path; these are the surfaces worth offering. "" is
@@ -141,7 +153,10 @@ export function SettingsPanel() {
       }
       toast("That connection isn't available yet.", "error");
     } catch (e) {
-      toast(e instanceof Error ? e.message : "Couldn't start that connection.", "error");
+      toast(
+        e instanceof Error ? e.message : "Couldn't start that connection.",
+        "error",
+      );
     }
   };
 
@@ -167,7 +182,9 @@ export function SettingsPanel() {
     try {
       const res = await testConnector(id);
       toast(
-        res.ok ? `Connected — ${res.tools.length} tool(s) found.` : (res.error ?? "Test failed."),
+        res.ok
+          ? `Connected — ${res.tools.length} tool(s) found.`
+          : (res.error ?? "Test failed."),
         res.ok ? "default" : "error",
       );
     } catch {
@@ -218,7 +235,10 @@ export function SettingsPanel() {
         </div>
         {/* The same two-column grid the Blocks and Templates panels use, so every sidebar panel
             reads as one system. */}
-        <div className="grid grid-cols-2 gap-2" data-testid="connected-accounts">
+        <div
+          className="grid grid-cols-2 gap-2"
+          data-testid="connected-accounts"
+        >
           {accounts.map((c) => (
             <ConnectorCard
               key={c.id}
@@ -231,14 +251,17 @@ export function SettingsPanel() {
           ))}
         </div>
         {!loading && accounts.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No accounts connected yet.</p>
+          <p className="text-xs text-muted-foreground">
+            No accounts connected yet.
+          </p>
         ) : null}
         <Dialog open={connectOpen} onOpenChange={setConnectOpen}>
           <DialogContent data-testid="connection-dialog">
             <DialogHeader>
               <DialogTitle>Add a connection</DialogTitle>
               <DialogDescription>
-                Connect an account with OAuth. You&apos;ll be sent to the app to approve access.
+                Connect an account with OAuth. You&apos;ll be sent to the app to
+                approve access.
               </DialogDescription>
             </DialogHeader>
             <div className="-mx-1 flex flex-col">
@@ -297,8 +320,8 @@ export function SettingsPanel() {
             MCP servers
           </h3>
           <p className="mb-2 text-xs text-muted-foreground">
-            Adding new servers is paused while we focus on app connections. Your existing servers
-            keep working.
+            Adding new servers is paused while we focus on app connections. Your
+            existing servers keep working.
           </p>
           <div className="grid grid-cols-2 gap-2" data-testid="mcp-servers">
             {servers.map((c) => (
@@ -357,37 +380,49 @@ function ApiKeysSection({
         Models
       </h3>
       <p className="mb-2 text-xs text-muted-foreground">
-        Bring your own provider keys. Stored encrypted; overrides the server key for your runs.
+        Bring your own provider keys. Stored encrypted; overrides the server key
+        for your runs.
       </p>
       {/* A tile per provider rather than a dropdown: four options behind a `<select>` hid which
           ones already had a key, which is the only thing you come to this section to find out.
           Only the ones that *do* say so — a "No key" caption under every unkeyed provider was
           three quarters of the grid repeating the absence of news. */}
       <div className="grid grid-cols-2 gap-2" data-testid="key-providers">
-        {Object.entries(PROVIDER_LABELS).map(([val, label]) => {
-          const on = providerKeys.find((p) => p.provider === val)?.has_key;
-          return (
-            <button
-              key={val}
-              type="button"
-              data-testid={`key-provider-${val}`}
-              onClick={() => setProvider(val)}
-              className={TILE_CLASS}
-            >
-              <BrandMark kind={val} className="h-5 w-5" />
-              <span className="w-full truncate text-xs font-medium">{label}</span>
-              {on ? (
-                <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                  <span
-                    className="h-1.5 w-1.5 rounded-full bg-emerald-400"
-                    data-testid={`key-onfile-${val}`}
-                  />
-                  Key on file
+        {/* Driven by what the API returned, not by `PROVIDER_LABELS` alone. The server filters the
+            list by plan — `fal` only powers the Plus-gated 3D and Video blocks, so on Free it is a
+            field to paste a credential that can never be spent — and this grid used to ignore that
+            and render the hardcoded map regardless. `PROVIDER_LABELS` is now only the label lookup,
+            and a provider it doesn't name (moonshot, which lives in Dashboard → Settings instead)
+            still stays out. */}
+        {providerKeys
+          .filter((p) => p.provider in PROVIDER_LABELS)
+          .map(({ provider: val }) => {
+            const label = PROVIDER_LABELS[val];
+            const on = providerKeys.find((p) => p.provider === val)?.has_key;
+            return (
+              <button
+                key={val}
+                type="button"
+                data-testid={`key-provider-${val}`}
+                onClick={() => setProvider(val)}
+                className={TILE_CLASS}
+              >
+                <BrandMark kind={val} className="h-5 w-5" />
+                <span className="w-full truncate text-xs font-medium">
+                  {label}
                 </span>
-              ) : null}
-            </button>
-          );
-        })}
+                {on ? (
+                  <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
+                    <span
+                      className="h-1.5 w-1.5 rounded-full bg-emerald-400"
+                      data-testid={`key-onfile-${val}`}
+                    />
+                    Key on file
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
       </div>
 
       <ProviderKeyDialog
@@ -435,7 +470,10 @@ function ProviderKeyDialog({
   };
 
   return (
-    <Dialog open={!!provider} onOpenChange={(o) => (o ? onOpenChange(true) : close())}>
+    <Dialog
+      open={!!provider}
+      onOpenChange={(o) => (o ? onOpenChange(true) : close())}
+    >
       <DialogContent data-testid="key-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
@@ -451,7 +489,10 @@ function ProviderKeyDialog({
 
         {hasKey ? (
           <div className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-2">
-            <span className="font-mono text-sm text-muted-foreground" data-testid="key-masked">
+            <span
+              className="font-mono text-sm text-muted-foreground"
+              data-testid="key-masked"
+            >
               {/* The dots are a fixed-width mask, not the key's real length — that would leak
                   something about the secret for nothing. */}
               ••••••••••••{hint ? ` ${hint}` : ""}
@@ -485,7 +526,11 @@ function ProviderKeyDialog({
               data-testid="key-reveal"
               className="absolute inset-y-0 right-0 flex w-8 items-center justify-center text-muted-foreground transition hover:text-foreground"
             >
-              {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              {reveal ? (
+                <EyeOff className="h-4 w-4" />
+              ) : (
+                <Eye className="h-4 w-4" />
+              )}
             </button>
           </div>
         </div>
@@ -553,8 +598,8 @@ function GithubConnectDialog({
         <DialogHeader>
           <DialogTitle>Connect GitHub</DialogTitle>
           <DialogDescription>
-            Paste a fine-grained personal access token. It&apos;s encrypted on our server and
-            never shown again.
+            Paste a fine-grained personal access token. It&apos;s encrypted on
+            our server and never shown again.
           </DialogDescription>
         </DialogHeader>
         <div className="flex flex-col gap-3">
@@ -661,7 +706,11 @@ function ConnectorCard({
         {/* Opens to the right of the card rather than below it: anchored under the trigger, the
             menu covered the card's own mark and status, so you couldn't see which account you
             were about to disconnect. */}
-        <DropdownMenuContent side="right" align="start" className="w-auto min-w-36">
+        <DropdownMenuContent
+          side="right"
+          align="start"
+          className="w-auto min-w-36"
+        >
           <DropdownMenuItem
             data-testid={`connector-test-${connector.kind}`}
             onClick={onTest}
