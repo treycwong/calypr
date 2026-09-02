@@ -331,23 +331,135 @@
   animation-delay: var(--eq-delay, 0s);
 }
 
-/* The Video tile's playhead — sweeps across the filmstrip while the tile is hovered, the same
-   hover-gated pattern the equalizer above uses. Transform only, so it composites off the main
-   thread; this page has already learned what per-frame JS costs it. */
-@keyframes playhead-sweep {
+/* The 3D tile's cube — six faces and eight vertices in real CSS 3D rather than a flat SVG that
+   only pretends to tilt, so hovering actually orbits the object the way the panel's chrome says
+   it does. Transform-only, and the rest pose is the animation's first frame (and its last, 360°
+   later) so starting and stopping never snap. */
+.mesh-cube {
+  transform-style: preserve-3d;
+  transform: rotateX(-20deg) rotateY(-32deg);
+}
+@keyframes mesh-spin {
   from {
-    transform: translateX(0);
+    transform: rotateX(-20deg) rotateY(-32deg);
   }
   to {
-    transform: translateX(var(--playhead-travel, 100%));
+    transform: rotateX(-20deg) rotateY(328deg);
   }
 }
-.group:hover .playhead {
-  animation: playhead-sweep 2.6s linear infinite;
+.group:hover .mesh-cube {
+  animation: mesh-spin 9s linear infinite;
+}
+
+/* The Knowledge tile's flow. Each dot rides the very path its rail is drawn from — the geometry
+   is passed in from the component as `offset-path`, so a rail and its traffic cannot drift apart.
+   Hover-gated like the rest of the section; the dots are transparent at rest, so what's left is
+   a clean static pipeline whose direction the chevrons still carry. */
+@keyframes rag-flow {
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
+}
+.rag-dot {
+  offset-rotate: 0deg;
+  opacity: 0;
+}
+.group:hover .rag-dot {
+  animation: rag-flow 2.8s linear infinite;
+}
+
+/* The model pulsing on the same beat as the traffic reaching it. */
+@keyframes rag-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.45;
+  }
+  100% {
+    transform: scale(1.85);
+    opacity: 0;
+  }
+}
+.rag-pulse {
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  opacity: 0;
+}
+.group:hover .rag-pulse {
+  animation: rag-pulse 2.8s ease-out infinite;
+}
+
+/* The Image tile's scan head — the bottom edge of the window over the finished render, so
+   animating the window's height moves the head and the reveal as one thing. Height rather than
+   a transform because the two have to stay welded together; it is a single small absolutely
+   positioned box, so nothing outside it can reflow.
+
+   `forwards`, and deliberately not `infinite`: the sweep runs once and holds the resolved frame
+   for as long as the tile is hovered, which is a generation finishing. Rest state is `h-0` in
+   the markup, so dropping the rule on pointer-leave returns it to latent on its own. */
+@keyframes image-scan {
+  from {
+    height: 0%;
+  }
+  to {
+    height: 100%;
+  }
+}
+/* The head fades in as the pass starts and out as it lands, so the finished picture is not left
+   with a cyan rule sitting across its bottom edge. Same duration ⇒ same clock. */
+@keyframes image-scan-head {
+  0% {
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  82% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+.group:hover .scan-window {
+  animation: image-scan 2.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+.group:hover .scan-head {
+  animation: image-scan-head 2.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+/* No pointer means no hover means the tile would never resolve, so a phone would be left
+   looking at grey noise and reading it as a broken image. Touch gets the finished render. */
+@media (hover: none) {
+  .scan-window {
+    height: 100%;
+  }
+  .scan-head {
+    opacity: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .group:hover .playhead {
+  .group:hover .scan-window {
+    animation: none;
+    height: 100%;
+  }
+  .group:hover .scan-head {
+    animation: none;
+    opacity: 0;
+  }
+  .group:hover .rag-dot,
+  .group:hover .rag-pulse,
+  .group:hover .mesh-cube {
     animation: none;
   }
   .marquee-track {
