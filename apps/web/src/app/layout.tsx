@@ -1,44 +1,35 @@
 import type { Metadata } from "next";
-import { Geist_Mono } from "next/font/google";
-import localFont from "next/font/local";
+import { Figtree, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 
 import { AnalyticsInit } from "@/components/analytics-init";
 import { HydrationMarker } from "@/components/hydration-marker";
 import { ToastProvider } from "@/components/ui/toast";
 
-// Display / headings — PP Hatton (self-hosted, see src/fonts).
-const hatton = localFont({
-  variable: "--font-hatton",
-  display: "swap",
-  src: [
-    { path: "../fonts/PPHatton-Medium.woff2", weight: "500", style: "normal" },
-    { path: "../fonts/PPHatton-Medium.woff", weight: "500", style: "normal" },
-    { path: "../fonts/PPHatton-Bold.woff2", weight: "700", style: "normal" },
-    { path: "../fonts/PPHatton-Bold.woff", weight: "700", style: "normal" },
-    { path: "../fonts/PPHatton-Ultrabold.woff2", weight: "800", style: "normal" },
-    { path: "../fonts/PPHatton-Ultrabold.woff", weight: "800", style: "normal" },
-  ],
-});
+/* Spectra is a one-sans system: a geometric-humanist grotesque for everything, plus one
+   coding mono for labels. Figtree and JetBrains Mono are the bundle's own identified
+   stand-ins (`tokens/fonts.css` says the source binaries were never supplied).
 
-// Body — PP Mori (self-hosted).
-const mori = localFont({
-  variable: "--font-mori",
-  display: "swap",
-  src: [
-    { path: "../fonts/PPMori-Regular.woff2", weight: "400", style: "normal" },
-    { path: "../fonts/PPMori-Regular.woff", weight: "400", style: "normal" },
-    { path: "../fonts/PPMori-SemiBold.woff2", weight: "600", style: "normal" },
-    { path: "../fonts/PPMori-SemiBold.woff", weight: "600", style: "normal" },
-    { path: "../fonts/PPMori-ExtraBold.woff2", weight: "800", style: "normal" },
-    { path: "../fonts/PPMori-ExtraBold.woff", weight: "800", style: "normal" },
-  ],
-});
+   The bundle loads both from the Google Fonts CSS API at runtime; `next/font/google`
+   self-hosts them at build time instead, so there's no render-blocking third-party
+   request and no layout shift.
 
-// Retained for monospace UI chrome (labels, timestamps) and blog code blocks.
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+   Weight 300 is not optional padding in this list — every display size and heading in
+   Spectra is set light, and without it the browser synthesises the weight and the whole
+   type register reads wrong. */
+const figtree = Figtree({
+  variable: "--font-figtree",
   subsets: ["latin"],
+  display: "swap",
+  weight: ["300", "400", "500", "600", "700"],
+});
+
+// Mono labels only: `01 HARDWARE`, `MOST POPULAR`, `02 // SYSTEM ACTIVE`, and blog code.
+const jetbrainsMono = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  display: "swap",
+  weight: ["400", "500", "700"],
 });
 
 export const metadata: Metadata = {
@@ -66,7 +57,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`dark ${mori.variable} ${hatton.variable} ${geistMono.variable} h-full antialiased`}
+      className={`dark ${figtree.variable} ${jetbrainsMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col">
         <AnalyticsInit />

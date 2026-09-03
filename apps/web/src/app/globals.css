@@ -2,14 +2,21 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/* The Spectra design tokens (raw custom properties). Mapped onto Tailwind names in
+   `@theme inline` below, and onto the shadcn semantic names under `[data-brand="spectra"]`. */
+@import "./spectra.css";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-mori), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), "Geist Mono Fallback", ui-monospace, monospace;
-  --font-heading: var(--font-hatton), ui-serif, Georgia, serif;
+  --font-sans: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Spectra is a one-sans system: display and headings are the same face as body,
+     differentiated by size and a light (300) weight, never by a second family.
+     There is no serif anywhere in this brand, so the old Georgia fallback is gone. */
+  --font-heading: var(--font-figtree), ui-sans-serif, system-ui, sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,6 +52,35 @@
      the accent is the same in both themes, and a `var()` pointing at a non-theme property gets
      pruned out of the compiled stylesheet, so `text-brand` silently renders as inherit. */
   --color-brand: oklch(0.789 0.154 211.53);
+  /* ── Spectra palette ────────────────────────────────────────────────────────
+     Literal values on purpose. A `@theme` entry written as `var(--green-400)` gets
+     pruned out of the compiled stylesheet by Tailwind v4 (the same trap that made
+     `text-brand` silently render as `inherit`), so these repeat the numbers from
+     `spectra.css` rather than referencing them. Keep the two in sync by hand.
+     Nothing in the app used a `green-*`/`ink-*`/`mist-*` class before this, so
+     overriding Tailwind's default green ramp here is safe. */
+  --color-green-50: #ecfbf3;
+  --color-green-100: #d2f5e2;
+  --color-green-200: #a7e9c6;
+  --color-green-300: #86d6a8;
+  --color-green-400: #3ece8b;
+  --color-green-500: #22b573;
+  --color-green-600: #17945c;
+  --color-green-700: #127349;
+  --color-green-800: #0e5537;
+  --color-green-900: #0b3524;
+  --color-green-950: #071a12;
+  --color-ink-950: #06110c;
+  --color-ink-900: #0a1712;
+  --color-ink-850: #0e1d16;
+  --color-ink-800: #13271e;
+  --color-ink-700: #1b3428;
+  --color-ink-600: #274a39;
+  --color-mist-50: #f4f8f6;
+  --color-mist-100: #eaf1ed;
+  --color-mist-200: #d9e4dd;
+  --color-mist-300: #c2d2c9;
+  --color-slate-ink: #6b7f74;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -121,6 +157,46 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+}
+
+/* ── Spectra surfaces ─────────────────────────────────────────────────────────
+   The shadcn semantic names, repointed at Spectra's ink/mist surfaces.
+
+   Scoped to `[data-brand="spectra"]` rather than applied at `:root`/`.dark`, so
+   this pass changes the marketing surface only — the canvas, dashboard and
+   settings keep their current neutral look until they're redesigned too. When
+   they are, this selector moves up to `<html>` in `layout.tsx` and the untagged
+   `:root`/`.dark` blocks above get deleted.
+
+   Same specificity as `.dark` (0,1,0) and declared after it, so it wins on the
+   landing page without needing `!important` or a doubled selector. */
+[data-brand="spectra"] {
+  --background: #06110c;
+  --foreground: #f2f7f4;
+  --card: #0e1d16;
+  --card-foreground: #f2f7f4;
+  --popover: #0e1d16;
+  --popover-foreground: #f2f7f4;
+  --primary: #22b573;
+  --primary-foreground: #06110c;
+  --secondary: #13271e;
+  --secondary-foreground: #f2f7f4;
+  --muted: #13271e;
+  --muted-foreground: #9db3a6;
+  --accent: #13271e;
+  --accent-foreground: #f2f7f4;
+  /* Spectra names no error colour at all — the source has neither red nor amber.
+     Keep a destructive token anyway (toasts and form errors need one) but pull it
+     toward the brand's desaturation so it doesn't read as a foreign hue. */
+  --destructive: oklch(0.65 0.16 25);
+  --border: rgba(255, 255, 255, 0.07);
+  --input: rgba(255, 255, 255, 0.1);
+  --ring: #3ece8b;
+  /* `--radius` is deliberately NOT overridden here. The shadcn scale is a multiplier chain
+     (`rounded-2xl` = 1.8 x --radius), and Spectra's radii are fixed steps — 6px badges, 12px
+     chips, 16px media, 24px cards, 32px light panels — that no single base value reproduces.
+     Setting it to 1.5rem made every card 43px. The Spectra primitives spell their radius out
+     instead. */
 }
 
 @layer base {
@@ -238,7 +314,7 @@
 }
 .prose-blog td { border-bottom: 1px solid var(--border); padding: 0.5em 0.75em; }
 .prose-blog :not(pre) > code {
-  font-family: var(--font-geist-mono);
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
   font-size: 0.85em;
   color: var(--foreground);
   background: color-mix(in oklab, var(--card) 80%, var(--foreground) 4%);
@@ -253,7 +329,7 @@
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: color-mix(in oklab, var(--card) 60%, transparent);
-  font-family: var(--font-geist-mono);
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
   font-size: 0.8125rem;
   line-height: 1.7;
 }
@@ -261,7 +337,7 @@
 .prose-blog figure[data-rehype-pretty-code-figure] { margin: 1.5em 0; }
 .prose-blog figure[data-rehype-pretty-code-figure] pre { margin: 0; }
 .prose-blog [data-rehype-pretty-code-title] {
-  font-family: var(--font-geist-mono);
+  font-family: var(--font-jetbrains), ui-monospace, monospace;
   font-size: 0.6875rem;
   color: var(--muted-foreground);
   border: 1px solid var(--border);
@@ -270,6 +346,52 @@
   padding: 0.5em 1.25em;
 }
 .prose-blog [data-rehype-pretty-code-title] + pre { border-radius: 0 0 var(--radius) var(--radius); }
+
+
+/* ── Spectra motion + surface utilities ───────────────────────────────────────
+   The bundle's two reusable background/motion devices, as classes. */
+
+/* The repeating 1px vertical rule field that sits behind full-width sections.
+   One of only four background devices the system permits, and the only one that
+   repeats. */
+.grid-lines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--grid-line) 0 1px,
+    transparent 1px var(--grid-column)
+  );
+}
+.grid-lines-light::before {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--grid-line-light) 0 1px,
+    transparent 1px var(--grid-column)
+  );
+}
+
+/* The slow opacity pulse on a status dot — per the system's motion rules, the
+   only continuous animation allowed anywhere in the brand. */
+@keyframes spectra-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.spectra-pulse {
+  animation: spectra-pulse 2s var(--ease-in-out) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .spectra-pulse {
+    animation: none;
+  }
+}
 
 /* ── Landing-page motion, all CSS ─────────────────────────────────────────────
    Continuous animation lives here rather than in React: the WebGL hero backdrop

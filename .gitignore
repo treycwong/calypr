@@ -39,3 +39,6 @@ playwright/.cache/
 # part of the monorepo — not a pnpm workspace member, not built, not deployed. Ignored so a
 # `git add -A` can't sweep it into a commit again (it did, in PR #49).
 compute/
+
+# Local snapshot of the pre-Spectra UI (see tag ui-pre-spectra). Reference only.
+ui-backup/
