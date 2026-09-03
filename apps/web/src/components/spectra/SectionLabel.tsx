@@ -12,6 +12,13 @@ import { cn } from "@/lib/utils";
  *
  * The index is decorative order, not a sequence the reader has to follow; sections run
  * `01`–`04` down the page.
+ *
+ * `media` is the tone for a label sitting directly on a photograph. It exists because the
+ * other two don't survive there: the muted grey-green text measures ~3.8:1 against the
+ * brightest patches of the hero art (under AA for 12px), and the `--border-dark-strong`
+ * rule is a solid near-black that simply vanishes on a picture. Spectra's answer to type
+ * over imagery is full-strength type, never a scrim, so this tone goes to full strength and
+ * swaps the rule for a translucent white one.
  */
 export function SectionLabel({
   index,
@@ -21,17 +28,18 @@ export function SectionLabel({
 }: {
   index?: string;
   children: ReactNode;
-  tone?: "dark" | "light";
+  tone?: "dark" | "light" | "media";
   className?: string;
 }) {
-  const dark = tone === "dark";
+  const light = tone === "light";
+  const media = tone === "media";
   return (
     <div className={cn("flex items-center gap-3", className)}>
       {index ? (
         <span
           className={cn(
             "rounded-[6px] bg-[var(--eyebrow-bg)] px-[7px] py-[3px] font-mono text-xs font-bold tracking-[0.14em]",
-            dark ? "text-[var(--accent-on-dark)]" : "text-[var(--accent-on-light)]",
+            light ? "text-[var(--accent-on-light)]" : "text-[var(--accent-on-dark)]",
           )}
         >
           {index}
@@ -39,12 +47,19 @@ export function SectionLabel({
       ) : null}
       <span
         aria-hidden
-        className={cn("h-px w-9", dark ? "bg-[var(--border-dark-strong)]" : "bg-[var(--mist-300)]")}
+        className={cn(
+          "h-px w-9",
+          media ? "bg-white/30" : light ? "bg-[var(--mist-300)]" : "bg-[var(--border-dark-strong)]",
+        )}
       />
       <span
         className={cn(
           "font-mono text-xs font-medium uppercase tracking-[0.14em]",
-          dark ? "text-[var(--text-on-dark-muted)]" : "text-[var(--text-muted)]",
+          media
+            ? "text-[var(--text-on-dark)]"
+            : light
+              ? "text-[var(--text-muted)]"
+              : "text-[var(--text-on-dark-muted)]",
         )}
       >
         {children}
