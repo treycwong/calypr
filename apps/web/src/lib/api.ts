@@ -184,10 +184,13 @@ export async function* assistAgent(
   messages: AssistMessageInput[],
   currentGraph: GraphSpec | null,
   model?: string,
+  /** The saved project the canvas has open, so the API can refuse a draft for a read-only one.
+   *  Undefined on an unsaved canvas, which has no project to be locked. */
+  agentId?: string,
 ): AsyncGenerator<AssistEvent> {
   yield* streamSSE<AssistEvent>(
     "/api/assist",
-    { messages, current_graph: currentGraph, model },
+    { messages, current_graph: currentGraph, model, agent_id: agentId },
     (status) => ({ type: "error", message: `assistant unavailable (${status})` }),
   );
 }

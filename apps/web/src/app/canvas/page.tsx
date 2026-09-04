@@ -1261,6 +1261,8 @@ function CanvasInner() {
                   snapshot={snapshotCanvas}
                   applyGraph={applyGraphToCanvas}
                   restore={restoreCanvas}
+                  agentId={agentId ?? undefined}
+                  locked={agentLocked}
                 />
               ) : null}
             </div>

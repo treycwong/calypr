@@ -87,6 +87,11 @@ class AssistRequest(BaseModel):
     messages: list[AssistMessage]
     current_graph: GraphSpec | None = None
     model: str | None = None
+    #: The saved project the canvas has open, when it has one. Only used to answer "is this
+    #: project read-only?" — the assistant drafts against `current_graph`, never against
+    #: whatever is stored under this id, so an id that isn't yours can at worst refuse a draft
+    #: you were entitled to. Optional because an unsaved canvas has no project yet.
+    agent_id: str | None = None
 
 
 class AgentCreate(BaseModel):

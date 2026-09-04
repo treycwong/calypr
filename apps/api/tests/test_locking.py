@@ -285,6 +285,30 @@ def test_runs_are_refused_in_a_locked_project(user):
 
 
 @requires_db
+def test_the_assistant_is_refused_in_a_locked_project(user):
+    """The assistant is as expensive as a run and produces something the project cannot keep:
+    drafting burns credits on an LLM call, and Apply then writes to an agent `update_agent`
+    refuses. Gating the run but not this left the more galling half open — spend, then a 402 at
+    the moment of saving."""
+    acc, ws_ids, agent_ids = _plus_account_at_capacity(user)
+    _downgrade(acc)
+    home, locked_agent = ws_ids[0], agent_ids[-1]
+
+    body = {"messages": [{"role": "user", "content": "build me a chatbot"}]}
+    locked_body = {**body, "agent_id": str(locked_agent)}
+    r = client.post("/assist", json=locked_body, headers=_hdr(user, home))
+    assert r.status_code == 200  # it streams, so the refusal rides in-band
+    assert "workspace_locked" in r.text
+    assert "This project is read-only" in r.text
+    assert '"type": "graph"' not in r.text  # nothing was drafted, so nothing was spent
+
+    # A project still inside the cap drafts as before, and so does an unsaved canvas.
+    for payload in ({**body, "agent_id": str(agent_ids[0])}, body):
+        r = client.post("/assist", json=payload, headers=_hdr(user, home))
+        assert "workspace_locked" not in r.text
+
+
+@requires_db
 def test_the_canvas_is_told_a_project_is_locked(user):
     """`GET /agents/{id}` carries the flag so the canvas can say "read-only" and hide the
     composer. Without it the browser would have to guess, and a guess that disagreed with the
