@@ -21,7 +21,7 @@ export default async function SignInPage({ searchParams }: Props) {
       footer={
         <>
           New here?{" "}
-          <Link href="/sign-up" className="text-white/80 underline underline-offset-4">
+          <Link href="/sign-up" className="font-medium text-[var(--accent-on-dark)] underline underline-offset-4">
             Create an account
           </Link>
         </>
@@ -31,7 +31,7 @@ export default async function SignInPage({ searchParams }: Props) {
           to show a message in, and no address we're willing to keep in order to email one. */}
       {deleted !== undefined ? (
         <div
-          className="mb-4 w-full rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-white/80 backdrop-blur"
+          className="liquid-glass mb-4 w-full rounded-[18px] p-4 text-sm leading-relaxed text-[var(--text-on-dark-muted)] [--liquid-fill:0.05]"
           data-testid="account-deleted-notice"
         >
           Your account has been deleted. Signing in again will start a new one.

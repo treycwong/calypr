@@ -1,7 +1,7 @@
 /**
  * The wordmark, as one component — `/logo.svg`, the same file the homepage hero nav uses.
  *
- * Before this, `SiteHeader` and `SiteFooter` rendered a *different* mark (`Wordmark`: a small
+ * Before this, the site header and `SiteFooter` rendered a *different* mark (`Wordmark`: a small
  * diamond glyph + "Calypr" in the heading font) while the landing page used this logotype. Same
  * brand, two different logos depending which page you were on. The SVG's paths are already
  * `fill="white"`, and the root layout forces dark mode unconditionally (`<html className="dark

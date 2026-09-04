@@ -70,11 +70,19 @@ test("checkout captures intent", async ({ page }) => {
 test("the pricing nav offers the same links as the homepage, with its own CTA", async ({
   page,
 }) => {
+  // **Hrefs, not rendered text.** The two headers are meant to look different — the landing
+  // nav is a mono uppercase pill floating over the hero, the inner-page nav is sentence case —
+  // so `allInnerTexts()` compares `"FEATURES"` against `"Features"` and fails on a difference
+  // that is the design. Destinations are what "the same links" actually means.
   await page.goto("/");
-  const homeLinks = await page.locator("header nav a").allInnerTexts();
+  const homeLinks = await page.locator("header nav a").evaluateAll((as) =>
+    as.map((a) => (a as HTMLAnchorElement).getAttribute("href")),
+  );
 
   await page.goto("/pricing");
-  const pricingLinks = await page.locator("header nav a").allInnerTexts();
+  const pricingLinks = await page.locator("header nav a").evaluateAll((as) =>
+    as.map((a) => (a as HTMLAnchorElement).getAttribute("href")),
+  );
 
   expect(pricingLinks).toEqual(homeLinks);
   // The stale CTA this test originally guarded against: /pricing used to offer "Open canvas"

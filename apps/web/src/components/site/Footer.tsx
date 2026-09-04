@@ -85,23 +85,14 @@ function FooterColumn({ index, title, links }: { index: string; title: string; l
 
 export function SiteFooter() {
   return (
-    <footer className="relative isolate mt-auto overflow-hidden border-t border-border">
-      {/*
-        The giant ghosted wordmark bleeding off the bottom edge — the last of the system's
-        four background devices. It's *set type*, not the logo: `SiteLogo` above is still the
-        mark. Rendered aria-hidden at ~3.5% opacity so it reads as a watermark rather than a
-        heading, and clipped by the footer's `overflow-hidden`.
-      */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 -bottom-[0.28em] select-none text-center font-heading text-[clamp(6rem,22vw,18rem)] font-light leading-none tracking-[0.02em] text-[var(--text-on-dark)] opacity-[0.035]"
-      >
-        CALYPR
-      </span>
-
+    // `bg-background` rather than transparent: the footer is a solid panel, and a page that
+    // paints anything behind it — the grid-line field on the marketing pages does — would
+    // otherwise show through it. `isolate`/`overflow-hidden` went with the ghosted CALYPR
+    // wordmark that used to bleed off the bottom edge; nothing is clipped or stacked here now.
+    <footer className="relative mt-auto border-t border-border bg-background">
       {/* Same container as `Section`/`LandingHeader` so the footer's logo lines up with the
           hero's and with every section edge above it. */}
-      <div className={`${SECTION_INNER} relative py-14`}>
+      <div className={`${SECTION_INNER} py-14`}>
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div className="space-y-3">
             <SiteLogo className="h-5 w-auto" />

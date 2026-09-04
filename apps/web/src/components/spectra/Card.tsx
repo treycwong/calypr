@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -20,15 +20,20 @@ export function Card({
   featured = false,
   interactive = true,
   className,
+  ...rest
 }: {
   children: ReactNode;
   featured?: boolean;
   /** Set false for a static panel that shouldn't light up under the pointer. */
   interactive?: boolean;
   className?: string;
-}) {
+  // Everything else lands on the element — `data-testid`, `id`, `aria-*`. A primitive that
+  // swallowed those would force every caller that needs one to wrap the card in a div and
+  // reason about which of the two the selector should match.
+} & Omit<ComponentProps<"div">, "className" | "children">) {
   return (
     <div
+      {...rest}
       className={cn(
         "relative flex h-full flex-col rounded-[24px] border shadow-[var(--inner-hairline)]",
         "transition-colors duration-200 ease-[var(--ease-standard)]",

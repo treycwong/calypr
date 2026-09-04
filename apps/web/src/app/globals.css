@@ -46,12 +46,14 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  /* The brand accent (Tailwind cyan-400). Until now cyan lived only as hard-coded literals
-     inside the share route; a second surface — the auth pages — needs it, so it becomes a token.
-     Declared as a literal rather than the `var(--x)` indirection the light/dark pairs below use:
-     the accent is the same in both themes, and a `var()` pointing at a non-theme property gets
-     pruned out of the compiled stylesheet, so `text-brand` silently renders as inherit. */
-  --color-brand: oklch(0.789 0.154 211.53);
+  /* The accent behind every `bg-brand` / `text-brand` / `border-brand`.
+     `var(--brand)` rather than a literal, because the value is no longer the same everywhere:
+     the marketing surface is Spectra green and the product surfaces are still the original cyan
+     (the canvas run glow, the share page, the auth backdrop), so the utilities have to resolve
+     per scope. Safe as an indirection only because `--brand` is a real `:root` property below —
+     a `@theme inline` entry pointing at a property nothing defines is pruned from the compiled
+     stylesheet, and `text-brand` then silently renders as `inherit`. */
+  --color-brand: var(--brand);
   /* ── Spectra palette ────────────────────────────────────────────────────────
      Literal values on purpose. A `@theme` entry written as `var(--green-400)` gets
      pruned out of the compiled stylesheet by Tailwind v4 (the same trap that made
@@ -91,6 +93,9 @@
 }
 
 :root {
+  /* Tailwind cyan-400 — the accent the canvas, share page and auth pages were designed around.
+     `[data-brand="spectra"]` repoints it at the brand green for the marketing surface. */
+  --brand: oklch(0.789 0.154 211.53);
   --background: oklch(1 0 0);
   --foreground: oklch(0.145 0 0);
   --card: oklch(1 0 0);
@@ -189,6 +194,11 @@
      Keep a destructive token anyway (toasts and form errors need one) but pull it
      toward the brand's desaturation so it doesn't read as a foreign hue. */
   --destructive: oklch(0.65 0.16 25);
+  /* The `*-brand` utilities follow the brand. One override reaches every `bg-brand` /
+     `text-brand` / `border-brand` on the marketing surface, while the product surfaces that
+     were designed around cyan keep it until their own pass. Green-400 is the accent Spectra
+     uses for anything luminous on dark. */
+  --brand: #3ece8b;
   --border: rgba(255, 255, 255, 0.07);
   --input: rgba(255, 255, 255, 0.1);
   --ring: #3ece8b;
@@ -351,6 +361,77 @@
 /* ── Spectra motion + surface utilities ───────────────────────────────────────
    The bundle's two reusable background/motion devices, as classes. */
 
+/* ── Liquid glass ─────────────────────────────────────────────────────────────
+   The hero's chrome, for capsules sitting over *moving* footage.
+
+   The system's ordinary glass (`--glass-dark` + `--blur-glass`) is a 60%-opaque
+   fill behind a 20px blur — built to sit over a still photograph, where a strong
+   fill is what keeps type readable. Over a video loop that same fill reads as a
+   grey slab pasted on the picture: the thing that makes glass convincing is
+   watching the footage move *through* it, which a near-opaque fill kills.
+
+   So this is almost no fill (1% white), a light blur, and an inset top highlight
+   for the sheen. It carries far less contrast on its own, which is why it is only
+   ever used on the hero, where the type over it is full-strength white.
+
+   The border is a gradient, not a colour: 1.4px of white that is bright at the top
+   and bottom edges and absent through the middle, so a capsule catches light the
+   way a real lens edge does. There is no CSS border property that does this, hence
+   the mask-composite trick — the pseudo-element is painted, then its own content
+   box is punched out of it, leaving only the ring. `-webkit-` prefixes included:
+   Safari still ships `mask-composite` under the prefix with different keywords
+   (`xor` vs `exclude`), and it is the browser most likely to be showing this. */
+.liquid-glass {
+  position: relative;
+  overflow: hidden;
+  border: none;
+  background: rgba(255, 255, 255, var(--liquid-fill, 0.01));
+  background-blend-mode: luminosity;
+  -webkit-backdrop-filter: saturate(140%) blur(var(--liquid-blur, 8px));
+  backdrop-filter: saturate(140%) blur(var(--liquid-blur, 8px));
+  box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.1);
+}
+/* Both knobs are variables so a surface can be tuned in place — e.g. the mobile nav sheet,
+   which is the one glass surface carrying a list of links rather than two words, sets
+   `[--liquid-fill:0.06] [--liquid-blur:14px]`. A capsule can afford to be barely there; a
+   panel of text over a bright frame cannot. Don't reach for a Tailwind `bg-*` utility to do
+   this: this rule is unlayered and Tailwind's utilities are in `@layer utilities`, so unlayered
+   wins and the override would silently do nothing. */
+.liquid-glass::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+  padding: 1.4px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.15) 20%,
+    rgba(255, 255, 255, 0) 40%,
+    rgba(255, 255, 255, 0) 60%,
+    rgba(255, 255, 255, 0.15) 80%,
+    rgba(255, 255, 255, 0.45) 100%
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+/* `backdrop-filter` is the whole effect. Where it is unsupported the 1% fill is
+   effectively nothing and white type would sit unmediated on the footage, so fall
+   back to the system's ordinary glass fill instead. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .liquid-glass {
+    background: var(--glass-dark);
+  }
+}
+
 /* The repeating 1px vertical rule field that sits behind full-width sections.
    One of only four background devices the system permits, and the only one that
    repeats. */
@@ -424,7 +505,7 @@
   }
 }
 
-/* The CTA's breathing cyan glow. */
+/* The CTA's breathing accent glow. */
 @keyframes glow-breathe {
   0%,
   100% {
@@ -538,7 +619,7 @@
   }
 }
 /* The head fades in as the pass starts and out as it lands, so the finished picture is not left
-   with a cyan rule sitting across its bottom edge. Same duration ⇒ same clock. */
+   with an accent rule sitting across its bottom edge. Same duration ⇒ same clock. */
 @keyframes image-scan-head {
   0% {
     opacity: 0;

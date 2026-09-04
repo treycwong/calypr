@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -14,13 +14,16 @@ export function Badge({
   children,
   tone = "accent",
   className,
+  ...rest
 }: {
   children: ReactNode;
   tone?: keyof typeof TONES;
   className?: string;
-}) {
+  /** `data-testid`, `id`, `title` — see `Card`. */
+} & Omit<ComponentProps<"span">, "className" | "children">) {
   return (
     <span
+      {...rest}
       className={cn(
         "inline-flex items-center gap-2 rounded-[6px] border px-2 py-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em]",
         TONES[tone],

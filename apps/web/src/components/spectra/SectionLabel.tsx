@@ -6,12 +6,12 @@ import { cn } from "@/lib/utils";
  * The numbered eyebrow that opens every Spectra section: a green mono index in a soft
  * chip, a 36px hairline rule, then the category in wide-tracked uppercase mono.
  *
- * Replaces `site/Eyebrow` on the landing page. The two are not interchangeable — Eyebrow
- * is a bordered pill, this is a rule-and-index row — so the older one stays in place for
- * `/pricing` and `/tutorials` until those move over too.
+ * Replaced `site/Eyebrow`, the bordered mono pill every marketing page used to open with.
+ * That component is gone: /pricing, /blog and /waitlist open with this instead, so there is
+ * one answer to "how does a section announce itself" rather than two.
  *
  * The index is decorative order, not a sequence the reader has to follow; sections run
- * `01`–`04` down the page.
+ * `01`–`04` down the landing page, and an inner page's single opening section is `01`.
  *
  * `media` is the tone for a label sitting directly on a photograph. It exists because the
  * other two don't survive there: the muted grey-green text measures ~3.8:1 against the
@@ -31,6 +31,16 @@ export function SectionLabel({
   tone?: "dark" | "light" | "media";
   className?: string;
 }) {
+  // ── Hidden, on request (2026-09-04) ──────────────────────────────────────────────────────
+  // Every call site is left in place rather than deleted: the label is the system's answer to
+  // "how does a section announce itself", and the numbering (01–04 down the landing page, 01
+  // on each inner page) is a decision worth keeping written down. Delete this one line to
+  // bring them all back; delete the component if the decision ever becomes permanent.
+  //
+  // The margin that used to separate the label from the heading below it stays at the call
+  // sites, so nothing shifts by more than the label's own height when this flips either way.
+  return null;
+
   const light = tone === "light";
   const media = tone === "media";
   return (

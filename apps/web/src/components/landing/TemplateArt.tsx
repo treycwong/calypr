@@ -1,10 +1,10 @@
 /**
- * Deterministic generative art for a landing template card — a cyan-clamped fork of the
+ * Deterministic generative art for a landing template card — a green-clamped fork of the
  * dashboard's ProjectArt. Same FNV-1a + mulberry32 machinery (deterministic, so a card never
  * flickers between renders), but where the dashboard wants every project to look *different*,
- * the landing wants every card to look like *one brand*: hues are pinned to the cyan band with
+ * the landing wants every card to look like *one brand*: hues are pinned to the green band with
  * a cooler drift, and a small node-graph motif — dots joined by hairline strokes, one lit in
- * brand cyan — echoes the canvas the cards are selling.
+ * the brand green — echoes the canvas the cards are selling.
  *
  * Pure SVG computed once per render; no "use client", so it costs nothing on the wire.
  */
@@ -33,8 +33,9 @@ export function TemplateArt({ seed }: { seed: string }) {
   const random = rng(hash(seed));
   const pick = (min: number, max: number) => min + random() * (max - min);
 
-  // Cyan band (≈185–215) with an occasional drift toward blue — never off-brand.
-  const hues = [pick(185, 215), pick(195, 235), pick(175, 205)];
+  // Green band (≈140–170, centred on Spectra's green-400 at 152) with an occasional drift
+  // toward teal — never off-brand. It was the cyan band until the brand moved.
+  const hues = [pick(140, 168), pick(148, 178), pick(132, 160)];
   const blobs = hues.map((h, i) => ({
     id: `${seed}-b${i}`,
     cx: pick(-10, 110),
@@ -44,7 +45,7 @@ export function TemplateArt({ seed }: { seed: string }) {
     opacity: pick(0.3, 0.55),
   }));
 
-  // The node-graph motif: a loose left-to-right chain of 4–5 nodes, one lit cyan.
+  // The node-graph motif: a loose left-to-right chain of 4–5 nodes, one lit green.
   const count = 4 + Math.floor(random() * 2);
   const nodes = Array.from({ length: count }, (_, i) => ({
     x: 12 + (76 / (count - 1)) * i + pick(-5, 5),
@@ -91,11 +92,11 @@ export function TemplateArt({ seed }: { seed: string }) {
           cx={n.x}
           cy={n.y}
           r={i === lit ? 2.4 : 1.6}
-          fill={i === lit ? "#22d3ee" : "rgba(255,255,255,0.55)"}
+          fill={i === lit ? "#3ece8b" : "rgba(255,255,255,0.55)"}
         />
       ))}
       {/* soft halo around the lit node */}
-      <circle cx={nodes[lit].x} cy={nodes[lit].y} r={6} fill="#22d3ee" opacity="0.18" />
+      <circle cx={nodes[lit].x} cy={nodes[lit].y} r={6} fill="#3ece8b" opacity="0.18" />
     </svg>
   );
 }

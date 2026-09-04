@@ -28,13 +28,13 @@ function WireframeVisual() {
         <rect x="20" y="52" width="90" height="188" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         <rect x="126" y="52" width="214" height="56" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         {/* the lit block — a chat surface taking shape */}
-        <rect x="126" y="122" width="214" height="86" rx="6" fill="rgba(34,211,238,0.06)" stroke="#22d3ee" strokeWidth="1" className="glow-breathe" />
-        <line x1="142" y1="144" x2="288" y2="144" stroke="rgba(34,211,238,0.45)" strokeWidth="2" strokeLinecap="round" />
-        <line x1="142" y1="160" x2="252" y2="160" stroke="rgba(34,211,238,0.3)" strokeWidth="2" strokeLinecap="round" />
-        <rect x="142" y="180" width="182" height="16" rx="8" fill="none" stroke="rgba(34,211,238,0.4)" />
+        <rect x="126" y="122" width="214" height="86" rx="6" fill="rgba(62,206,139,0.06)" stroke="#3ece8b" strokeWidth="1" className="glow-breathe" />
+        <line x1="142" y1="144" x2="288" y2="144" stroke="rgba(62,206,139,0.45)" strokeWidth="2" strokeLinecap="round" />
+        <line x1="142" y1="160" x2="252" y2="160" stroke="rgba(62,206,139,0.3)" strokeWidth="2" strokeLinecap="round" />
+        <rect x="142" y="180" width="182" height="16" rx="8" fill="none" stroke="rgba(62,206,139,0.4)" />
         <rect x="126" y="220" width="102" height="20" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         {/* cursor */}
-        <path d="M300 190 l 10 24 3.5 -9.5 9.5 -3.5 z" fill="#22d3ee" opacity="0.9" />
+        <path d="M300 190 l 10 24 3.5 -9.5 9.5 -3.5 z" fill="#3ece8b" opacity="0.9" />
       </svg>
     </div>
   );
@@ -57,7 +57,7 @@ export function UiBuilderTeaser() {
               Design chatbot interfaces, websites and more — wired straight to the agents you
               drew. The canvas builds the brain; the builder gives it a face.
             </p>
-            <ButtonLink href="/waitlist" variant="outline" className="mt-8">
+            <ButtonLink href="/waitlist" variant="secondary" className="mt-8">
               Join Beta
               <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
             </ButtonLink>

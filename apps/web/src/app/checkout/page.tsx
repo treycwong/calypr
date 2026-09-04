@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 
 import { CheckoutView } from "@/components/checkout/checkout-view";
 import { SiteFooter } from "@/components/site/Footer";
-import { SiteHeader } from "@/components/site/Header";
+import { SITE_HEADER_CTA } from "@/components/site/nav";
+import { LandingHeader } from "@/components/landing/LandingHeader";
+import { GridLines } from "@/components/spectra/GridLines";
 import { getSession } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -36,13 +38,19 @@ async function billingEnabled(): Promise<boolean> {
 export default async function CheckoutPage() {
   const [session, enabled] = await Promise.all([getSession(), billingEnabled()]);
   return (
-    <div className="relative flex min-h-screen flex-col">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_-10%,rgba(255,255,255,0.06),transparent)]"
-      />
-      <SiteHeader />
-      <main className="mx-auto w-full max-w-2xl flex-1 px-5 py-16">
+    // Same surface as /pricing, which is the page every visitor arrives from: crossing into a
+    // neutral-grey checkout at the moment someone is deciding to pay reads as a different site.
+    <div
+      data-brand="spectra"
+      className="flex min-h-screen flex-col bg-background"
+    >
+      <LandingHeader cta={SITE_HEADER_CTA} sticky />
+      <main className="relative isolate mx-auto w-full max-w-2xl flex-1 px-6 py-20">
+        {/* The rule field belongs to the *content*, not the page. Mounted on the wrapper it
+            ran the full document height and struck vertical lines straight through the footer,
+            which reads as the background showing through a panel that is meant to be solid.
+            Scoped here it stops exactly where the content does. */}
+        <GridLines />
         <CheckoutView email={session?.email ?? ""} enabled={enabled} />
       </main>
       <SiteFooter />

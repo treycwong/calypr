@@ -8,14 +8,17 @@ import { cn } from "@/lib/utils";
  * heading — a headline that has no natural break point doesn't fit this system and
  * should be rewritten rather than set flat.
  *
- * Weight stays light (300) at every size and tracking stays negative: the size does the
- * work. Passing `font-semibold` here is always a mistake, which is why the weight isn't
- * a prop.
+ * Tracking stays negative and the size does most of the work. Weight is **per register, not
+ * per instance**: the `display` size — the hero-scale headline that opens a page or closes it
+ * — is 400, and the section registers below it stay at the system's light 300. Spectra sets
+ * every heading at 300; at 5rem over a photograph and on the closing CTA band that read as
+ * thin rather than as quiet, so the largest register was stepped up one notch. It is one step,
+ * once: `font-semibold` is still always a mistake here, which is why the weight isn't a prop.
  */
 const SIZES = {
-  display: "text-[clamp(2.5rem,6vw,3.5rem)]",
-  h1: "text-[clamp(2rem,4.5vw,2.75rem)]",
-  h2: "text-[clamp(1.75rem,3.5vw,2.25rem)]",
+  display: "text-[clamp(2.5rem,6vw,3.5rem)] font-normal",
+  h1: "text-[clamp(2rem,4.5vw,2.75rem)] font-light",
+  h2: "text-[clamp(1.75rem,3.5vw,2.25rem)] font-light",
 } as const;
 
 export function SectionHeading({
@@ -43,7 +46,8 @@ export function SectionHeading({
       <h2
         id={id}
         className={cn(
-          "font-heading font-light leading-[1.12] tracking-[-0.02em]",
+          // Weight rides with the size — see `SIZES`.
+          "font-heading leading-[1.12] tracking-[-0.02em]",
           SIZES[size],
           dark ? "text-[var(--text-on-dark)]" : "text-[var(--text-heading)]",
         )}
