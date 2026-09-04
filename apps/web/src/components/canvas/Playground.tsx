@@ -28,6 +28,7 @@ const nextId = () => `m${++seq}`;
 export function Playground({
   getGraph,
   agentId,
+  locked = false,
   scopeReady = true,
   onAssetGenerated,
   onNodeEvent,
@@ -38,6 +39,9 @@ export function Playground({
   /** The saved project, when the canvas has been saved. Recorded against the run and the
    *  conversation, and what scopes History to this project. */
   agentId?: string;
+  /** The saved project is read-only after a downgrade, so no run may start in it. Passed down
+   *  rather than derived here: the API decides it (`locking.py`) and the canvas is what asked. */
+  locked?: boolean;
   /** False while the canvas is still resolving `?agent=` from the URL — History waits rather
    *  than briefly listing the wrong scope. */
   scopeReady?: boolean;
@@ -228,6 +232,7 @@ export function Playground({
           <PlaygroundChat
             messages={messages}
             busy={busy}
+            locked={locked}
             scope={threadId}
             memoryExpired={loaded !== null && !loaded.hasState}
             onSend={send}

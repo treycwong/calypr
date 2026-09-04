@@ -142,13 +142,26 @@ export type ShareInfo = {
   revoked_at: string | null;
 };
 
-/** Mint a share link for a saved agent. `runCap` omitted ⇒ the API's default cap. */
+/** Mint a share link for a saved agent. `runCap` omitted ⇒ the API's default cap.
+ *
+ * Throws `CapReachedError` on a 402 — a share link runs the agent for strangers, so a read-only
+ * project refuses to mint one. That is an answer with a remedy, and "share failed (402)" threw it
+ * away: the popover showed "Couldn't create a link. Try again." to someone for whom trying again
+ * could never work. */
 export async function createShare(agentId: string, runCap?: number): Promise<ShareInfo> {
   const res = await fetch(`/api/agents/${agentId}/share`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(runCap != null ? { run_cap: runCap } : {}),
   });
+  if (res.status === 402) {
+    const detail = (await res.json().catch(() => ({}))).detail ?? {};
+    throw new CapReachedError(
+      detail.reason ?? "locked",
+      detail.message ?? "This project is read-only, so it can't be shared.",
+      detail.limit,
+    );
+  }
   if (!res.ok) throw new Error(`share failed (${res.status})`);
   return res.json();
 }
@@ -180,7 +193,15 @@ export async function* assistAgent(
 }
 
 /** A saved agent ("project") with its full graph. */
-export type AgentDetail = { id: string; name: string; graph: GraphSpec };
+export type AgentDetail = {
+  id: string;
+  name: string;
+  graph: GraphSpec;
+  /** Beyond the plan's project cap, or inside a locked workspace — read-only either way. The
+   *  canvas opens a project by id and never sees the dashboard list, so the flag rides on the
+   *  detail too. Always the API's answer; never re-derived here. */
+  locked?: boolean;
+};
 
 /** Create a new saved agent; returns it (with the new id). */
 export async function createAgent(name: string, graph: GraphSpec): Promise<AgentDetail> {

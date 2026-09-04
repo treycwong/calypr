@@ -103,7 +103,9 @@ async def create_run(
         # rather than during, so a refusal is a clear answer instead of a half-finished one; a
         # run already started always finishes (`credits.debit_run` may take the balance
         # negative).
-        if gate := await asyncio.to_thread(run_access.check_run_gates, workspace_id, req.graph):
+        if gate := await asyncio.to_thread(
+            run_access.check_run_gates, workspace_id, req.graph, agent_id
+        ):
             code, message = gate
             posthog_client.capture(
                 "agent_run_credits_exhausted",

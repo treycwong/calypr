@@ -1,6 +1,7 @@
 "use client";
 
-import { Square } from "lucide-react";
+import { Lock, Square } from "lucide-react";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
@@ -40,6 +41,7 @@ const INTENTS = ["Next", "Harder", "Explain that"];
 export function PlaygroundChat({
   messages,
   busy,
+  locked = false,
   scope,
   memoryExpired,
   onSend,
@@ -47,6 +49,10 @@ export function PlaygroundChat({
 }: {
   messages: ChatMsg[];
   busy: boolean;
+  /** This project is read-only after a downgrade. The API refuses the run either way
+   *  (`locking.py`); saying so here is what stops someone typing a message, waiting for a
+   *  stream, and getting a billing error where the answer should be. */
+  locked?: boolean;
   /** Identifies the conversation, so each thread keeps its own tally. */
   scope: string;
   /** The transcript was reopened but its checkpoint has aged out — the agent has no memory of
@@ -78,7 +84,7 @@ export function PlaygroundChat({
 
   function submit() {
     const text = input.trim();
-    if (!text || busy) return;
+    if (!text || busy || locked) return;
     const images = attach.pending ? [attach.pending] : [];
     attach.clear();
     setInput("");
@@ -90,7 +96,11 @@ export function PlaygroundChat({
       {studying ? <ScoreStrip score={study.score} variant="panel" /> : null}
       <div ref={logRef} className="flex-1 space-y-3 overflow-auto p-3" data-testid="chat-log">
         {messages.length === 0 ? (
-          <p className="text-sm text-muted-foreground">Send a message to test your agent.</p>
+          <p className="text-sm text-muted-foreground">
+            {locked
+              ? "This project is read-only — its saved chats are still here under History."
+              : "Send a message to test your agent."}
+          </p>
         ) : null}
         {messages.map((m) => {
           // A turn carrying a card breaks out of the bubble and spans the panel. That single
@@ -153,6 +163,35 @@ export function PlaygroundChat({
           conversation has expired.
         </p>
       ) : null}
+      {locked ? (
+        // Replaces the composer rather than sitting above it. A disabled input with a lock
+        // message next to it invites the "why can't I type?" question this is meant to answer.
+        <div
+          className="border-t border-border bg-amber-500/5 p-3"
+          data-testid="chat-locked"
+        >
+          <div className="flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+            <span className="text-sm font-medium">Chat is read-only</span>
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            This project is beyond your plan&rsquo;s limit, so it can be read and exported but
+            not run. Nothing has been deleted.
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs">
+            <Link
+              href="/pricing"
+              className="font-medium underline underline-offset-4"
+              data-testid="chat-locked-upgrade"
+            >
+              Upgrade to run it
+            </Link>
+            <span className="text-muted-foreground">
+              or delete down to the limit — free, and permanent.
+            </span>
+          </div>
+        </div>
+      ) : (
       <form
         className="border-t border-border p-3"
         onSubmit={(e) => {
@@ -212,6 +251,7 @@ export function PlaygroundChat({
           </Button>
         </div>
       </form>
+      )}
     </div>
   );
 }

@@ -143,8 +143,16 @@ def require_unlocked_workspace(t: Tenant) -> None:
         raise _refuse("workspace", account.plan)
 
 
-def locked_run_message(workspace_id: uuid.UUID) -> str | None:
-    """Why a run may not start in this workspace, or None if it may.
+def locked_run_message(
+    workspace_id: uuid.UUID, agent_id: uuid.UUID | str | None = None
+) -> str | None:
+    """Why a run may not start here, or None if it may.
+
+    Checks the workspace *and*, when the run names one, the project — the same pair
+    `require_unlocked_agent` checks, for the same reason: a locked project inside an unlocked
+    workspace is still capacity the plan no longer covers. Leaving the project out was a real
+    hole — a downgraded account could open any read-only project and keep running it from the
+    Playground, so the lock only ever stopped *saving*, which is the cheap half.
 
     The variant for `/runs` and `/assist`, which resolve to a bare workspace id and hold no
     session — and which stream their refusals in-band rather than raising, because the response
@@ -161,15 +169,21 @@ def locked_run_message(workspace_id: uuid.UUID) -> str | None:
             account = accounts.account_for_workspace(session, workspace_id)
             if account is None:
                 return None
-            if workspace_id not in locked_workspace_ids(session, account.id, account.plan):
+            plan, limits = account.plan, entitlements.limits(account.plan)
+            if workspace_id in locked_workspace_ids(session, account.id, plan):
+                kind, allowed = "workspace", limits.workspaces
+            elif agent_id is not None and uuid.UUID(str(agent_id)) in locked_agent_ids(
+                session, account.id, plan
+            ):
+                kind, allowed = "project", limits.projects
+            else:
                 return None
-            allowed = entitlements.limits(account.plan).workspaces
     except Exception:
-        log.warning("workspace lock check failed — allowing the run", exc_info=True)
+        log.warning("lock check failed — allowing the run", exc_info=True)
         return None
     return (
-        f"This workspace is read-only. {account.plan.title()} includes "
-        f"{allowed} workspace{'s' if allowed != 1 else ''}, and this one is beyond that — "
+        f"This {kind} is read-only. {plan.title()} includes "
+        f"{allowed} {kind}{'s' if allowed != 1 else ''}, and this one is beyond that — "
         f"upgrade, or delete down to {allowed} to start running here again."
     )
 

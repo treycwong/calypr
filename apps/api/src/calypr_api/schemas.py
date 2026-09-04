@@ -112,6 +112,10 @@ class AgentDetail(BaseModel):
     id: str
     name: str
     graph: GraphSpec
+    #: Read-only after a downgrade — the same fact `AgentSummary.locked` carries, repeated here
+    #: because the canvas opens a project by id and never sees the list. Decided by the API
+    #: (`locking.py`), never re-derived in the browser.
+    locked: bool = False
 
 
 class ShareCreate(BaseModel):

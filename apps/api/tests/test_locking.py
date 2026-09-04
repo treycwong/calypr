@@ -260,6 +260,44 @@ def test_runs_are_refused_in_a_locked_workspace(user):
     assert run_access.check_run_gates(ws_ids[0], graph) is None
 
 
+@requires_db
+def test_runs_are_refused_in_a_locked_project(user):
+    """The hole the workspace check left. A downgraded account's *projects* lock long before its
+    workspaces do (3 vs 1 on Free), so someone could open any read-only project in their home
+    workspace and go on running it from the Playground — the lock stopped saving and nothing
+    else, which is the half that costs us nothing."""
+    acc, ws_ids, agent_ids = _plus_account_at_capacity(user)
+    _downgrade(acc)
+    home, locked_agent = ws_ids[0], agent_ids[-1]
+
+    from calypr_dsl import GraphSpec
+
+    graph = GraphSpec.model_validate(_graph())
+    gate = run_access.check_run_gates(home, graph, locked_agent)
+    assert gate is not None
+    code, message = gate
+    assert code == "workspace_locked"  # one code for both locks — same remedy, same affordance
+    assert "This project is read-only" in message
+
+    # The projects still inside the cap run, and so does an unsaved canvas (no agent id at all).
+    assert run_access.check_run_gates(home, graph, agent_ids[0]) is None
+    assert run_access.check_run_gates(home, graph) is None
+
+
+@requires_db
+def test_the_canvas_is_told_a_project_is_locked(user):
+    """`GET /agents/{id}` carries the flag so the canvas can say "read-only" and hide the
+    composer. Without it the browser would have to guess, and a guess that disagreed with the
+    gate is exactly the bug this pair exists to prevent."""
+    acc, ws_ids, agent_ids = _plus_account_at_capacity(user)
+    _downgrade(acc)
+    home = ws_ids[0]
+
+    r = client.get(f"/agents/{agent_ids[-1]}", headers=_hdr(user, home))
+    assert r.status_code == 200 and r.json()["locked"] is True
+    assert client.get(f"/agents/{agent_ids[0]}", headers=_hdr(user, home)).json()["locked"] is False
+
+
 # --- the carve-outs ------------------------------------------------------------------------------
 
 
