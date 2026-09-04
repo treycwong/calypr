@@ -2,7 +2,7 @@
 
 import type { GraphSpec } from "@calypr/dsl";
 import type { Edge, Node } from "@xyflow/react";
-import { Check, Loader2, RotateCcw, Sparkles, X } from "lucide-react";
+import { Check, Loader2, Lock, RotateCcw, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -30,9 +30,13 @@ const EXAMPLE_PROMPTS = [
  * first prompt costs one click instead of composing a sentence from nothing. */
 function AssistantIntro({
   busy,
+  locked,
   onPick,
 }: {
   busy: boolean;
+  /** Read-only project: the openers are hidden. They are not decoration — `onPick` *is* `send`,
+   *  so one click fires a draft the API refuses, turning an invitation into an error bubble. */
+  locked: boolean;
   onPick: (prompt: string) => void;
 }) {
   return (
@@ -49,7 +53,7 @@ function AssistantIntro({
         anything sticks.
       </p>
       <div className="mt-4 flex w-full flex-col gap-1.5">
-        {EXAMPLE_PROMPTS.map((p) => (
+        {(locked ? [] : EXAMPLE_PROMPTS).map((p) => (
           <button
             key={p}
             type="button"
@@ -82,6 +86,13 @@ export type AssistantPanelProps = {
   applyGraph: (spec: GraphSpec) => void;
   /** Put a previously-captured snapshot back on the canvas. */
   restore: (snap: CanvasSnapshot) => void;
+  /** The saved project, when the canvas has one. Sent with the draft so the API can refuse it
+   *  for a read-only project. */
+  agentId?: string;
+  /** This project is beyond the plan's cap after a downgrade. The API refuses the draft either
+   *  way; saying so here is what stops someone describing an agent, waiting for a stream, and
+   *  meeting a billing error where the draft should have been. */
+  locked?: boolean;
 };
 
 /** Lifecycle of a proposed graph: shown live on the canvas, then kept or dropped. */
@@ -118,6 +129,8 @@ export function AssistantPanel({
   snapshot,
   applyGraph,
   restore,
+  agentId,
+  locked = false,
 }: AssistantPanelProps) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -181,7 +194,7 @@ export function AssistantPanel({
 
       const current = getCurrentGraph();
       try {
-        for await (const ev of assistAgent(history, current)) {
+        for await (const ev of assistAgent(history, current, undefined, agentId)) {
           if (ev.type === "notice") {
             // Held separately from `content`: the `note` event below replaces content wholesale,
             // and the substitution warning must survive that.
@@ -219,7 +232,7 @@ export function AssistantPanel({
         scrollToEnd();
       }
     },
-    [input, busy, messages, getCurrentGraph, snapshot, applyGraph, patch, scrollToEnd],
+    [input, busy, messages, agentId, getCurrentGraph, snapshot, applyGraph, patch, scrollToEnd],
   );
 
   const onApply = useCallback(
@@ -264,7 +277,9 @@ export function AssistantPanel({
       {/* No title here — the left-panel shell in app/canvas/page.tsx renders one header for
           every rail tab. */}
       <div ref={scrollRef} className="flex-1 space-y-3 overflow-auto p-3">
-        {messages.length === 0 ? <AssistantIntro busy={busy} onPick={send} /> : null}
+        {messages.length === 0 ? (
+          <AssistantIntro busy={busy} locked={locked} onPick={send} />
+        ) : null}
 
         {messages.map((m) =>
           m.role === "user" ? (
@@ -369,10 +384,39 @@ export function AssistantPanel({
         )}
       </div>
 
-      {/* A textarea, not a single-line input: describing an agent is a paragraph, and a one-line
-          field scrolled the start of the sentence out of sight while you were still writing it.
-          Enter still sends and Shift+Enter still breaks the line — the same contract the
-          Playground composer uses, so the two chat boxes behave alike. */}
+      {/* Read-only project: the composer is replaced rather than disabled, and the copy is the
+          Playground's — a visitor who meets the lock in the chat and again here should read one
+          fact about their plan, not two unrelated refusals. Both exits are named, because
+          "upgrade" alone reads as a paywall on the user's own work and deleting down to the cap
+          unlocks it for free. */}
+      {locked ? (
+        <div className="border-t border-border bg-amber-500/5 p-3" data-testid="assistant-locked">
+          <div className="flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+            <span className="text-sm font-medium">The assistant is read-only here</span>
+          </div>
+          <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+            This project is beyond your plan&rsquo;s limit, so a draft couldn&rsquo;t be saved to
+            it. Nothing has been deleted.
+          </p>
+          <div className="mt-2.5 flex flex-wrap items-center gap-3 text-xs">
+            <Link
+              href="/pricing"
+              className="font-medium underline underline-offset-4"
+              data-testid="assistant-locked-upgrade"
+            >
+              Upgrade to Plus
+            </Link>
+            <span className="text-muted-foreground">
+              or delete down to the limit — free, and permanent.
+            </span>
+          </div>
+        </div>
+      ) : (
+      /* A textarea, not a single-line input: describing an agent is a paragraph, and a one-line
+         field scrolled the start of the sentence out of sight while you were still writing it.
+         Enter still sends and Shift+Enter still breaks the line — the same contract the
+         Playground composer uses, so the two chat boxes behave alike. */
       <div className="flex flex-col gap-2 border-t border-border p-3">
         <Textarea
           rows={3}
@@ -414,6 +458,7 @@ export function AssistantPanel({
           </Button>
         </div>
       </div>
+      )}
     </div>
   );
 }

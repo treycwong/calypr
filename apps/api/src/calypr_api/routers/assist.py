@@ -17,11 +17,12 @@ from calypr_model import model_for, provider_of
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from calypr_api import credits, run_access, spend
+from calypr_api import credits, locking, run_access, spend
 from calypr_api.config import settings
 from calypr_api.deps import request_workspace
 from calypr_api.errors import (
     PROVIDER_KEY_REJECTED,
+    WORKSPACE_LOCKED,
     is_provider_auth_error,
     provider_key_error_message,
     run_error_message,
@@ -75,6 +76,22 @@ async def create_assist(
     messages = [m.model_dump() for m in req.messages]
 
     async def event_stream() -> AsyncIterator[str]:
+        # Capacity first — ahead of the daily cap, which *increments* a counter as a side
+        # effect, and ahead of credits, because "you're out of credits" sends someone to wait
+        # for a monthly reset that cannot fix a lapsed subscription.
+        #
+        # The assistant is exactly as expensive as a run and produces something the project
+        # cannot keep: drafting a graph burns credits on an LLM call, and Apply then writes to
+        # an agent that `require_unlocked_agent` refuses. Gating the run but not this left the
+        # more galling half open — spend, then a 402 at the moment of saving.
+        if locked := await asyncio.to_thread(
+            locking.locked_run_message, workspace_id, req.agent_id
+        ):
+            posthog_client.capture("assist_locked", distinct_id=str(workspace_id))
+            yield _sse({"type": "error", "message": locked, "code": WORKSPACE_LOCKED, "issues": []})
+            yield "data: [DONE]\n\n"
+            return
+
         if _over_daily_cap(workspace_id):
             posthog_client.capture(
                 "assist_daily_cap_reached",

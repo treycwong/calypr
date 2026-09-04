@@ -14,7 +14,11 @@ import { signInAt, waitForHydration } from "./helpers";
 const AGENT_ID = "11111111-2222-3333-4444-555555555555";
 
 /** Answer the canvas's project load with a saved agent, locked or not. */
-async function openProject(page: import("@playwright/test").Page, locked: boolean) {
+async function openProject(
+  page: import("@playwright/test").Page,
+  locked: boolean,
+  open: "playground" | "assistant" = "playground",
+) {
   await page.route(`**/api/agents/${AGENT_ID}`, (route) =>
     route.fulfill({
       json: {
@@ -36,7 +40,8 @@ async function openProject(page: import("@playwright/test").Page, locked: boolea
   await page.goto(`/canvas?agent=${AGENT_ID}`);
   await waitForHydration(page);
   await expect(page.getByTestId("agent-name")).toHaveValue("Downgraded project");
-  await page.getByTestId("toggle-playground").click();
+  if (open === "playground") await page.getByTestId("toggle-playground").click();
+  else await page.getByTestId("toggle-assistant").click();
 }
 
 test.afterEach(async ({ page }) => {
@@ -86,4 +91,31 @@ test("an unlocked project keeps its composer", async ({ page }) => {
   await expect(page.getByTestId("canvas-locked")).toHaveCount(0);
   await expect(page.getByTestId("save-agent")).toBeEnabled();
   await expect(page.getByTestId("share-agent")).toBeEnabled();
+});
+
+test("the assistant is read-only too, and says so the same way", async ({ page }) => {
+  // The assistant is as expensive as a run and produces something the project cannot keep:
+  // drafting burns credits on an LLM call, and Apply then writes to an agent the API refuses.
+  // Gating the run but not this left the more galling half open.
+  await openProject(page, true, "assistant");
+
+  const locked = page.getByTestId("assistant-locked");
+  await expect(locked).toBeVisible();
+  await expect(locked).toContainText("Nothing has been deleted");
+  await expect(page.getByTestId("assistant-locked-upgrade")).toHaveAttribute("href", "/pricing");
+
+  // The composer is replaced, not disabled — there is nothing to type into and nothing to send.
+  await expect(page.getByTestId("assistant-input")).toHaveCount(0);
+  await expect(page.getByTestId("assistant-send")).toHaveCount(0);
+  // And no example openers: `onPick` is `send`, so one click would fire a draft the API
+  // refuses, turning an invitation into an error bubble.
+  await expect(page.getByTestId("assistant-example")).toHaveCount(0);
+});
+
+test("an unlocked project keeps the assistant composer", async ({ page }) => {
+  await openProject(page, false, "assistant");
+
+  await expect(page.getByTestId("assistant-input")).toBeVisible();
+  await expect(page.getByTestId("assistant-locked")).toHaveCount(0);
+  await expect(page.getByTestId("assistant-example").first()).toBeVisible();
 });
