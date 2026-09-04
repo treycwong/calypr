@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-08-30.
+> record — what shipped and why. Updated 2026-09-04.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -9,11 +9,19 @@
 Upgrade button on the live endpoint — `checkout.session.completed` mapped the customer and
 `invoice.paid` granted 2,000 credits, both delivered **200** — so **the live webhook signing
 secret is verified** (the long-standing §1 worry). Credits then debited on real AI usage.
-**Two gaps remain before this is fully closed** (see §1): the **cancellation path is still
-unproven live** (`customer.subscription.deleted` — do a real cancel → refund), and the prod logs
-show interleaved `POST /billing/webhook 400`s, likely a **duplicate/test webhook endpoint aimed
-at the prod URL** with a mismatched secret — audit Stripe → Developers → Webhooks (there should be
-exactly one live endpoint).
+**The cancel half is proven too, as of 2026-09-04** — the portal cancel of 2026-09-01 lapsed on
+schedule and the founder workspace is back on `free` with its over-cap work locked read-only.
+**One gap remains** (see §1): the prod logs show interleaved `POST /billing/webhook 400`s, likely a
+**duplicate/test webhook endpoint aimed at the prod URL** with a mismatched secret — audit
+Stripe → Developers → Webhooks (there should be exactly one live endpoint). Still worth collecting
+while it is fresh: the `customer.subscription.deleted` event id and its 200, and the $20 refund.
+
+**The live cancel path is PROVEN (2026-09-04)** — the founder's cancelled subscription lapsed,
+the workspace is back on `free`, and the dashboard shows the over-cap workspace and 12 projects
+as read-only. **Testing it found a real hole:** a read-only project still ran. The lock only ever
+checked the *workspace*, and on Free the project cap (3) bites long before the workspace cap (1) —
+so every locked project stayed fully runnable from the Playground, burning credits on capacity the
+account no longer had. Fixed in the working tree; see §1.
 
 **Multiple workspaces shipped 2026-08-02** (PR #59, live and verified): Free 1 workspace /
 3 projects / 500 MB, Plus 3 / 20 / 5 GB, all pooled per account. It also closed two bugs that
@@ -164,10 +172,62 @@ The code is merged and correct; nothing works until three values exist. See
       (→ 2,000 credits) — **both delivered 200 on the live endpoint**, so the signing secret matches
       and the events are subscribed. Founder workspace `914f15cf` is now `plus` on live customer
       `cus_UzquujNm9DXuK2`.
-- [ ] **Prove the cancel path live.** `customer.subscription.deleted` has still never been delivered
-      live — the exact event a mismatch would silently swallow (a cancel that keeps Plus forever).
-      Cancel the founder's live sub through the portal, confirm the row flips `plus → free`, then
-      refund. Do this before onboarding a paying customer who might cancel.
+- [x] **Cancellation proven live end-to-end (2026-09-04).** The portal cancel taken on 2026-09-01
+      ran its course: the subscription lapsed, workspace `914f15cf-9cde-430c-bb1a-186b9d88fa47` is
+      back on **`free`**, and the downgrade path is visibly doing its job — the dashboard reports
+      **1 workspace and 12 projects read-only**, nothing deleted. So the portal button, the
+      end-of-period lapse and the plan flip all work on live keys.
+      **Still worth capturing from the Stripe dashboard while it is fresh** (the plan doc asks for
+      the receipts, not just the outcome): the `customer.subscription.deleted` event id, that it
+      was delivered **200**, and the matching `stripe_event` row —
+      `railway run --service calypr-api -- uv run python scripts/observe_billing.py --customer cus_UzquujNm9DXuK2`.
+      Also refund the $20 charge, per §A3 of `calypr-cancel-proof-and-retier-plan.md`.
+      **The test earned its keep by finding a bug (fixed, see below).** With the account on `free`
+      the locked projects were read-only for *saving* — and still ran chat normally. Running is the
+      expensive half.
+- [x] **A read-only project refused saves but not runs — fixed (2026-09-04).**
+      `locking.locked_run_message` only ever asked whether the *workspace* was locked, and
+      `check_run_gates` had no agent id to ask about anyway. Free allows 1 workspace and 3
+      projects, so the common downgrade shape is a home workspace that is fine holding a dozen
+      locked projects — every one of them runnable. What shipped:
+      - `locked_run_message(workspace_id, agent_id)` checks both locks, the same pair
+        `require_unlocked_agent` checks, and `POST /runs` now passes the run's `agent_id`.
+        Refusal keeps the `workspace_locked` code — one code, because both locks have the same
+        remedy and the client offers the same affordance.
+      - `GET /agents/{id}` carries `locked`, so the canvas knows without guessing. The Playground
+        composer is replaced by a "Chat is read-only" panel naming **both** exits (upgrade, or
+        delete down to the cap), Save is disabled, and a `Read-only` badge sits in the header.
+        Reads, History, Media and export are untouched — a downgrade takes back capacity, never
+        data.
+      - **Share said the wrong thing**, found by using it: minting hit the 402 and the popover
+        showed "Couldn't create a link. Try again." — advice that could never work. `createShare`
+        now throws `CapReachedError` on a 402 so the API's own sentence survives, and a locked
+        project doesn't attempt the mint at all: the popover explains, with the same upgrade
+        link. **Share stays clickable rather than disabled** — a disabled button can only offer a
+        tooltip, which is nothing on a touch screen, and the explanation belongs where the user
+        already clicked.
+      - Tests: `test_runs_are_refused_in_a_locked_project` and
+        `test_the_canvas_is_told_a_project_is_locked` (both confirmed to fail before the fix), plus
+        `e2e/tests/phase29-locked-project.spec.ts`.
+- [~] **~~Prove the cancel path live — half done, the proving half lands 2026-09-02.~~** *(superseded
+      by the two items above; kept for the trail.)*
+      **2026-09-01:** the founder's live subscription was cancelled through the customer portal on
+      `www.calypr.co` and the portal accepted it, **but it is a `cancel_at_period_end`, effective
+      2026-09-02.** That is the ordinary portal behaviour and exactly what
+      `calypr-cancel-proof-and-retier-plan.md` §A2 predicted: this fires
+      `customer.subscription.updated` with `cancel_at_period_end: true`, **not** `deleted`.
+      So the button works and the account is scheduled to lapse — and
+      `customer.subscription.deleted`, the one event a signing-secret mismatch swallows silently,
+      **still has not been delivered live.** It should arrive on **2026-09-02**.
+      - [x] Portal cancel accepted on the live account (2026-09-01).
+      - [ ] Confirm the `…updated` delivery was **200**, is recorded in `stripe_event`, and that
+            **the workspace is still `plus`** through 09-02 — downgrading early would take away
+            access already paid for (`routers/billing.py::_apply`).
+      - [ ] **On 2026-09-02: confirm `customer.subscription.deleted` delivered 200 and the row
+            flipped `plus → free`.** This is the actual proof. If it does not arrive, that is the
+            silent-swallow bug and it blocks onboarding anyone who might cancel.
+      - [ ] Then re-tier per the plan doc, and note the founder account is back on `free` (which is
+            the clean state Part B wants anyway).
 - [ ] **Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**
       The 200s prove the live secret is right, so the 400s are deliveries whose signature doesn't
       verify — almost certainly a **second (test-mode) endpoint pointed at the prod URL** with the

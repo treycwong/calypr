@@ -2,8 +2,10 @@ import type { ReactNode } from "react";
 
 import { VideoPreview } from "@/components/landing/VideoPreview";
 import { Reveal, Stagger, StaggerItem } from "@/components/landing/motion";
-import { Eyebrow } from "@/components/site/Eyebrow";
 import { Section } from "@/components/site/Section";
+import { GridLines } from "@/components/spectra/GridLines";
+import { SectionHeading } from "@/components/spectra/SectionHeading";
+import { SectionLabel } from "@/components/spectra/SectionLabel";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,8 +33,11 @@ function Card({ className, children }: { className?: string; children: ReactNode
     <div
       data-capability-card
       className={cn(
-        "group relative flex h-full flex-col overflow-hidden rounded-2xl",
-        "border border-white/[0.07] bg-white/[0.02] transition-colors duration-500 hover:border-white/[0.14]",
+        "group relative flex h-full flex-col overflow-hidden rounded-[24px]",
+        // Spectra card anatomy: flat ink fill, a hairline border that goes green on hover,
+        // and an inset top highlight. Never a drop shadow on a dark surface.
+        "border border-[var(--border-dark)] bg-[var(--surface-card-dark)] shadow-[var(--inner-hairline)]",
+        "transition-colors duration-200 ease-[var(--ease-standard)] hover:border-[var(--border-accent)]",
         className,
       )}
     >
@@ -46,10 +51,10 @@ function Card({ className, children }: { className?: string; children: ReactNode
         aria-hidden
         className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[130%] -translate-x-1/2 rounded-[100%] bg-[radial-gradient(closest-side,rgba(255,255,255,0.11),transparent)] opacity-70 transition-opacity duration-700 group-hover:opacity-100"
       />
-      {/* the same light again in brand cyan, only on hover — a tint, not a colour wash */}
+      {/* the same light again in brand green, only on hover — a tint, not a colour wash */}
       <span
         aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[130%] -translate-x-1/2 rounded-[100%] bg-[radial-gradient(closest-side,rgba(34,211,238,0.13),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
+        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[130%] -translate-x-1/2 rounded-[100%] bg-[radial-gradient(closest-side,rgba(62,206,139,0.16),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
       />
       {children}
     </div>
@@ -112,9 +117,13 @@ function PanelBar({ label, right }: { label: string; right?: ReactNode }) {
 function Copy({ chip, title, body }: { chip: string; title: string; body: string }) {
   return (
     <div className="relative flex flex-1 flex-col justify-end p-6">
-      <span className="font-mono text-[10px] uppercase tracking-[0.2em] text-brand/80">{chip}</span>
-      <h3 className="mt-2 text-lg font-medium tracking-tight">{title}</h3>
-      <p className="mt-1.5 max-w-md text-sm leading-relaxed text-muted-foreground">{body}</p>
+      <span className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--accent-on-dark)]">
+        {chip}
+      </span>
+      {/* Card titles are the one place the type steps up to medium (500); everything larger
+          than this on the page is set light. */}
+      <h3 className="mt-2.5 text-xl font-medium tracking-[-0.02em] text-[var(--text-on-dark)]">{title}</h3>
+      <p className="mt-2 max-w-md text-[15px] leading-[1.55] text-[var(--text-on-dark-muted)]">{body}</p>
     </div>
   );
 }
@@ -198,7 +207,7 @@ function ImageVisual() {
               className="absolute inset-x-0 top-0 h-40 w-full object-cover"
             />
             <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-brand/25 to-transparent" />
-            <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-px bg-brand shadow-[0_0_12px_2px_rgba(34,211,238,0.6)]" />
+            <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-px bg-brand shadow-[0_0_12px_2px_rgba(62,206,139,0.6)]" />
           </div>
 
           {/* viewfinder corners */}
@@ -248,7 +257,7 @@ function MeshVisual() {
             }}
           />
           {/* the object's own light, behind the faces */}
-          <span className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(34,211,238,0.22),transparent)]" />
+          <span className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(62,206,139,0.22),transparent)]" />
           <div className="absolute inset-0 flex items-center justify-center [perspective:520px]">
             <div className="mesh-cube relative" style={{ width: S * 2, height: S * 2 }}>
               {faces.map((transform) => (
@@ -406,12 +415,12 @@ function RagChip({
       <circle
         r={r}
         fill="rgba(255,255,255,0.05)"
-        stroke={accent ? "rgba(34,211,238,0.4)" : "rgba(255,255,255,0.13)"}
+        stroke={accent ? "rgba(62,206,139,0.4)" : "rgba(255,255,255,0.13)"}
         strokeWidth="1"
       />
       <g
         fill="none"
-        stroke={accent ? "rgba(34,211,238,0.85)" : "rgba(255,255,255,0.55)"}
+        stroke={accent ? "rgba(62,206,139,0.85)" : "rgba(255,255,255,0.55)"}
         strokeWidth="1.25"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -451,13 +460,13 @@ function RagVisual() {
           {/* the model: falloff rings, a pulse on the beat of the flow, then the core */}
           <g transform="translate(210 95)">
             <circle r="38" fill="none" stroke="rgba(255,255,255,0.05)" />
-            <circle r="28" fill="rgba(34,211,238,0.05)" stroke="rgba(255,255,255,0.09)" />
-            <circle className="rag-pulse" r="20" fill="none" stroke="rgba(34,211,238,0.5)" strokeWidth="1" />
-            <circle r="20" fill="rgba(34,211,238,0.14)" stroke="rgba(34,211,238,0.45)" strokeWidth="1" />
+            <circle r="28" fill="rgba(62,206,139,0.05)" stroke="rgba(255,255,255,0.09)" />
+            <circle className="rag-pulse" r="20" fill="none" stroke="rgba(62,206,139,0.5)" strokeWidth="1" />
+            <circle r="20" fill="rgba(62,206,139,0.14)" stroke="rgba(62,206,139,0.45)" strokeWidth="1" />
             <path
               d="M0 -9 C 1.2 -3.4, 3.4 -1.2, 9 0 C 3.4 1.2, 1.2 3.4, 0 9 C -1.2 3.4, -3.4 1.2, -9 0 C -3.4 -1.2, -1.2 -3.4, 0 -9 Z"
               fill="none"
-              stroke="#22d3ee"
+              stroke="#3ece8b"
               strokeWidth="1.25"
               strokeLinejoin="round"
             />
@@ -472,7 +481,7 @@ function RagVisual() {
               key={`in-${d}`}
               className="rag-dot"
               r="2.75"
-              fill="#22d3ee"
+              fill="#3ece8b"
               style={{ offsetPath: `path("${d}")`, animationDelay: `${i * 0.93}s` }}
             />
           ))}
@@ -481,7 +490,7 @@ function RagVisual() {
               key={`out-${delay}`}
               className="rag-dot"
               r="2.75"
-              fill="#22d3ee"
+              fill="#3ece8b"
               style={{ offsetPath: `path("${RAG_STORE}")`, animationDelay: `${delay}s` }}
             />
           ))}
@@ -502,19 +511,27 @@ function RagVisual() {
 
 export function Capabilities() {
   return (
-    <Section id="features">
-      <Reveal className="max-w-3xl">
-        <Eyebrow>what you can build</Eyebrow>
-        <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-5xl">
-          Speak it. Search it. Render it. Ship it.
-        </h2>
-        <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-          One canvas for learners, creatives and builders — voice, retrieval, images, video and
-          3D are nodes you wire together, not products you subscribe to separately.
-        </p>
-        <p className="mt-6 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          01 draw the graph <span className="text-brand">·</span> 02 run &amp; inspect{" "}
-          <span className="text-brand">·</span> 03 own the code
+    <Section id="features" className="relative isolate">
+      <GridLines />
+      {/* Asymmetric two-column opener: label + heading left, the supporting paragraph right.
+          It's the shape every Spectra section starts with. */}
+      <Reveal>
+        <div className="grid items-start gap-10 lg:grid-cols-2">
+          <div>
+            <SectionLabel index="02">what you can build</SectionLabel>
+            {/* Two-tone: neutral phrase, then the green one. */}
+            <SectionHeading className="mt-6" size="display" accent="Ship it.">
+              Speak it. Search it. Render it.
+            </SectionHeading>
+          </div>
+          <p className="max-w-[430px] text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)] lg:pt-16">
+            One canvas for learners, creatives and builders — voice, retrieval, images, video and
+            3D are nodes you wire together, not products you subscribe to separately.
+          </p>
+        </div>
+        <p className="mt-10 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-faint)]">
+          01 draw the graph <span className="text-[var(--accent-on-dark)]">·</span> 02 run &amp;
+          inspect <span className="text-[var(--accent-on-dark)]">·</span> 03 own the code
         </p>
       </Reveal>
 

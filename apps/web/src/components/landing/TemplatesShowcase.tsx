@@ -10,7 +10,9 @@ import {
   FEATURED_TEMPLATES,
   FRAMEWORK_NAMES,
 } from "@/components/landing/landing-data";
-import { Eyebrow } from "@/components/site/Eyebrow";
+import { ArrowLink } from "@/components/spectra/ArrowLink";
+import { SectionHeading } from "@/components/spectra/SectionHeading";
+import { SectionLabel } from "@/components/spectra/SectionLabel";
 import { Section } from "@/components/site/Section";
 
 /**
@@ -26,35 +28,32 @@ export function TemplatesShowcase() {
         <Reveal>
           <div className="flex flex-wrap items-end justify-between gap-6">
             <div className="max-w-3xl">
-              <Eyebrow>template gallery</Eyebrow>
-              <h2 className="mt-5 text-4xl font-semibold tracking-tight sm:text-6xl">
-                Start with a<br />
-                ready-made <span className="text-brand">agent</span>.
-              </h2>
-              <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
+              <SectionLabel index="03">template gallery</SectionLabel>
+              {/* The heading was already two-tone; `SectionHeading` is where that split now
+                  lives, so the green phrase can't drift from the rest of the page. */}
+              <SectionHeading className="mt-6" size="display" accent="agent.">
+                Start with a ready-made
+              </SectionHeading>
+              <p className="mt-5 max-w-xl text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)]">
                 Nineteen use-case templates, ten agent architectures. Load one, run it, keep
                 the code.
               </p>
             </div>
-            <Link
-              href="/canvas"
-              className="group mb-1 hidden items-center gap-2 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground transition-colors hover:text-foreground sm:inline-flex"
-            >
+            <ArrowLink href="/canvas" tone="accent" className="mb-1 hidden sm:inline-flex">
               browse all
-              <ArrowRight className="h-3.5 w-3.5 transition-transform duration-300 group-hover:translate-x-0.5" />
-            </Link>
+            </ArrowLink>
           </div>
         </Reveal>
 
         {/* the architecture ladder — chip row */}
         <Reveal delay={0.1} className="mt-8 flex flex-wrap items-center gap-2">
-          <span className="mr-1 font-mono text-[10px] uppercase tracking-[0.2em] text-muted-foreground">
+          <span className="mr-1 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-faint)]">
             frameworks
           </span>
           {FRAMEWORK_NAMES.map((name) => (
             <span
               key={name}
-              className="rounded-full border border-border bg-card/40 px-3 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:border-brand/40 hover:text-foreground"
+              className="rounded-full border border-border bg-card/40 px-3 py-1 font-mono text-[11px] text-muted-foreground transition-colors hover:border-[var(--border-accent)] hover:text-foreground"
             >
               {name}
             </span>

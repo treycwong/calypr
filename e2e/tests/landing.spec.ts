@@ -6,7 +6,7 @@ import { API_URL } from "../playwright.config";
 
 test("the landing page renders the hero and CTAs", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Build your dreams" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Craft your next agentic app" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Get Started" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Join Beta" }).first()).toBeVisible();
   // the agent-ladder templates are showcased further down the page

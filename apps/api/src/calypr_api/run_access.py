@@ -16,10 +16,10 @@ blocks (`entitlements.PLUS_NODE_TYPES`) cost real money per output rather than p
 are a paid entitlement — and unlike the credit gate, a BYO key does not open them. That check runs
 before the own-key short-circuit for exactly that reason.
 
-And it decides *where* you may run, checked first of all: a workspace beyond the plan's cap
-after a downgrade is read-only, so no run starts in it at all (`locking.py`). That gate is about
-capacity the account no longer has — and like the block gate, waiting for the monthly reset does
-nothing for it.
+And it decides *where* you may run, checked first of all: a workspace — or a saved project —
+beyond the plan's cap after a downgrade is read-only, so no run starts in it at all
+(`locking.py`). That gate is about capacity the account no longer has — and like the block gate,
+waiting for the monthly reset does nothing for it.
 
 Graph-shaped, so it can't be a FastAPI dependency — the graph arrives in the request body.
 Callers run it off the event loop (it touches the DB) and stream the `(code, message)` back
@@ -64,7 +64,11 @@ def _plan_required_message(types: list[str]) -> str:
     return f"The {names} {plural} part of Calypr Plus. Upgrade to run this agent."
 
 
-def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[str, str] | None:
+def check_run_gates(
+    workspace_id: uuid.UUID | None,
+    graph: GraphSpec,
+    agent_id: uuid.UUID | str | None = None,
+) -> tuple[str, str] | None:
     """`(code, message)` explaining why this graph may not run, or None if it may.
 
     The short-circuit is the point. Asking the balance about a run we don't pay for is how a
@@ -86,10 +90,11 @@ def check_run_gates(workspace_id: uuid.UUID | None, graph: GraphSpec) -> tuple[s
     if str(workspace_id) == DEV_WORKSPACE_ID:
         return None
 
-    # Capacity before credits. A workspace the plan no longer covers is read-only, and saying
-    # "you're out of credits" to someone whose real problem is a lapsed subscription sends them
-    # to wait for a monthly reset that will not help.
-    if locked := locking.locked_run_message(workspace_id):
+    # Capacity before credits. A workspace *or project* the plan no longer covers is read-only,
+    # and saying "you're out of credits" to someone whose real problem is a lapsed subscription
+    # sends them to wait for a monthly reset that will not help. `WORKSPACE_LOCKED` covers both:
+    # the code is the client's cue to offer an upgrade, and both locks have the same remedy.
+    if locked := locking.locked_run_message(workspace_id, agent_id):
         return (WORKSPACE_LOCKED, locked)
 
     try:

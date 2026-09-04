@@ -4,7 +4,8 @@ import type { LucideIcon } from "lucide-react";
 import { Marquee } from "@/components/landing/Marquee";
 import { Reveal } from "@/components/landing/motion";
 import { CONNECTORS, MODEL_PROVIDERS, TOOL_PROVIDERS } from "@/components/landing/landing-data";
-import { Eyebrow } from "@/components/site/Eyebrow";
+import { SectionHeading } from "@/components/spectra/SectionHeading";
+import { SectionLabel } from "@/components/spectra/SectionLabel";
 import { SECTION_INNER, Section } from "@/components/site/Section";
 
 /**
@@ -63,15 +64,19 @@ export function ModelsConnectors() {
   return (
     <Section id="models" bleed>
       <div className={SECTION_INNER}>
-        <Reveal className="max-w-3xl">
-          <Eyebrow>bring your stack</Eyebrow>
-          <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-5xl">
-            Frontier models in. Your tools wired up.
-          </h2>
-          <p className="mt-4 max-w-xl text-sm leading-relaxed text-muted-foreground sm:text-base">
-            Pick a model per agent, hand it tools, and connect the apps you already live in —
-            all from the same canvas.
-          </p>
+        <Reveal>
+          <div className="grid items-start gap-10 lg:grid-cols-2">
+            <div>
+              <SectionLabel index="04">bring your stack</SectionLabel>
+              <SectionHeading className="mt-6" accent="Your tools wired up.">
+                Frontier models in.
+              </SectionHeading>
+            </div>
+            <p className="max-w-[430px] text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)] lg:pt-12">
+              Pick a model per agent, hand it tools, and connect the apps you already live in —
+              all from the same canvas.
+            </p>
+          </div>
         </Reveal>
       </div>
 
@@ -98,7 +103,7 @@ export function ModelsConnectors() {
       </Reveal>
 
       <div className={`${SECTION_INNER} mt-10`}>
-        <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+        <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-faint)]">
           Fake model built in — no API key needed to start.
         </p>
       </div>

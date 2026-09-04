@@ -232,7 +232,16 @@ def list_agents(t: Tenant = Depends(tenant)) -> list[AgentSummary]:
 @router.get("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])
 def get_agent(agent_id: str, t: Tenant = Depends(tenant)) -> AgentDetail:
     a = _get_owned(t.session, t.workspace_id, agent_id)
-    return AgentDetail(id=str(a.id), name=a.name, graph=GraphSpec.model_validate(a.graph_spec))
+    # Reported, not enforced: opening a locked project is exactly what we want people to be able
+    # to do — read it, export it, delete it. The flag is how the canvas knows to say so, and to
+    # stop offering Save and the Playground composer as if they would work.
+    locked = locking.locked_ids_for_request(t)
+    return AgentDetail(
+        id=str(a.id),
+        name=a.name,
+        graph=GraphSpec.model_validate(a.graph_spec),
+        locked=a.id in locked.agents or t.workspace_id in locked.workspaces,
+    )
 
 
 @router.put("/agents/{agent_id}", response_model=AgentDetail, tags=["agents"])

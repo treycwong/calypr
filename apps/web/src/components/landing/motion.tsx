@@ -24,7 +24,11 @@ import {
 } from "motion/react";
 import { useRef, type ReactNode } from "react";
 
-const EASE = [0.21, 0.47, 0.32, 0.98] as const;
+// Spectra's on-scroll reveal: 700ms `cubic-bezier(.16,1,.3,1)` fade-and-rise. Matches
+// `--ease-out-soft`/`--dur-reveal` in the tokens, so JS-driven reveals and CSS transitions
+// land on the same curve.
+const EASE = [0.16, 1, 0.3, 1] as const;
+const DURATION = 0.7;
 
 export function Reveal({
   children,
@@ -43,7 +47,7 @@ export function Reveal({
         initial={{ opacity: 0, y: reduced ? 0 : 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-80px" }}
-        transition={{ duration: 0.55, ease: EASE, delay }}
+        transition={{ duration: DURATION, ease: EASE, delay }}
       >
         {children}
       </m.div>
@@ -87,7 +91,7 @@ export function StaggerItem({
       className={className}
       variants={{
         hidden: { opacity: 0, y: reduced ? 0 : 14 },
-        show: { opacity: 1, y: 0, transition: { duration: 0.5, ease: EASE } },
+        show: { opacity: 1, y: 0, transition: { duration: DURATION, ease: EASE } },
       }}
     >
       {children}

@@ -46,10 +46,13 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   },
 ];
 
-function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) {
+/** Spectra numbers its footer columns in mono, the same way it numbers sections and
+ *  pricing tiers. The index is decorative order, not a sequence to follow. */
+function FooterColumn({ index, title, links }: { index: string; title: string; links: FooterLink[] }) {
   return (
     <div>
-      <h3 className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+      <h3 className="flex items-baseline gap-2 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-muted)]">
+        <span className="text-[var(--accent-on-dark)]">{index}</span>
         {title}
       </h3>
       <ul className="mt-4 space-y-3">
@@ -82,20 +85,24 @@ function FooterColumn({ title, links }: { title: string; links: FooterLink[] }) 
 
 export function SiteFooter() {
   return (
-    <footer className="mt-auto border-t border-border">
+    // `bg-background` rather than transparent: the footer is a solid panel, and a page that
+    // paints anything behind it — the grid-line field on the marketing pages does — would
+    // otherwise show through it. `isolate`/`overflow-hidden` went with the ghosted CALYPR
+    // wordmark that used to bleed off the bottom edge; nothing is clipped or stacked here now.
+    <footer className="relative mt-auto border-t border-border bg-background">
       {/* Same container as `Section`/`LandingHeader` so the footer's logo lines up with the
           hero's and with every section edge above it. */}
       <div className={`${SECTION_INNER} py-14`}>
         <div className="flex flex-col gap-12 md:flex-row md:justify-between">
           <div className="space-y-3">
             <SiteLogo className="h-5 w-auto" />
-            <p className="max-w-[22ch] text-sm text-muted-foreground">
+            <p className="max-w-[22ch] text-[15px] leading-[1.55] text-[var(--text-on-dark-muted)]">
               Design AI Agents on Canvas.
             </p>
           </div>
           <div className="grid grid-cols-2 gap-10 sm:grid-cols-4 md:gap-16">
-            {COLUMNS.map((col) => (
-              <FooterColumn key={col.title} {...col} />
+            {COLUMNS.map((col, i) => (
+              <FooterColumn key={col.title} index={`0${i + 1}`} {...col} />
             ))}
           </div>
         </div>

@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 /**
  * A scroll-snap carousel: the track is a native horizontally-scrolling flex row (so touch,
  * trackpad and keyboard all work with zero JS), and the JS on top is only chrome — prev/next
- * buttons that scroll by one slide, and a cyan progress bar. Slides mark themselves with
+ * buttons that scroll by one slide, and a brand-green progress bar. Slides mark themselves with
  * `data-slide` so the step size matches the real rendered width at any breakpoint.
  */
 export function Carousel({ children, className }: { children: ReactNode; className?: string }) {

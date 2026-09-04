@@ -23,6 +23,7 @@ import {
   Cable,
   Images,
   LayoutTemplate,
+  Lock,
   type LucideIcon,
   MessageSquare,
   PanelLeftClose,
@@ -65,6 +66,7 @@ import { TemplatesPanel } from "@/components/canvas/TemplatesPanel";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
 import {
+  CapReachedError,
   createAgent,
   createShare,
   getAgent,
@@ -192,6 +194,9 @@ function CanvasInner() {
   // The saved agent this canvas is editing: id (null until first save) + its name. Save creates
   // once then updates in place, so re-saving never duplicates.
   const [agentId, setAgentId] = useState<string | null>(null);
+  // Read-only because the account is over its plan's project cap. The API answers this on load
+  // (`AgentDetail.locked`) — never recomputed here, so the canvas and the refusal can't disagree.
+  const [agentLocked, setAgentLocked] = useState(false);
   // Whether `?agent=` has been resolved yet. History is scoped per project, so listing before
   // this is known would briefly show the wrong project's conversations.
   const [agentResolved, setAgentResolved] = useState(false);
@@ -296,6 +301,7 @@ function CanvasInner() {
         counter.current = canvas.nodes.length;
         lastNodeId.current = canvas.nodes.at(-1)?.id ?? null;
         setAgentId(a.id);
+        setAgentLocked(a.locked === true);
         setName(a.name);
         // Built through the same pipeline `getGraph` uses, so the baseline is comparable to the
         // live canvas without waiting for the state above to settle.
@@ -777,7 +783,10 @@ function CanvasInner() {
   const [shareOpen, setShareOpen] = useState(false);
   const [shareToken, setShareToken] = useState<string | null>(null);
   const [shareBusy, setShareBusy] = useState(false);
-  const [shareError, setShareError] = useState(false);
+  // The reason a link couldn't be minted, not just that it wasn't. A 402 is a lock with a
+  // remedy; everything else is worth retrying. Telling someone to "try again" when the server
+  // has said "never" is the failure this replaced.
+  const [shareError, setShareError] = useState<{ message: string; locked: boolean } | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const sharePanelRef = useRef<HTMLDivElement>(null);
   const shareUrl = shareToken ? `${window.location.origin}/s/${shareToken}` : "";
@@ -790,20 +799,34 @@ function CanvasInner() {
     }
     setShareOpen(true);
     setShareCopied(false);
+    // A read-only project can't mint one, and the API says so with a 402. Opening the popover to
+    // explain beats a disabled button: the button can only offer a tooltip, which is nothing at
+    // all on a touch screen, and the explanation is where the user is already looking.
+    if (agentLocked) {
+      setShareError({
+        message: "This project is read-only, so it can't be shared.",
+        locked: true,
+      });
+      return;
+    }
     if (!shareToken) {
       setShareBusy(true);
-      setShareError(false);
+      setShareError(null);
       try {
         const { token } = await createShare(agentId);
         setShareToken(token);
-      } catch {
-        setShareError(true);
-        toast("Couldn't create a share link — please try again.", "error");
+      } catch (e) {
+        const locked = e instanceof CapReachedError;
+        setShareError({
+          message: locked ? e.message : "Couldn't create a link. Try again.",
+          locked,
+        });
+        if (!locked) toast("Couldn't create a share link — please try again.", "error");
       } finally {
         setShareBusy(false);
       }
     }
-  }, [agentId, shareOpen, shareToken, toast]);
+  }, [agentId, agentLocked, shareOpen, shareToken, toast]);
 
   const copyShareLink = useCallback(async () => {
     if (!shareUrl) return;
@@ -982,7 +1005,26 @@ function CanvasInner() {
           ) : null}
           {/* Undo/Redo used to sit here. They live in the canvas toolbar now — next to the tool
               and zoom controls they belong with, and within reach of the canvas you're editing. */}
-          <Button variant="outline" size="sm" onClick={onSave} data-testid="save-agent">
+          {/* A locked project can be read, exported and deleted — but not written to, and the
+              API says so with a 402. Offering Save anyway turns that into a failure message
+              after the fact; the badge says why before it. */}
+          {agentLocked ? (
+            <span
+              className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-xs text-amber-700 dark:text-amber-500"
+              data-testid="canvas-locked"
+              title="Read-only — over your plan's project limit"
+            >
+              <Lock className="h-3 w-3" />
+              Read-only
+            </span>
+          ) : null}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onSave}
+            disabled={agentLocked}
+            data-testid="save-agent"
+          >
             Save
           </Button>
           {agentId ? (
@@ -1029,9 +1071,32 @@ function CanvasInner() {
                       </Button>
                     </div>
                   ) : null}
-                  {shareError ? (
+                  {shareError?.locked ? (
+                    // Named the same as the chat panel and the dashboard banner, and offering the
+                    // same two exits — a lock the user meets in three places should read as one
+                    // fact about their plan, not three unrelated refusals.
+                    <div
+                      className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5"
+                      data-testid="share-locked"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                        <span className="text-xs font-medium">Sharing is read-only</span>
+                      </div>
+                      <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                        {shareError.message}
+                      </p>
+                      <Link
+                        href="/pricing"
+                        className="mt-2 inline-block text-xs font-medium underline underline-offset-4"
+                        data-testid="share-locked-upgrade"
+                      >
+                        Upgrade to share it
+                      </Link>
+                    </div>
+                  ) : shareError ? (
                     <p className="mt-3 text-sm text-destructive" data-testid="share-error">
-                      Couldn&apos;t create a link. Try again.
+                      {shareError.message}
                     </p>
                   ) : (
                     <div className="mt-3 flex gap-2">
@@ -1350,6 +1415,7 @@ function CanvasInner() {
             <Playground
               getGraph={getGraph}
               agentId={agentId ?? undefined}
+              locked={agentLocked}
               scopeReady={agentResolved}
               onAssetGenerated={onAssetGenerated}
               onNodeEvent={onNodeEvent}

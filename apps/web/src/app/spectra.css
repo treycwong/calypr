@@ -1,0 +1,135 @@
+/* ── Spectra design tokens ─────────────────────────────────────────────────────
+   Flattened from `spectra-design-system/project/tokens/*.css` (the Claude Design
+   handoff bundle). This file is the raw token vocabulary only — plain custom
+   properties, no Tailwind. The Tailwind-facing mapping lives in `globals.css`;
+   the semantic surface remap is scoped to `[data-brand="spectra"]` there so the
+   canvas and dashboard keep their current look until they're redesigned too.
+
+   Two token groups from the bundle are deliberately NOT copied:
+   - `tokens/fonts.css` — it @imports Google Fonts at runtime. Next's `next/font`
+     self-hosts them instead (see `layout.tsx`), so the families are defined there.
+   - the bare `a { }` rules at the foot of `tokens/surfaces.css` — they'd fight
+     Tailwind's preflight and the app's own link styles.
+
+   Values are measured-from-screenshot approximations per the bundle's own README;
+   reconcile against real source if it ever turns up. Don't hand-edit individual
+   numbers here — change them in the bundle and re-flatten, or the two drift. */
+
+:root {
+  /* ── Green ramp (brand core) ───────────────────────────── */
+  --green-50: #ecfbf3;
+  --green-100: #d2f5e2;
+  --green-200: #a7e9c6;
+  --green-300: #86d6a8;
+  --green-400: #3ece8b;
+  --green-500: #22b573;
+  --green-600: #17945c;
+  --green-700: #127349;
+  --green-800: #0e5537;
+  --green-900: #0b3524;
+  --green-950: #071a12;
+
+  /* ── Ink (green-tinted near-blacks) ───────────────────── */
+  --ink-950: #06110c;
+  --ink-900: #0a1712;
+  --ink-850: #0e1d16;
+  --ink-800: #13271e;
+  --ink-700: #1b3428;
+  --ink-600: #274a39;
+
+  /* ── Mist (green-tinted lights) ───────────────────────── */
+  --mist-50: #f4f8f6;
+  --mist-100: #eaf1ed;
+  --mist-200: #d9e4dd;
+  --mist-300: #c2d2c9;
+
+  /* ── Slate text greys — never neutral, always green-cast ─ */
+  --slate-700: #40514a;
+  --slate-600: #566a60;
+  --slate-500: #6b7f74;
+  --slate-400: #94a79c;
+  --slate-300: #9db3a6;
+
+  /* ── Semantic: dark surfaces ──────────────────────────── */
+  --surface-card-dark: var(--ink-850);
+  --surface-card-dark-hover: var(--ink-800);
+  --surface-chip-dark: rgba(255, 255, 255, 0.05);
+  --border-dark: rgba(255, 255, 255, 0.07);
+  --border-dark-strong: var(--ink-700);
+  --border-accent: rgba(62, 206, 139, 0.4);
+  --text-on-dark: #f2f7f4;
+  --text-on-dark-muted: var(--slate-300);
+  --text-on-dark-faint: #6f8579;
+
+  /* ── Semantic: light surfaces ─────────────────────────── */
+  --surface-chip-light: var(--mist-100);
+  --border-light: var(--mist-200);
+  --text-heading: var(--ink-950);
+  --text-body: var(--slate-600);
+  --text-muted: var(--slate-500);
+
+  /* ── Semantic: accent ─────────────────────────────────── */
+  --accent-bright: var(--green-400);
+  --accent-on-dark: var(--green-400);
+  --accent-on-light: var(--green-600);
+  --accent-soft-bg: rgba(62, 206, 139, 0.12);
+  --accent-text-quiet: var(--green-300);
+  --eyebrow-bg: rgba(62, 206, 139, 0.14);
+
+  /* ── Gradients ────────────────────────────────────────── */
+  --grad-accent: linear-gradient(135deg, #4be39b 0%, #22b573 100%);
+  --grad-accent-hover: linear-gradient(135deg, #5ceaa7 0%, #26c47d 100%);
+  --grad-card-dark: linear-gradient(160deg, #13271e 0%, #0a1712 70%);
+  --grad-hero-light: linear-gradient(180deg, #f4f8f6 0%, #e4efe9 100%);
+  --grad-fade-dark: linear-gradient(180deg, rgba(6, 17, 12, 0) 0%, rgba(6, 17, 12, 0.9) 100%);
+
+  /* ── Type scale ───────────────────────────────────────── */
+  --fs-display-1: 112px;
+  --fs-display-2: 72px;
+  --fs-display-3: 56px;
+  --fs-h1: 44px;
+  --fs-h2: 36px;
+  --fs-h3: 24px;
+  --fs-h4: 20px;
+
+  --lh-display: 0.95;
+  --lh-heading: 1.12;
+
+  /* Display and headings are set LIGHT (300) with negative tracking — the size
+     does the work, never the weight. This is the single most load-bearing rule
+     in the system; `font-semibold` on a heading is always wrong here. */
+  --ls-display: -0.03em;
+  --ls-heading: -0.02em;
+  --ls-mono-label: 0.14em;
+  --ls-caps: 0.08em;
+
+  /* ── Spacing / layout ─────────────────────────────────── */
+  --card-pad: 28px;
+  --card-pad-lg: 32px;
+  --section-pad-y: 120px;
+  --grid-line: rgba(255, 255, 255, 0.045);
+  --grid-line-light: rgba(11, 20, 16, 0.05);
+  --grid-column: 248px;
+
+  /* ── Elevation. Dark leans on borders + inner light, not drop shadow ─ */
+  --inner-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --shadow-card-light: 0 1px 2px rgba(11, 20, 16, 0.04), 0 12px 32px -12px rgba(11, 20, 16, 0.1);
+  --shadow-panel-light: 0 40px 80px -40px rgba(11, 20, 16, 0.18);
+  --shadow-media: 0 30px 60px -30px rgba(0, 0, 0, 0.55);
+  --glow-accent: 0 0 24px rgba(62, 206, 139, 0.35);
+  --glow-accent-strong: 0 0 40px rgba(62, 206, 139, 0.5);
+  --glow-white: 0 0 48px rgba(255, 255, 255, 0.28);
+
+  --blur-glass: saturate(140%) blur(20px);
+  --glass-dark: rgba(14, 29, 22, 0.6);
+  --glass-light: rgba(255, 255, 255, 0.72);
+
+  /* ── Motion ───────────────────────────────────────────── */
+  --dur-fast: 120ms;
+  --dur-base: 200ms;
+  --dur-slow: 400ms;
+  --dur-reveal: 700ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}

@@ -14,6 +14,12 @@ const nextConfig: NextConfig = {
     // kind of thing that quietly consumes a plan's monthly allowance.
     remotePatterns: [{ protocol: "https", hostname: "*.public.blob.vercel-storage.com" }],
   },
+  // `/tutorials` was a "coming soon" placeholder that shipped to a live, indexed site. It's gone
+  // rather than left standing empty, but the URL isn't: anything already linking to it lands on
+  // the blog, which is where the tutorials actually are (they're a post category there).
+  async redirects() {
+    return [{ source: "/tutorials", destination: "/blog", permanent: true }];
+  },
 };
 
 // Turbopack requires remark/rehype plugins by *string name* (options must be serializable —

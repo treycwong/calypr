@@ -1,10 +1,11 @@
 import { ArrowRight } from "lucide-react";
-import Link from "next/link";
 
 import { Parallax, Reveal } from "@/components/landing/motion";
-import { Eyebrow } from "@/components/site/Eyebrow";
+import { Badge } from "@/components/spectra/Badge";
+import { ButtonLink } from "@/components/spectra/Button";
+import { SectionHeading } from "@/components/spectra/SectionHeading";
+import { StatusDot } from "@/components/spectra/StatusDot";
 import { Section } from "@/components/site/Section";
-import { buttonVariants } from "@/components/ui/button";
 
 /**
  * The UI Builder teaser — the next product surface: design chatbot interfaces and sites on
@@ -27,13 +28,13 @@ function WireframeVisual() {
         <rect x="20" y="52" width="90" height="188" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         <rect x="126" y="52" width="214" height="56" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         {/* the lit block — a chat surface taking shape */}
-        <rect x="126" y="122" width="214" height="86" rx="6" fill="rgba(34,211,238,0.06)" stroke="#22d3ee" strokeWidth="1" className="glow-breathe" />
-        <line x1="142" y1="144" x2="288" y2="144" stroke="rgba(34,211,238,0.45)" strokeWidth="2" strokeLinecap="round" />
-        <line x1="142" y1="160" x2="252" y2="160" stroke="rgba(34,211,238,0.3)" strokeWidth="2" strokeLinecap="round" />
-        <rect x="142" y="180" width="182" height="16" rx="8" fill="none" stroke="rgba(34,211,238,0.4)" />
+        <rect x="126" y="122" width="214" height="86" rx="6" fill="rgba(62,206,139,0.06)" stroke="#3ece8b" strokeWidth="1" className="glow-breathe" />
+        <line x1="142" y1="144" x2="288" y2="144" stroke="rgba(62,206,139,0.45)" strokeWidth="2" strokeLinecap="round" />
+        <line x1="142" y1="160" x2="252" y2="160" stroke="rgba(62,206,139,0.3)" strokeWidth="2" strokeLinecap="round" />
+        <rect x="142" y="180" width="182" height="16" rx="8" fill="none" stroke="rgba(62,206,139,0.4)" />
         <rect x="126" y="220" width="102" height="20" rx="6" fill="none" stroke="color-mix(in oklab, var(--foreground) 18%, transparent)" strokeDasharray="4 4" />
         {/* cursor */}
-        <path d="M300 190 l 10 24 3.5 -9.5 9.5 -3.5 z" fill="#22d3ee" opacity="0.9" />
+        <path d="M300 190 l 10 24 3.5 -9.5 9.5 -3.5 z" fill="#3ece8b" opacity="0.9" />
       </svg>
     </div>
   );
@@ -42,23 +43,24 @@ function WireframeVisual() {
 export function UiBuilderTeaser() {
   return (
     <Section id="ui-builder">
-      <div className="dotted overflow-hidden rounded-2xl border border-border bg-card/20">
+      <div className="dotted overflow-hidden rounded-[24px] border border-[var(--border-dark)] bg-[var(--surface-card-dark)] shadow-[var(--inner-hairline)]">
         <div className="grid items-center gap-10 p-8 sm:p-12 lg:grid-cols-2">
           <Reveal>
-            <Eyebrow accent>coming soon</Eyebrow>
-            <h2 className="mt-5 text-3xl font-semibold tracking-tight sm:text-5xl">
-              Next: the UI Builder.
-            </h2>
-            <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base">
+            <Badge tone="accent">
+              <StatusDot pulse />
+              coming soon
+            </Badge>
+            <SectionHeading className="mt-6" accent="the UI Builder.">
+              Next:
+            </SectionHeading>
+            <p className="mt-5 max-w-md text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)]">
               Design chatbot interfaces, websites and more — wired straight to the agents you
               drew. The canvas builds the brain; the builder gives it a face.
             </p>
-            <Link
-              href="/waitlist"
-              className={`${buttonVariants({ variant: "outline" })} mt-7`}
-            >
-              Join Beta <ArrowRight className="h-4 w-4" />
-            </Link>
+            <ButtonLink href="/waitlist" variant="secondary" className="mt-8">
+              Join Beta
+              <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
+            </ButtonLink>
           </Reveal>
           <Reveal delay={0.15}>
             <Parallax distance={8} className="flex justify-center lg:justify-end">

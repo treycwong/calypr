@@ -1,7 +1,13 @@
 import type { Metadata } from "next";
 
 import { SiteFooter } from "@/components/site/Footer";
-import { SiteHeader } from "@/components/site/Header";
+import { SITE_HEADER_CTA } from "@/components/site/nav";
+import { LandingHeader } from "@/components/landing/LandingHeader";
+import { SECTION_INNER } from "@/components/site/Section";
+import { GridLines } from "@/components/spectra/GridLines";
+import { SectionHeading } from "@/components/spectra/SectionHeading";
+import { SectionLabel } from "@/components/spectra/SectionLabel";
+import { cn } from "@/lib/utils";
 
 import { WaitlistForm } from "./WaitlistForm";
 
@@ -13,24 +19,29 @@ export const metadata: Metadata = {
 
 export default function WaitlistPage() {
   return (
-    <div className="relative flex min-h-screen flex-col">
-      <div
-        aria-hidden
-        className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(60%_50%_at_50%_-10%,rgba(255,255,255,0.06),transparent)]"
-      />
-      <SiteHeader />
+    // The homepage nav's CTA lands here, so it is the first page after the hero for anyone who
+    // takes it — the one inner page where a colour seam would be most visible.
+    <div
+      data-brand="spectra"
+      className="flex min-h-screen flex-col bg-background"
+    >
+      <LandingHeader cta={SITE_HEADER_CTA} sticky />
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-5 py-16">
-        <span className="inline-flex items-center rounded-full border border-border bg-card/40 px-3 py-1 font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-          early access
-        </span>
-        <h1 className="mt-5 text-3xl font-semibold tracking-tight sm:text-4xl">
-          Join the Beta team.
-        </h1>
-        <p className="mt-3 max-w-xl text-sm leading-relaxed text-muted-foreground">
-          Get access to the latest product features as we ship them, and help shape Calypr with
-          your feedback. No spam — just the occasional build update.
-        </p>
+      <main className={cn("relative isolate", SECTION_INNER, "flex-1 py-20")}>
+        {/* The rule field belongs to the *content*, not the page. Mounted on the wrapper it
+            ran the full document height and struck vertical lines straight through the footer,
+            which reads as the background showing through a panel that is meant to be solid.
+            Scoped here it stops exactly where the content does. */}
+        <GridLines />
+        <SectionLabel index="01">Early access</SectionLabel>
+        <SectionHeading
+          size="display"
+          accent="Beta team."
+          className="mt-6"
+          subtitle="Get access to the latest product features as we ship them, and help shape Calypr with your feedback. No spam — just the occasional build update."
+        >
+          Join the
+        </SectionHeading>
         <WaitlistForm />
       </main>
 
