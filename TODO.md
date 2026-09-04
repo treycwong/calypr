@@ -83,8 +83,87 @@ Video cannot succeed in production** until it is reactivated — upgrade to Pro,
 `calypr_storage` at another provider (R2 has no egress charge, which suits a media app far
 better). Nothing in the repo can fix it. Until then both blocks fail cleanly and cost nothing.
 
-What consumed the allowance is fixed either way: **1,930 orphaned blobs (112.7 MB) swept**, and
-the Media grid no longer serves 2.7 MB originals as 180px thumbnails.
+**The meter that tripped is Advanced Operations, not bytes — measured 2026-09-01**, from
+`GET https://vercel.com/api/usage-summary?teamId=…` (the dashboard's own endpoint; the documented
+`/v1/usage` is Pro-only and 400s with `plan_upgrade_required` on Hobby):
+
+| Resource | Used | Hobby limit | | Pro |
+| --- | --- | --- | --- | --- |
+| **Blob Advanced Operations** | **2,051** | **2,000** | **102.6% ⛔** | 10,000 |
+| Blob Data Storage | 256.0 MB | 1,000 MB | 25.6% | 5 GB |
+| Blob Data Transfer | 310.1 MB | 10 GB | 3.1% | 100 GB |
+| Blob Simple Operations | 147 | 10,000 | 1.5% | 100,000 |
+
+So the "we only used a couple of hundred MB" reading was right and beside the point — storage was
+never close. An **Advanced Operation is `put()`, `copy()` or `list()`** (and, per Vercel's docs,
+*every dashboard click that browses a store*); `del()` is free. **Every one of the 1,937 objects
+cost one `put()` on the way in.** Sweeping them reclaimed the bytes; **it cannot reclaim the
+operations**, which is why the sweep did not lift the suspension. The 2.7 MB-thumbnail fix helped
+Data Transfer, a meter that was at 3%.
+
+The arithmetic is consistent rather than exact, and worth stating honestly: the store is 43 days
+old (created 07-18, swept 08-30) but the meter is a **rolling 30 days**, so only the puts inside
+that window counted — ~1,350 at a flat rate, and more in practice because the 08-28/30 media pass
+was a spike. The remainder is `traceywong-originals`, dashboard browsing, and the sweep's own two
+`list()` pages. (Reading the store from the CLI moved the counter 2,049 → 2,051 during this
+diagnosis, which is the doc's "dashboard interactions count" clause being literally true.)
+
+**Where the 1,937 puts came from — this is the root cause, and it is fixable in the repo.**
+There are exactly two production `put()` paths, `_assets.py::store_asset` (media node output) and
+`routers/uploads.py::_handle_upload`, and both are one put per file with no loop or retry. CI is
+not the source: `.github/workflows/ci.yml` never sets `BLOB_READ_WRITE_TOKEN`, so e2e falls back
+to `data:` URIs. **The source is local development.** `config.py:13` calls `load_dotenv` on the
+repo-root `.env`, and the `BLOB_READ_WRITE_TOKEN` sitting there belongs to
+`store_pR7HOMSJYVqYPjEW` — **`calypr-media`, the production store.** So six weeks of building four
+media node types locally wrote every throwaway test image and mp3 into production storage, and
+nothing collected them because the `asset` table only began recording on 08-06 (`0019`).
+Average object size is 58 KB, which is exactly what founder test output looks like.
+
+Worth fixing before this recurs, in rough priority order:
+
+- [~] **Point local dev at its own blob store — attempted 2026-09-01, BLOCKED by the suspension
+      itself.** A second Hobby store costs nothing (the limit is 100) and keeps dev churn off the
+      production meter entirely. This is the same hazard the `.env` Stripe-keys warning in §1
+      already documents, on a different resource. **But you cannot create one while over quota:**
+
+          $ vercel blob create-store calypr-media-dev --access public --region pdx1 \
+                --scope tracey-wongs-projects
+          Error: Cannot create another store when usage threshold limit is reached (400)
+
+      So the fix for the outage is gated behind the outage. It has to wait for **29 September** or
+      a Pro upgrade — one more reason the upgrade is the cheap move.
+      Run it **from a directory not linked to a Vercel project**: inside the repo the CLI insists
+      on linking the store to the `calypr` web project and injecting `BLOB_READ_WRITE_TOKEN` into
+      all three environments, which is useless here (the API runs on Railway) and would put a
+      second token in play. Then `vercel blob get-store <id>` for its token.
+      **Documented in `apps/api/.env.example` in the meantime**, with the production store id
+      (`store_pR7HOMSJYVqYPjEW` — the token is wrong if it contains `pR7HOMSJYV`) so the next
+      person to fill in a `.env` cannot repeat it by accident.
+      - [ ] On **30 Sept** (or at upgrade): create the store, swap the token in the repo-root
+            `.env`. **A one-shot reminder is scheduled** for 2026-09-30 09:00 +08 —
+            `trig_012Eui49zFKFttCvgsVqPrKd`, https://claude.ai/code/routines/trig_012Eui49zFKFttCvgsVqPrKd
+            The 30th, not the 29th: the rolling window lapses 2026-09-29 20:53 UTC, which is
+            04:53 on the 30th local, so a reminder on the 29th would fire before the reset.
+      - [ ] Consider a startup guard that refuses to run non-production against the production
+            store — a comment did not stop this happening for six weeks.
+- [ ] **Schedule the orphan sweep** instead of leaving it a manual `railway run`. It does not
+      recover operations, but it bounds storage and transfer, and 1,937 uncollected objects with
+      zero users is the signal that nothing is watching.
+- [ ] **Record share-page uploads.** `_handle_upload` is called with `workspace_id=None` from
+      `/share/{token}/uploads`, so `_record` returns early and the blob is an orphan by
+      construction — a live path that still manufactures the exact thing the sweep cleans up.
+
+Two consequences worth keeping straight:
+
+- **It is account-wide, not per-store.** `traceywong-originals` (a different project) is suspended
+  by the same quota — the meter is the *team's*, and one project's churn takes out the others.
+- **Hobby has no overage.** You cannot pay through it; the docs are explicit that you wait out the
+  30 days. Only upgrading (or moving stores) reactivates early.
+
+At Pro rates this is not a scaling problem: Advanced Operations are **$5.00 per 1M** beyond the
+10,000 included — a *thousand* generated files costs half a cent. The Hobby 2,000/month cap is the
+whole risk, and it is a founder-testing cap, not a user-load cap. Data Transfer is the meter real
+users would move, and one 5 MB video ≈ 0.05% of Hobby's 10 GB.
 
 **Also on Vercel:** previews hit a **branch limit**. Twelve merged branches were deleted and 20
 dead Error-state preview deployments removed; production history was untouched. Previews were
