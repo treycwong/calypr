@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useState,
   type ReactNode,
 } from "react";
@@ -25,6 +26,19 @@ export function useToast(): ToastContextValue {
   return ctx;
 }
 
+// A toast that has to outlive a full page navigation (e.g. `window.location.assign` after deleting
+// a workspace) can't sit in React state. Park it in sessionStorage; the next provider mount shows it
+// once and clears it, so a refresh doesn't replay it.
+const FLASH_KEY = "calypr:flash-toast";
+
+export function flashToast(message: string, variant: Variant = "default") {
+  try {
+    sessionStorage.setItem(FLASH_KEY, JSON.stringify({ message, variant }));
+  } catch {
+    // Storage blocked (private mode etc.): the toast is a nicety, the navigation still happens.
+  }
+}
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -33,6 +47,19 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     setToasts((cur) => [...cur, { id, message, variant }]);
     setTimeout(() => setToasts((cur) => cur.filter((t) => t.id !== id)), 5000);
   }, []);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(FLASH_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(FLASH_KEY);
+      const { message, variant } = JSON.parse(raw) as { message: string; variant?: Variant };
+      // Deferred a tick: showing it is an external sync (storage → UI), not render-derived state.
+      if (message) setTimeout(() => toast(message, variant), 0);
+    } catch {
+      // Unreadable or malformed: drop it silently.
+    }
+  }, [toast]);
 
   return (
     <ToastContext.Provider value={{ toast }}>
