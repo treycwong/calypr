@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { getUsage, type WorkspaceInfo } from "@/lib/api";
 
 /** Bytes as something a person reads. Deliberately coarse — "0.4 GB" is the useful precision
@@ -25,7 +26,7 @@ function Meter({ used, total }: { used: number; total: number }) {
       aria-valuemax={total}
     >
       <div
-        className="h-full rounded-full bg-foreground transition-[width]"
+        className="h-full rounded-full bg-brand transition-[width]"
         style={{ width: `${pct}%` }}
       />
     </div>
@@ -76,7 +77,7 @@ export function UsageView() {
   if (error) {
     return (
       <div className="w-full max-w-3xl px-10 py-8">
-        <h1 className="font-heading text-2xl">Usage</h1>
+        <PageHeader title="Usage" />
         <p className="mt-4 text-sm text-muted-foreground">
           Couldn&rsquo;t load your usage just now. Try refreshing.
         </p>
@@ -91,10 +92,10 @@ export function UsageView() {
 
   return (
     <div className="w-full max-w-3xl px-10 py-8">
-      <h1 className="font-heading text-2xl">Usage</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Everything here is shared across all of your workspaces.
-      </p>
+      <PageHeader
+        title="Usage"
+        subtitle="Everything here is shared across all of your workspaces."
+      />
 
       <div className="mt-6 space-y-4">
         {credits && credits.allowance > 0 ? (
@@ -124,7 +125,7 @@ export function UsageView() {
               aria-label="Credits used this month"
             >
               <div
-                className="h-full rounded-full bg-foreground transition-[width]"
+                className="h-full rounded-full bg-brand transition-[width]"
                 style={{
                   // Carrying more than a full allowance shows a full bar. `used` is
                   // `max(0, allowance - remaining)`, so that case computes 0% — an empty bar
@@ -159,7 +160,7 @@ export function UsageView() {
               </p>
             ) : null}
             {credits.remaining === 0 ? (
-              <p className="mt-2 text-xs text-amber-600 dark:text-amber-500">
+              <p className="mt-2 text-xs text-state-warning">
                 You&rsquo;re out of credits until they reset. Add your own key in Settings to keep
                 running{plan === "free" ? ", or upgrade to Plus" : ""}.
               </p>

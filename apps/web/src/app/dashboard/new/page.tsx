@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import { type CapDetail, UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { track } from "@/lib/analytics";
 import { buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,10 +87,11 @@ export default function NewProjectPage() {
       >
         <ArrowLeft className="h-4 w-4" /> Projects
       </Link>
-      <h1 className="mt-4 font-heading text-2xl">Start a new project</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Name it, then start from a blank canvas or a template.
-      </p>
+      <PageHeader
+        className="mt-4"
+        title="Start a new project"
+        subtitle="Name it, then start from a blank canvas or a template."
+      />
 
       <div className="mt-6 max-w-sm">
         <label htmlFor="np-name" className="text-sm font-medium">

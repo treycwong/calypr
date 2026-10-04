@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { ProjectArt } from "@/components/dashboard/ProjectArt";
 import { type CapDetail, UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
 import { track } from "@/lib/analytics";
@@ -19,7 +20,7 @@ import { UNSPLASH_UTM, WORKFLOW_PHOTOS } from "./photos";
 function WorkflowThumb({ template }: { template: Template }) {
   const photo = WORKFLOW_PHOTOS[template.id];
   return (
-    <div className="aspect-[16/10] w-full overflow-hidden bg-muted">
+    <div className="aspect-[16/10] w-full overflow-hidden rounded-[10px] bg-muted">
       {photo ? (
         /* next/image would add a remotePatterns entry and route eighteen covers through the
            Vercel optimizer (billed per transformation) to re-derive what imgix already did:
@@ -126,10 +127,10 @@ export function WorkflowGallery() {
 
   return (
     <div className="w-full max-w-6xl px-10 py-8">
-      <h1 className="font-heading text-2xl">Workflows</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Ready-made agents for a job. Pick one and it opens as a new project you can edit.
-      </p>
+      <PageHeader
+        title="Workflows"
+        subtitle="Ready-made agents for a job. Pick one and it opens as a new project you can edit."
+      />
 
       {templates === null ? (
         <p className="mt-8 text-sm text-muted-foreground">Loading…</p>
@@ -161,10 +162,10 @@ export function WorkflowGallery() {
               data-testid="workflow-card"
               data-category={t.category}
               aria-label={t.name}
-              className="group overflow-hidden rounded-lg border border-border bg-card text-left transition hover:border-foreground/25 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
+              className="group overflow-hidden rounded-[16px] border border-border bg-surface-2 p-2 text-left transition-colors hover:border-white/[0.12] hover:bg-surface-3 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50"
             >
               <WorkflowThumb template={t} />
-              <div className="p-3">
+              <div className="px-1.5 pt-2.5 pb-1">
                 <div className="truncate text-[13px] font-medium">
                   {busy === t.id ? "Opening…" : t.name}
                 </div>

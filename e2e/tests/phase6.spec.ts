@@ -16,6 +16,8 @@ test("the dashboard shell renders the sidebar nav", async ({ page }) => {
   await signIn(page);
   await expect(page.getByTestId("nav-projects")).toBeVisible();
   await expect(page.getByTestId("nav-settings")).toBeVisible();
+  // Sign out lives in the account menu at the foot of the sidebar, not as a standing button.
+  await page.getByTestId("user-menu").click();
   await expect(page.getByTestId("sign-out")).toBeVisible();
 });
 
