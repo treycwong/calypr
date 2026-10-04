@@ -54,7 +54,7 @@ function Card({ className, children }: { className?: string; children: ReactNode
       {/* the same light again in brand green, only on hover — a tint, not a colour wash */}
       <span
         aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[130%] -translate-x-1/2 rounded-[100%] bg-[radial-gradient(closest-side,rgba(62,206,139,0.16),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
+        className="pointer-events-none absolute -top-40 left-1/2 h-80 w-[130%] -translate-x-1/2 rounded-[100%] bg-[radial-gradient(closest-side,rgba(92,201,155,0.16),transparent)] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
       />
       {children}
     </div>
@@ -207,7 +207,7 @@ function ImageVisual() {
               className="absolute inset-x-0 top-0 h-40 w-full object-cover"
             />
             <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-brand/25 to-transparent" />
-            <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-px bg-brand shadow-[0_0_12px_2px_rgba(62,206,139,0.6)]" />
+            <span aria-hidden className="scan-head absolute inset-x-0 bottom-0 h-px bg-brand shadow-[0_0_12px_2px_rgba(92,201,155,0.6)]" />
           </div>
 
           {/* viewfinder corners */}
@@ -257,7 +257,7 @@ function MeshVisual() {
             }}
           />
           {/* the object's own light, behind the faces */}
-          <span className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(62,206,139,0.22),transparent)]" />
+          <span className="absolute left-1/2 top-1/2 h-28 w-28 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(closest-side,rgba(92,201,155,0.22),transparent)]" />
           <div className="absolute inset-0 flex items-center justify-center [perspective:520px]">
             <div className="mesh-cube relative" style={{ width: S * 2, height: S * 2 }}>
               {faces.map((transform) => (
@@ -415,12 +415,12 @@ function RagChip({
       <circle
         r={r}
         fill="rgba(255,255,255,0.05)"
-        stroke={accent ? "rgba(62,206,139,0.4)" : "rgba(255,255,255,0.13)"}
+        stroke={accent ? "rgba(92,201,155,0.4)" : "rgba(255,255,255,0.13)"}
         strokeWidth="1"
       />
       <g
         fill="none"
-        stroke={accent ? "rgba(62,206,139,0.85)" : "rgba(255,255,255,0.55)"}
+        stroke={accent ? "rgba(92,201,155,0.85)" : "rgba(255,255,255,0.55)"}
         strokeWidth="1.25"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -460,13 +460,13 @@ function RagVisual() {
           {/* the model: falloff rings, a pulse on the beat of the flow, then the core */}
           <g transform="translate(210 95)">
             <circle r="38" fill="none" stroke="rgba(255,255,255,0.05)" />
-            <circle r="28" fill="rgba(62,206,139,0.05)" stroke="rgba(255,255,255,0.09)" />
-            <circle className="rag-pulse" r="20" fill="none" stroke="rgba(62,206,139,0.5)" strokeWidth="1" />
-            <circle r="20" fill="rgba(62,206,139,0.14)" stroke="rgba(62,206,139,0.45)" strokeWidth="1" />
+            <circle r="28" fill="rgba(92,201,155,0.05)" stroke="rgba(255,255,255,0.09)" />
+            <circle className="rag-pulse" r="20" fill="none" stroke="rgba(92,201,155,0.5)" strokeWidth="1" />
+            <circle r="20" fill="rgba(92,201,155,0.14)" stroke="rgba(92,201,155,0.45)" strokeWidth="1" />
             <path
               d="M0 -9 C 1.2 -3.4, 3.4 -1.2, 9 0 C 3.4 1.2, 1.2 3.4, 0 9 C -1.2 3.4, -3.4 1.2, -9 0 C -3.4 -1.2, -1.2 -3.4, 0 -9 Z"
               fill="none"
-              stroke="#3ece8b"
+              stroke="#5cc99b"
               strokeWidth="1.25"
               strokeLinejoin="round"
             />
@@ -481,7 +481,7 @@ function RagVisual() {
               key={`in-${d}`}
               className="rag-dot"
               r="2.75"
-              fill="#3ece8b"
+              fill="#5cc99b"
               style={{ offsetPath: `path("${d}")`, animationDelay: `${i * 0.93}s` }}
             />
           ))}
@@ -490,7 +490,7 @@ function RagVisual() {
               key={`out-${delay}`}
               className="rag-dot"
               r="2.75"
-              fill="#3ece8b"
+              fill="#5cc99b"
               style={{ offsetPath: `path("${RAG_STORE}")`, animationDelay: `${delay}s` }}
             />
           ))}

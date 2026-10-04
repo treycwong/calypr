@@ -22,7 +22,6 @@ export default function WaitlistPage() {
     // The homepage nav's CTA lands here, so it is the first page after the hero for anyone who
     // takes it — the one inner page where a colour seam would be most visible.
     <div
-      data-brand="spectra"
       className="flex min-h-screen flex-col bg-background"
     >
       <LandingHeader cta={SITE_HEADER_CTA} sticky />

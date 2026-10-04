@@ -35,7 +35,7 @@ export function Tooltip({
       <TooltipPrimitive.Trigger {...button}>{children}</TooltipPrimitive.Trigger>
       <TooltipPrimitive.Portal>
         <TooltipPrimitive.Positioner side={side} sideOffset={6} collisionPadding={8}>
-          <TooltipPrimitive.Popup className="z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md ring-1 ring-foreground/10 duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+          <TooltipPrimitive.Popup className="z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-[0_16px_40px_-12px_rgba(0,0,0,0.65)] ring-1 ring-white/[0.08] duration-100 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
             {label}
           </TooltipPrimitive.Popup>
         </TooltipPrimitive.Positioner>

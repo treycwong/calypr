@@ -54,12 +54,6 @@ const PLANS = [
 /**
  * Plans and pricing, on the Spectra design system.
  *
- * `data-brand="spectra"` is the same switch the landing page uses (see the block of that name
- * in `globals.css`): it repoints the shadcn semantic tokens — and `--brand` — at Spectra's
- * ink/green surfaces for this subtree. Without it the page rendered on the neutral shadcn dark
- * palette while the shared footer below it was already using Spectra's tokens, so a visitor
- * arriving from the homepage crossed a colour seam mid-scroll.
- *
  * The container, the numbered eyebrow, the two-tone heading and the card anatomy are the
  * landing page's, not new ones — /pricing is the page a visitor lands on straight from search,
  * and it has to read as the same product.
@@ -67,7 +61,6 @@ const PLANS = [
 export default function PricingPage() {
   return (
     <div
-      data-brand="spectra"
       className="flex min-h-screen flex-col bg-background"
     >
       <LandingHeader cta={SITE_HEADER_CTA} sticky />
