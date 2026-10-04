@@ -24,8 +24,9 @@ const handleStyle = { width: 10, height: 10 };
 // `nodePulse`); `done`/`error` settle to a persistent ring until the next run clears them.
 const STATUS_CLASS: Record<NodeStatus, string> = {
   active:
-    "border-cyan-400 shadow-[0_0_0_1px_rgb(34_211_238),0_0_26px_-2px_rgb(34_211_238/0.7)] animate-[nodePulse_1.2s_ease-in-out_infinite]",
-  done: "border-emerald-500/60 shadow-[0_0_0_1px_rgb(16_185_129/0.4)]",
+    "border-state-running shadow-[0_0_0_1px_rgb(92_201_155),0_0_26px_-2px_rgb(92_201_155/0.6)] animate-[nodePulse_1.2s_ease-in-out_infinite]",
+  // Done is deliberately colourless: green is "live", and a finished graph shouldn't look live.
+  done: "border-white/35 shadow-[0_0_0_1px_rgb(243_245_248/0.12)]",
   error: "border-red-500 shadow-[0_0_0_1px_rgb(239_68_68/0.6)]",
 };
 
@@ -52,7 +53,7 @@ function Shell({
   // The icon comes from the same map the Blocks palette reads, so the card you picked in the
   // sidebar is visibly the card that landed here. It replaced a 2px coloured dot whose colour was
   // hardcoded at each of the fourteen call sites — and it is monochrome, which leaves the canvas
-  // free to use colour for run state alone (the cyan active glow, the emerald done ring).
+  // free to use colour for run state alone (the green active glow; done settles to neutral).
   const { icon: Icon } = NODE_STYLE[type];
   // A run status takes visual priority over selection so you can watch execution move even while
   // a node is selected; otherwise fall back to the selected glow, then idle.
@@ -62,7 +63,7 @@ function Shell({
   const stateClass = status
     ? `bg-card ${STATUS_CLASS[status]}`
     : selected
-      ? // Neutral, not cyan. Cyan is the running state on this canvas — using it for selection
+      ? // Neutral, not green. Green is the running state on this canvas — using it for selection
         // too meant a selected node and a running node looked the same, and a graph you had
         // clicked around looked like it was mid-run.
         //
@@ -70,7 +71,7 @@ function Shell({
         // show straight through it — selecting a node in a busy part of the graph made it
         // harder to read, not easier. A card is a solid object.
         "bg-neutral-700 border-white/60 shadow-[0_0_0_1px_rgb(255_255_255/0.25)]"
-      : "bg-card border-border hover:border-muted-foreground/40";
+      : "bg-card border-white/[0.08] hover:border-white/20";
   return (
     <div
       data-testid={testid}
@@ -80,7 +81,7 @@ function Shell({
       // its state change in ~45ms and then took another 150ms to *look* selected. That reads as
       // lag. 75ms is enough to stop the hover border snapping, and short enough that selection
       // feels immediate.
-      className={`min-w-[168px] rounded-lg border px-3 py-2 shadow-sm transition-colors duration-75 ${stateClass}`}
+      className={`min-w-[168px] rounded-[12px] border px-3 py-2 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.6)] transition-colors duration-75 ${stateClass}`}
     >
       <div className="flex items-center gap-2">
         <Icon

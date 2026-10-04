@@ -42,7 +42,6 @@ import {
 } from "@/components/canvas/AssistantPanel";
 import { CanvasToolbar, type CanvasTool } from "@/components/canvas/CanvasToolbar";
 import { CodeView } from "@/components/canvas/CodeView";
-import { NODE_STYLE } from "@/components/canvas/node-style";
 import { ConfigPanel } from "@/components/canvas/ConfigPanel";
 import {
   type ContextTarget,
@@ -121,15 +120,15 @@ function RailButton({
       aria-pressed={active}
       data-testid={testid}
       onClick={onClick}
-      // The active tab used to be a bare `bg-muted`, which barely separated from the rail on this
-      // dark ground. The ring gives it an edge without introducing a second accent colour.
-      className={`flex h-10 w-10 items-center justify-center rounded-lg transition ${
+      // Same anatomy as the dashboard sidebar's rail items: a filled step up the surface ladder
+      // for active, a faint wash on hover, no accent colour — colour is reserved for run state.
+      className={`flex h-10 w-10 items-center justify-center rounded-[10px] transition-colors ${
         active
-          ? "bg-muted text-foreground ring-1 ring-border"
-          : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+          ? "bg-surface-4 text-foreground"
+          : "text-muted-foreground hover:bg-white/[0.05] hover:text-foreground"
       }`}
     >
-      <Icon className="h-5 w-5" />
+      <Icon className="h-[18px] w-[18px]" />
     </button>
   );
 }
@@ -926,33 +925,24 @@ function CanvasInner() {
       }),
     [nodes, runStatus, previews],
   );
-  // A wire takes the colour of the block it *leaves*, so you can trace what feeds what on a graph
-  // too big to read label by label. Run state still wins: an active or finished edge is carrying
-  // information about right now, which outranks where it came from. Those two states are CSS
-  // classes, so the tint has to be withheld rather than overridden — an inline `stroke` would
-  // beat the class and the run colour would never show.
-  const edgeColor = useMemo(() => {
-    const byId = new Map(nodes.map((n) => [n.id, n.type as CalyprNodeType | undefined]));
-    return (source: string) => {
-      const type = byId.get(source);
-      return type ? NODE_STYLE[type]?.edge : undefined;
-    };
-  }, [nodes]);
+  // Every wire is the brand green (2026-10-04, on request — it replaced a per-block tint keyed on
+  // the source node, `NODE_STYLE[type].edge`). Colour is all in canvas.css: idle wires are a
+  // softer green, the wire feeding the running node is bright, glowing and animated, and finished
+  // wires settle to solid green. No inline `stroke` here — it would beat those classes.
   const decoratedEdges = useMemo(
     () =>
       edges.map((e) => {
         const s = runStatus[e.target];
         if (s === "active") return { ...e, animated: true, className: "edge-active" };
         if (s === "done") return { ...e, className: "edge-done" };
-        const stroke = edgeColor(e.source);
-        return stroke ? { ...e, style: { ...e.style, stroke, strokeWidth: 2 } } : e;
+        return e;
       }),
-    [edges, runStatus, edgeColor],
+    [edges, runStatus],
   );
 
   return (
     <div className="flex h-screen flex-col">
-      <header className="flex items-center justify-between border-b border-border px-4 py-2">
+      <header className="flex items-center justify-between border-b border-border bg-surface-1 px-4 py-2">
         <div className="flex items-center gap-2">
           <Link
             href="/dashboard"
@@ -962,7 +952,7 @@ function CanvasInner() {
           >
             {/* No chip behind the mark — it sits straight on the header. The only affordance is
                 the hover wash, so it has to be visible enough to read as a target. */}
-            <span className="flex h-7 w-7 items-center justify-center rounded-md text-foreground transition-colors hover:bg-white/10">
+            <span className="flex h-7 w-7 items-center justify-center rounded-md text-foreground transition-colors hover:bg-white/[0.06]">
               <CalyprMark className="h-4 w-4" />
             </span>
           </Link>
@@ -1010,7 +1000,7 @@ function CanvasInner() {
               after the fact; the badge says why before it. */}
           {agentLocked ? (
             <span
-              className="flex items-center gap-1.5 rounded-md border border-amber-500/40 bg-amber-500/5 px-2 py-1 text-xs text-amber-700 dark:text-amber-500"
+              className="flex items-center gap-1.5 rounded-md border border-state-warning/30 bg-state-warning/[0.06] px-2 py-1 text-xs text-state-warning"
               data-testid="canvas-locked"
               title="Read-only — over your plan's project limit"
             >
@@ -1053,10 +1043,10 @@ function CanvasInner() {
                     // top of a project they want to keep, and silently overwriting it to make a
                     // link accurate would be a worse surprise than the stale link.
                     <div
-                      className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5"
+                      className="mt-3 rounded-md border border-state-warning/30 bg-state-warning/[0.08] p-2.5"
                       data-testid="share-stale"
                     >
-                      <p className="text-xs leading-relaxed text-amber-700 dark:text-amber-300">
+                      <p className="text-xs leading-relaxed text-state-warning">
                         This link runs your last saved version. The canvas has changes that
                         aren&apos;t saved yet.
                       </p>
@@ -1076,11 +1066,11 @@ function CanvasInner() {
                     // same two exits — a lock the user meets in three places should read as one
                     // fact about their plan, not three unrelated refusals.
                     <div
-                      className="mt-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2.5"
+                      className="mt-3 rounded-md border border-state-warning/30 bg-state-warning/[0.08] p-2.5"
                       data-testid="share-locked"
                     >
                       <div className="flex items-center gap-1.5">
-                        <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+                        <Lock className="h-3.5 w-3.5 shrink-0 text-state-warning" />
                         <span className="text-xs font-medium">Sharing is read-only</span>
                       </div>
                       <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
@@ -1148,7 +1138,7 @@ function CanvasInner() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Slim icon rail: each tab drives the single left panel — one at a time. */}
-        <aside className="flex w-13 shrink-0 flex-col items-center gap-1.5 border-r border-border py-2">
+        <aside className="flex w-13 shrink-0 flex-col items-center gap-1.5 border-r border-border bg-surface-1 py-2">
           <RailButton
             icon={Blocks}
             label="Blocks"
@@ -1207,7 +1197,7 @@ function CanvasInner() {
             this many pixels when the panel opens or closes. */}
         {activePanel ? (
           <aside
-            className="flex w-68 shrink-0 flex-col border-r border-border"
+            className="flex w-68 shrink-0 flex-col border-r border-border bg-surface-1"
             data-testid={
               activePanel === "ai"
                 ? "assistant"
@@ -1220,7 +1210,7 @@ function CanvasInner() {
                 the panels stop each styling their own. h-11 matches the Playground header on the
                 far side of the canvas — the two are level when both are open. */}
             <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3">
-              <span className="truncate text-xs font-medium tracking-wide uppercase">
+              <span className="truncate font-mono text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
                 {PANEL_TITLES[activePanel]}
               </span>
               <button
@@ -1269,7 +1259,7 @@ function CanvasInner() {
           </aside>
         ) : null}
 
-        <div className="relative flex-1" data-testid="canvas">
+        <div className="relative flex-1 bg-surface-0" data-testid="canvas">
           <ReactFlow
             nodes={decoratedNodes}
             edges={decoratedEdges}
@@ -1302,8 +1292,10 @@ function CanvasInner() {
             // sitting over the canvas corner.
             proOptions={{ hideAttribution: true }}
           >
-            {/* Subtle grey dots — visible as texture (Railway-style), not bright specks. */}
-            <Background gap={22} size={1} color="#4a4a52" />
+            {/* Subtle dots — visible as texture (Railway-style), not bright specks. The colour is
+                the `--canvas-dot` token; React Flow passes it through as a CSS variable, so a
+                `var()` resolves here. */}
+            <Background gap={22} size={1} color="var(--canvas-dot)" />
             {/* The right-click menu. Rendered once for the whole canvas and anchored to the
                 pointer — see `NodeContextMenu` for why it isn't a trigger around each card. */}
             <NodeContextMenu
@@ -1352,7 +1344,7 @@ function CanvasInner() {
         {/* Right panel: Properties (selected node) or generated Code — replaced by the
             playground while it's running, rather than stacking alongside it. */}
         {showPlayground || !rightOpen ? null : (
-        <aside className="flex w-80 shrink-0 flex-col border-l border-border" data-testid="right-panel">
+        <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-surface-1" data-testid="right-panel">
           <div className="flex gap-1 border-b border-border px-3 pt-2">
             <button
               type="button"
@@ -1411,7 +1403,7 @@ function CanvasInner() {
 
         {showPlayground ? (
           <aside
-            className="w-80 shrink-0 border-l border-border"
+            className="w-80 shrink-0 border-l border-border bg-surface-1"
             data-testid="playground"
           >
             <Playground

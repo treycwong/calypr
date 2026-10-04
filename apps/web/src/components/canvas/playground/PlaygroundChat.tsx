@@ -167,11 +167,11 @@ export function PlaygroundChat({
         // Replaces the composer rather than sitting above it. A disabled input with a lock
         // message next to it invites the "why can't I type?" question this is meant to answer.
         <div
-          className="border-t border-border bg-amber-500/5 p-3"
+          className="border-t border-border bg-state-warning/[0.06] p-3"
           data-testid="chat-locked"
         >
           <div className="flex items-center gap-2">
-            <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+            <Lock className="h-3.5 w-3.5 shrink-0 text-state-warning" />
             <span className="text-sm font-medium">Chat is read-only</span>
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">

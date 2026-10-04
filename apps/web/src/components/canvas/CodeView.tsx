@@ -177,8 +177,8 @@ export function CodeView({
     notice?.kind === "error"
       ? "text-destructive"
       : notice?.kind === "warn"
-        ? "text-amber-600 dark:text-amber-500"
-        : "text-emerald-600 dark:text-emerald-500";
+        ? "text-state-warning"
+        : "text-brand";
 
   return (
     <div className="flex h-full flex-col">
@@ -216,7 +216,7 @@ export function CodeView({
             title={locked ? "Upgrade to Plus to copy the full file" : copied ? "Copied" : "Copy"}
           >
             {copied ? (
-              <Check className="h-4 w-4 text-emerald-500" />
+              <Check className="h-4 w-4 text-brand" />
             ) : (
               <Copy className="h-4 w-4" />
             )}
