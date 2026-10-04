@@ -2,8 +2,8 @@
    Flattened from `spectra-design-system/project/tokens/*.css` (the Claude Design
    handoff bundle). This file is the raw token vocabulary only — plain custom
    properties, no Tailwind. The Tailwind-facing mapping lives in `globals.css`;
-   the semantic surface remap is scoped to `[data-brand="spectra"]` there so the
-   canvas and dashboard keep their current look until they're redesigned too.
+   the semantic names (`--background`, `--card`, …) are set on the app `:root` there and
+   cover every surface — website, auth, dashboard and canvas.
 
    Two token groups from the bundle are deliberately NOT copied:
    - `tokens/fonts.css` — it @imports Google Fonts at runtime. Next's `next/font`
@@ -30,12 +30,12 @@
   --green-950: #071a12;
 
   /* ── Ink (green-tinted near-blacks) ───────────────────── */
-  --ink-950: #06110c;
-  --ink-900: #0a1712;
-  --ink-850: #0e1d16;
-  --ink-800: #13271e;
-  --ink-700: #1b3428;
-  --ink-600: #274a39;
+  --ink-950: #07090c;
+  --ink-900: #0b0e12;
+  --ink-850: #0f1216;
+  --ink-800: #161a20;
+  --ink-700: #1e242c;
+  --ink-600: #2b333d;
 
   /* ── Mist (green-tinted lights) ───────────────────────── */
   --mist-50: #f4f8f6;
@@ -44,11 +44,11 @@
   --mist-300: #c2d2c9;
 
   /* ── Slate text greys — never neutral, always green-cast ─ */
-  --slate-700: #40514a;
-  --slate-600: #566a60;
-  --slate-500: #6b7f74;
-  --slate-400: #94a79c;
-  --slate-300: #9db3a6;
+  --slate-700: #434b55;
+  --slate-600: #59626d;
+  --slate-500: #6e7783;
+  --slate-400: #97a0ab;
+  --slate-300: #a0a9b4;
 
   /* ── Semantic: dark surfaces ──────────────────────────── */
   --surface-card-dark: var(--ink-850);
@@ -57,9 +57,9 @@
   --border-dark: rgba(255, 255, 255, 0.07);
   --border-dark-strong: var(--ink-700);
   --border-accent: rgba(62, 206, 139, 0.4);
-  --text-on-dark: #f2f7f4;
+  --text-on-dark: #f3f5f8;
   --text-on-dark-muted: var(--slate-300);
-  --text-on-dark-faint: #6f8579;
+  --text-on-dark-faint: #727c88;
 
   /* ── Semantic: light surfaces ─────────────────────────── */
   --surface-chip-light: var(--mist-100);
@@ -72,16 +72,16 @@
   --accent-bright: var(--green-400);
   --accent-on-dark: var(--green-400);
   --accent-on-light: var(--green-600);
-  --accent-soft-bg: rgba(62, 206, 139, 0.12);
+  --accent-soft-bg: rgba(92, 201, 155, 0.08);
   --accent-text-quiet: var(--green-300);
-  --eyebrow-bg: rgba(62, 206, 139, 0.14);
+  --eyebrow-bg: rgba(92, 201, 155, 0.09);
 
   /* ── Gradients ────────────────────────────────────────── */
-  --grad-accent: linear-gradient(135deg, #4be39b 0%, #22b573 100%);
-  --grad-accent-hover: linear-gradient(135deg, #5ceaa7 0%, #26c47d 100%);
-  --grad-card-dark: linear-gradient(160deg, #13271e 0%, #0a1712 70%);
+  --grad-accent: linear-gradient(135deg, #7ad9b0 0%, #3fae80 100%);
+  --grad-accent-hover: linear-gradient(135deg, #8be2bc 0%, #46bb8a 100%);
+  --grad-card-dark: linear-gradient(160deg, #161a20 0%, #0b0e12 70%);
   --grad-hero-light: linear-gradient(180deg, #f4f8f6 0%, #e4efe9 100%);
-  --grad-fade-dark: linear-gradient(180deg, rgba(6, 17, 12, 0) 0%, rgba(6, 17, 12, 0.9) 100%);
+  --grad-fade-dark: linear-gradient(180deg, rgba(7, 9, 12, 0) 0%, rgba(7, 9, 12, 0.9) 100%);
 
   /* ── Type scale ───────────────────────────────────────── */
   --fs-display-1: 112px;
@@ -108,20 +108,20 @@
   --card-pad-lg: 32px;
   --section-pad-y: 120px;
   --grid-line: rgba(255, 255, 255, 0.045);
-  --grid-line-light: rgba(11, 20, 16, 0.05);
+  --grid-line-light: rgba(10, 12, 16, 0.05);
   --grid-column: 248px;
 
   /* ── Elevation. Dark leans on borders + inner light, not drop shadow ─ */
   --inner-hairline: inset 0 1px 0 rgba(255, 255, 255, 0.05);
-  --shadow-card-light: 0 1px 2px rgba(11, 20, 16, 0.04), 0 12px 32px -12px rgba(11, 20, 16, 0.1);
-  --shadow-panel-light: 0 40px 80px -40px rgba(11, 20, 16, 0.18);
+  --shadow-card-light: 0 1px 2px rgba(10, 12, 16, 0.04), 0 12px 32px -12px rgba(10, 12, 16, 0.1);
+  --shadow-panel-light: 0 40px 80px -40px rgba(10, 12, 16, 0.18);
   --shadow-media: 0 30px 60px -30px rgba(0, 0, 0, 0.55);
-  --glow-accent: 0 0 24px rgba(62, 206, 139, 0.35);
-  --glow-accent-strong: 0 0 40px rgba(62, 206, 139, 0.5);
+  --glow-accent: 0 0 24px rgba(92, 201, 155, 0.18);
+  --glow-accent-strong: 0 0 40px rgba(92, 201, 155, 0.28);
   --glow-white: 0 0 48px rgba(255, 255, 255, 0.28);
 
   --blur-glass: saturate(140%) blur(20px);
-  --glass-dark: rgba(14, 29, 22, 0.6);
+  --glass-dark: rgba(15, 18, 22, 0.6);
   --glass-light: rgba(255, 255, 255, 0.72);
 
   /* ── Motion ───────────────────────────────────────────── */

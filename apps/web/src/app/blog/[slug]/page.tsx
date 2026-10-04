@@ -52,11 +52,9 @@ export default async function BlogPost({ params }: Props) {
   const { Post, meta } = await loadPost(slug);
 
   return (
-    // `data-brand="spectra"` repoints the semantic tokens at the brand's ink/green surfaces —
-    // which `prose-blog` inherits for free, since every rule in it is written against
+    // `prose-blog` follows the app's surface tokens for free, since every rule in it is written against
     // `--foreground` / `--muted-foreground` / `--card` / `--border` rather than literals.
     <div
-      data-brand="spectra"
       className="relative isolate flex min-h-screen flex-col bg-background"
     >
       {/* No `GridLines` here, unlike the index and /pricing: this is the one long-form reading

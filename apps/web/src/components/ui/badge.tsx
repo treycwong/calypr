@@ -19,6 +19,9 @@ const badgeVariants = cva(
         ghost:
           "hover:bg-muted hover:text-muted-foreground dark:hover:bg-muted/50",
         link: "text-primary underline-offset-4 hover:underline",
+        // The system's metadata chip: mono, ALL-CAPS, tracked — same anatomy as `spectra/Badge`.
+        label:
+          "rounded-[6px] bg-white/[0.05] font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground",
       },
     },
     defaultVariants: {

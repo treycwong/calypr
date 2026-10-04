@@ -10,16 +10,16 @@ import { ButtonLink } from "@/components/spectra/Button";
 
 /**
  * The marketing home page, on the Spectra design system.
- *
- * `data-brand="spectra"` is what switches the shadcn semantic tokens over to Spectra's
- * ink/mist surfaces (see the block of that name in `globals.css`). It's scoped to this
- * subtree on purpose: the canvas and dashboard keep their current neutral look until
- * they're redesigned too, at which point the attribute moves up to `<html>` in the root
- * layout and this one comes off.
+ * The surface tokens are global (the app `:root` in `globals.css`), so this page, the
+ * dashboard and the canvas all read the same palette.
  */
 export default function Home() {
   return (
-    <div data-brand="spectra" className="relative flex min-h-screen flex-col bg-background">
+    <div className="relative isolate flex min-h-screen flex-col bg-background">
+      {/* Page-wide grid + colour washes (`.tech-backdrop` in globals.css). `isolate` on the
+          wrapper is what lets its `-z-10` sit above the wrapper's own background and below
+          every section, none of which paint a background of their own. */}
+      <div aria-hidden className="tech-backdrop" />
       {/*
         A full-viewport, bottom-anchored hero: the art is full-bleed, the nav floats over it
         as a glass pill, and the whole content block is pushed to the bottom edge with
@@ -30,7 +30,7 @@ export default function Home() {
         separate scroll; nothing here may grow the section, so the copy block is deliberately
         short and the headline clamps rather than wraps unboundedly.
       */}
-      <section className="relative h-screen w-full overflow-hidden bg-[var(--ink-950)]">
+      <section className="relative h-screen w-full overflow-hidden">
         {/*
           The ground is flat ink now — no photograph, no loop. With four cards floating around a
           centred column, the cards *are* the picture; anything moving behind them was a second
@@ -53,11 +53,11 @@ export default function Home() {
         */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[64vh] bg-[radial-gradient(85%_100%_at_50%_-8%,rgba(226,240,233,0.11)_0%,rgba(226,240,233,0.04)_40%,transparent_74%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[64vh] bg-[radial-gradient(85%_100%_at_50%_-8%,rgba(226,232,240,0.11)_0%,rgba(226,232,240,0.04)_40%,transparent_74%)]"
         />
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[52vh] bg-[radial-gradient(50%_100%_at_50%_-10%,rgba(62,206,139,0.07)_0%,rgba(62,206,139,0.025)_45%,transparent_78%)]"
+          className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-[52vh] bg-[radial-gradient(50%_100%_at_50%_-10%,rgba(92,201,155,0.04)_0%,rgba(92,201,155,0.015)_45%,transparent_78%)]"
         />
 
         {/* The floating template cards. Above the glow, below the copy. */}
@@ -127,10 +127,10 @@ export default function Home() {
                     bottom of both descenders. The padding grows the paint box; the matching
                     `-mt` on the second line takes the added height back out of the layout, so
                     the two lines sit exactly where they did. */}
-                <span className="block bg-gradient-to-b from-white via-white to-[#b9cdc3] bg-clip-text pb-[0.14em] text-transparent [@supports(not(background-clip:text))]:text-[var(--text-on-dark)]">
+                <span className="block bg-gradient-to-b from-white via-white to-[#bcc4cf] bg-clip-text pb-[0.14em] text-transparent [@supports(not(background-clip:text))]:text-[var(--text-on-dark)]">
                   Craft your next
                 </span>{" "}
-                <span className="-mt-[0.14em] block bg-gradient-to-b from-[#b4ecce] via-[#86d6a8] to-[#3ece8b] bg-clip-text pb-[0.14em] text-transparent [@supports(not(background-clip:text))]:text-[var(--accent-text-quiet)]">
+                <span className="-mt-[0.14em] block bg-gradient-to-b from-white via-white to-[#bcc4cf] bg-clip-text pb-[0.14em] text-transparent [@supports(not(background-clip:text))]:text-[var(--text-on-dark)]">
                   agentic app
                 </span>
               </h1>

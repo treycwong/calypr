@@ -29,7 +29,7 @@ export default async function SignUpPage({ searchParams }: Props) {
       footer={
         <>
           Already have an account?{" "}
-          <Link href="/sign-in" className="font-medium text-[var(--accent-on-dark)] underline underline-offset-4">
+          <Link href="/sign-in" className="font-medium text-[var(--text-on-dark)] underline underline-offset-4">
             Log in
           </Link>
         </>

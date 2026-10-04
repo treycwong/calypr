@@ -15,7 +15,7 @@ export function LandingCta() {
             devices, and the only place a coloured light is allowed to sit behind type. */}
         <div
           aria-hidden
-          className="glow-breathe pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_center_top,rgba(62,206,139,0.16),transparent_65%)]"
+          className="glow-breathe pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_center_top,rgba(92,201,155,0.16),transparent_65%)]"
         />
         <Reveal>
           <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--accent-on-dark)]">

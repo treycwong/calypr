@@ -3,10 +3,10 @@ import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
- * Section titles are always two-tone: a neutral phrase followed by a green one
- * ("Optical **Precision**", "Trusted by **Visionaries**"). Never colour the whole
- * heading — a headline that has no natural break point doesn't fit this system and
- * should be rewritten rather than set flat.
+ * Section titles are written in two parts: a lead phrase and an `accent` one
+ * ("Optical **Precision**", "Trusted by **Visionaries**"). On dark the two are set in the
+ * same white now — the green accent word was retired when the green was toned down — so
+ * the split is kept only as structure; light surfaces still colour the accent green.
  *
  * Tracking stays negative and the size does most of the work. Weight is **per register, not
  * per instance**: the `display` size — the hero-scale headline that opens a page or closes it
@@ -56,7 +56,7 @@ export function SectionHeading({
         {accent ? (
           <>
             {" "}
-            <span className={dark ? "text-[var(--accent-on-dark)]" : "text-[var(--accent-on-light)]"}>
+            <span className={dark ? undefined : "text-[var(--accent-on-light)]"}>
               {accent}
             </span>
           </>

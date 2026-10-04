@@ -102,11 +102,9 @@ export function AuthPanel({
   const devAction = `/api/auth/dev${next ? `?next=${encodeURIComponent(next)}` : ""}`;
 
   return (
-    // `data-brand="spectra"` is the same switch the marketing pages use: it repoints the shadcn
-    // semantic tokens at Spectra's ink/green surfaces, so the shadcn `Button` the provider rows
-    // are built from comes out in the brand with no change here.
+    // The shadcn `Button` the provider rows are built from reads the global `--primary` (white),
+    // so the sign-in buttons match every other primary action in the product.
     <main
-      data-brand="spectra"
       className="relative flex min-h-full flex-1 items-center justify-center overflow-hidden bg-[var(--ink-950)] p-6 text-[var(--text-on-dark)]"
     >
       {/* The ambient ground, matching the hero's: a wide off-white wash with a narrower, weaker
@@ -115,11 +113,11 @@ export function AuthPanel({
           at this size tints the whole upper half and turns the card's own accents muddy. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] bg-[radial-gradient(85%_100%_at_50%_-8%,rgba(226,240,233,0.11)_0%,rgba(226,240,233,0.04)_40%,transparent_74%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[70vh] bg-[radial-gradient(85%_100%_at_50%_-8%,rgba(226,232,240,0.11)_0%,rgba(226,232,240,0.04)_40%,transparent_74%)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-[56vh] bg-[radial-gradient(50%_100%_at_50%_-10%,rgba(62,206,139,0.09)_0%,rgba(62,206,139,0.03)_45%,transparent_78%)]"
+        className="pointer-events-none absolute inset-x-0 top-0 h-[56vh] bg-[radial-gradient(50%_100%_at_50%_-10%,rgba(92,201,155,0.04)_0%,rgba(92,201,155,0.015)_45%,transparent_78%)]"
       />
       <AuthNav action={navAction} />
       <div className="relative z-10 flex w-full max-w-sm flex-col items-center">

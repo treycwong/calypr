@@ -18,13 +18,12 @@ export const metadata: Metadata = {
 };
 
 /** The post index, on the Spectra design system — same eyebrow, heading and container as
- *  /pricing and the landing sections. See `PricingPage` for what `data-brand` switches. */
+ *  /pricing and the landing sections. */
 export default async function BlogIndex() {
   const posts = await getPosts();
 
   return (
     <div
-      data-brand="spectra"
       className="flex min-h-screen flex-col bg-background"
     >
       <LandingHeader cta={SITE_HEADER_CTA} sticky />

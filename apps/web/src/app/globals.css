@@ -3,7 +3,7 @@
 @import "shadcn/tailwind.css";
 
 /* The Spectra design tokens (raw custom properties). Mapped onto Tailwind names in
-   `@theme inline` below, and onto the shadcn semantic names under `[data-brand="spectra"]`. */
+   `@theme inline` below, and onto the shadcn semantic names in the app `:root` block. */
 @import "./spectra.css";
 
 @custom-variant dark (&:is(.dark *));
@@ -47,13 +47,21 @@
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
   /* The accent behind every `bg-brand` / `text-brand` / `border-brand`.
-     `var(--brand)` rather than a literal, because the value is no longer the same everywhere:
-     the marketing surface is Spectra green and the product surfaces are still the original cyan
-     (the canvas run glow, the share page, the auth backdrop), so the utilities have to resolve
-     per scope. Safe as an indirection only because `--brand` is a real `:root` property below —
+     `var(--brand)` rather than a literal so a subtree can still repoint it with one property.
+     Safe as an indirection only because `--brand` is a real `:root` property below —
      a `@theme inline` entry pointing at a property nothing defines is pruned from the compiled
      stylesheet, and `text-brand` then silently renders as `inherit`. */
   --color-brand: var(--brand);
+  /* The elevation ladder and state colours as utilities (`bg-surface-2`, `text-state-warning`).
+     `var()` is safe for the same reason as `--color-brand`: each is a real `:root` property. */
+  --color-surface-0: var(--surface-0);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-surface-4: var(--surface-4);
+  --color-state-running: var(--state-running);
+  --color-state-done: var(--state-done);
+  --color-state-warning: var(--state-warning);
   /* ── Spectra palette ────────────────────────────────────────────────────────
      Literal values on purpose. A `@theme` entry written as `var(--green-400)` gets
      pruned out of the compiled stylesheet by Tailwind v4 (the same trap that made
@@ -72,17 +80,17 @@
   --color-green-800: #0e5537;
   --color-green-900: #0b3524;
   --color-green-950: #071a12;
-  --color-ink-950: #06110c;
-  --color-ink-900: #0a1712;
-  --color-ink-850: #0e1d16;
-  --color-ink-800: #13271e;
-  --color-ink-700: #1b3428;
-  --color-ink-600: #274a39;
+  --color-ink-950: #07090c;
+  --color-ink-900: #0b0e12;
+  --color-ink-850: #0f1216;
+  --color-ink-800: #161a20;
+  --color-ink-700: #1e242c;
+  --color-ink-600: #2b333d;
   --color-mist-50: #f4f8f6;
   --color-mist-100: #eaf1ed;
   --color-mist-200: #d9e4dd;
   --color-mist-300: #c2d2c9;
-  --color-slate-ink: #6b7f74;
+  --color-slate-ink: #6e7783;
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -92,121 +100,77 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
+/* ── App tokens: one set for the whole product ─────────────────────────────────
+   The website, auth, dashboard and canvas all read these. They were split three ways
+   until 2026-10 (stock shadcn light `:root`, stock shadcn `.dark`, and the marketing-only
+   `[data-brand="spectra"]` remap); the app is dark-only — `<html>` always carries `.dark` —
+   so the two shadcn blocks were dead weight and the scoped remap is now simply the root.
+   `dark:` variants still work because the class stays on `<html>`.
+
+   Rules (see `components/DESIGN.md`):
+   - Surfaces climb a fixed ladder, never ad-hoc greys: surface-0 page → 1 panel → 2 raised
+     card → 3 hover/popover. `--card`, `--popover`, `--muted` are aliases onto it.
+   - **Primary is white.** Colour is spent on state, not chrome: green means live/running/
+     success, amber means warning, red means destructive. The marketing CTA (`spectra/Button`
+     `primary`) keeps its own green gradient and does not read `--primary`.
+   - `--brand` is the one accent, soft green. */
 :root {
-  /* Tailwind cyan-400 — the accent the canvas, share page and auth pages were designed around.
-     `[data-brand="spectra"]` repoints it at the brand green for the marketing surface. */
-  --brand: oklch(0.789 0.154 211.53);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
+  /* Elevation ladder */
+  --surface-0: #07090c;
+  --surface-1: #0b0e12;
+  --surface-2: #0f1216;
+  --surface-3: #161a20;
+  --surface-4: #1e242c;
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
-}
-
-/* ── Spectra surfaces ─────────────────────────────────────────────────────────
-   The shadcn semantic names, repointed at Spectra's ink/mist surfaces.
-
-   Scoped to `[data-brand="spectra"]` rather than applied at `:root`/`.dark`, so
-   this pass changes the marketing surface only — the canvas, dashboard and
-   settings keep their current neutral look until they're redesigned too. When
-   they are, this selector moves up to `<html>` in `layout.tsx` and the untagged
-   `:root`/`.dark` blocks above get deleted.
-
-   Same specificity as `.dark` (0,1,0) and declared after it, so it wins on the
-   landing page without needing `!important` or a doubled selector. */
-[data-brand="spectra"] {
-  --background: #06110c;
-  --foreground: #f2f7f4;
-  --card: #0e1d16;
-  --card-foreground: #f2f7f4;
-  --popover: #0e1d16;
-  --popover-foreground: #f2f7f4;
-  --primary: #22b573;
-  --primary-foreground: #06110c;
-  --secondary: #13271e;
-  --secondary-foreground: #f2f7f4;
-  --muted: #13271e;
-  --muted-foreground: #9db3a6;
-  --accent: #13271e;
-  --accent-foreground: #f2f7f4;
-  /* Spectra names no error colour at all — the source has neither red nor amber.
-     Keep a destructive token anyway (toasts and form errors need one) but pull it
-     toward the brand's desaturation so it doesn't read as a foreign hue. */
+  --background: var(--surface-0);
+  --foreground: #f3f5f8;
+  --card: var(--surface-2);
+  --card-foreground: #f3f5f8;
+  --popover: var(--surface-3);
+  --popover-foreground: #f3f5f8;
+  --primary: #f3f5f8;
+  --primary-foreground: #07090c;
+  --secondary: var(--surface-3);
+  --secondary-foreground: #f3f5f8;
+  --muted: var(--surface-3);
+  --muted-foreground: #a0a9b4;
+  /* One step above `--popover`, so a hovered menu item is visible on its own popover. */
+  --accent: var(--surface-4);
+  --accent-foreground: #f3f5f8;
+  /* Pulled toward the palette's desaturation so it doesn't read as a foreign hue. */
   --destructive: oklch(0.65 0.16 25);
-  /* The `*-brand` utilities follow the brand. One override reaches every `bg-brand` /
-     `text-brand` / `border-brand` on the marketing surface, while the product surfaces that
-     were designed around cyan keep it until their own pass. Green-400 is the accent Spectra
-     uses for anything luminous on dark. */
-  --brand: #3ece8b;
+  --brand: #5cc99b;
   --border: rgba(255, 255, 255, 0.07);
   --input: rgba(255, 255, 255, 0.1);
-  --ring: #3ece8b;
-  /* `--radius` is deliberately NOT overridden here. The shadcn scale is a multiplier chain
-     (`rounded-2xl` = 1.8 x --radius), and Spectra's radii are fixed steps — 6px badges, 12px
-     chips, 16px media, 24px cards, 32px light panels — that no single base value reproduces.
-     Setting it to 1.5rem made every card 43px. The Spectra primitives spell their radius out
-     instead. */
+  --ring: #5cc99b;
+  /* Base for shadcn's multiplier scale: `rounded-lg` = 12px, Spectra's chip step. Spectra
+     primitives still spell their own radii out — its ladder (6/12/16/24/32) is fixed steps
+     that no single multiplier reproduces. */
+  --radius: 0.75rem;
+
+  /* State — the only places colour appears in the product chrome. */
+  --state-running: #5cc99b;
+  --state-done: rgba(243, 245, 248, 0.45);
+  --state-warning: #e0b25a;
+  --state-danger: var(--destructive);
+
+  /* React Flow dot grid. */
+  --canvas-dot: rgba(255, 255, 255, 0.16);
+
+  --chart-1: #5cc99b;
+  --chart-2: #7aa2f7;
+  --chart-3: #56c2c9;
+  --chart-4: #a08cf0;
+  --chart-5: #6e7783;
+
+  --sidebar: var(--surface-1);
+  --sidebar-foreground: #f3f5f8;
+  --sidebar-primary: #f3f5f8;
+  --sidebar-primary-foreground: #07090c;
+  --sidebar-accent: var(--surface-3);
+  --sidebar-accent-foreground: #f3f5f8;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-ring: #5cc99b;
 }
 
 @layer base {
@@ -684,4 +648,49 @@
     transparent 1px
   );
   background-size: 18px 18px;
+}
+/* ── Tech backdrop ────────────────────────────────────────────────────────────
+   The marketing surface's page ground: a fine square grid plus a few very faint
+   colour washes, so long dark stretches between sections read as a surface
+   rather than an unpainted page. It replaces nothing: the hero glow, `.dotted`
+   panels and `.grid-lines` all still sit on top of it.
+
+   Absolute, not fixed: it scrolls with the content, so the grid moves with the
+   cards over it instead of the page sliding across a static lattice.
+
+   Two layers on one element:
+   - the box itself carries the washes: cool blue and teal at the top corners,
+     one indigo mid-page and a last faint green near the CTA. Kept cool on
+     purpose so the green accent is the only warm-ish colour in the frame.
+   - `::before` carries the grid, masked so it is brightest under the hero and
+     settles to a steady ~35% everywhere else. The two mask layers are *added*
+     (the default composite), so it is a union: radial hotspot OR flat floor. */
+.tech-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    radial-gradient(60rem 40rem at 12% -6%, rgba(96, 130, 255, 0.09), transparent 70%),
+    radial-gradient(52rem 36rem at 92% 4%, rgba(56, 200, 190, 0.065), transparent 70%),
+    radial-gradient(70rem 50rem at 80% 42%, rgba(110, 100, 240, 0.045), transparent 70%),
+    radial-gradient(60rem 40rem at 10% 70%, rgba(80, 150, 255, 0.04), transparent 70%),
+    radial-gradient(60rem 36rem at 50% 92%, rgba(92, 201, 155, 0.05), transparent 70%);
+}
+.tech-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center top;
+  -webkit-mask-image:
+    radial-gradient(ellipse 75% 90vh at 50% 0%, #000 20%, transparent 100%),
+    linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35));
+  mask-image:
+    radial-gradient(ellipse 75% 90vh at 50% 0%, #000 20%, transparent 100%),
+    linear-gradient(rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.35));
 }

@@ -33,15 +33,15 @@ export function TemplateArt({ seed }: { seed: string }) {
   const random = rng(hash(seed));
   const pick = (min: number, max: number) => min + random() * (max - min);
 
-  // Green band (≈140–170, centred on Spectra's green-400 at 152) with an occasional drift
-  // toward teal — never off-brand. It was the cyan band until the brand moved.
-  const hues = [pick(140, 168), pick(148, 178), pick(132, 160)];
+  // Cool band — slate blue through teal — so the art sits on the neutral ground and the single
+  // lit node is the only green in the frame. It was a green band until the green was toned down.
+  const hues = [pick(205, 232), pick(172, 196), pick(218, 248)];
   const blobs = hues.map((h, i) => ({
     id: `${seed}-b${i}`,
     cx: pick(-10, 110),
     cy: pick(-10, 110),
     r: pick(45, 95),
-    color: `hsl(${h} ${pick(40, 70)}% ${pick(35, 55)}%)`,
+    color: `hsl(${h} ${pick(25, 45)}% ${pick(35, 55)}%)`,
     opacity: pick(0.3, 0.55),
   }));
 
@@ -92,11 +92,11 @@ export function TemplateArt({ seed }: { seed: string }) {
           cx={n.x}
           cy={n.y}
           r={i === lit ? 2.4 : 1.6}
-          fill={i === lit ? "#3ece8b" : "rgba(255,255,255,0.55)"}
+          fill={i === lit ? "#5cc99b" : "rgba(255,255,255,0.55)"}
         />
       ))}
       {/* soft halo around the lit node */}
-      <circle cx={nodes[lit].x} cy={nodes[lit].y} r={6} fill="#3ece8b" opacity="0.18" />
+      <circle cx={nodes[lit].x} cy={nodes[lit].y} r={6} fill="#5cc99b" opacity="0.18" />
     </svg>
   );
 }

@@ -41,7 +41,6 @@ export default async function CheckoutPage() {
     // Same surface as /pricing, which is the page every visitor arrives from: crossing into a
     // neutral-grey checkout at the moment someone is deciding to pay reads as a different site.
     <div
-      data-brand="spectra"
       className="flex min-h-screen flex-col bg-background"
     >
       <LandingHeader cta={SITE_HEADER_CTA} sticky />
