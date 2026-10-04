@@ -43,31 +43,64 @@
   cursor: grabbing;
 }
 
-/* Active-node glow while a run executes: the neon-blue (brand cyan) ring set inline in nodes.tsx
-   breathes so the currently-running node reads as "live". Keyframe drives the box-shadow the
-   Tailwind `animate-[nodePulse_…]` utility references. */
+/* Active-node glow while a run executes: the brand-green ring set inline in nodes.tsx (the
+   `--state-running` token) breathes so the currently-running node reads as "live". Keyframe drives
+   the box-shadow the Tailwind `animate-[nodePulse_…]` utility references. */
 @keyframes nodePulse {
   0%,
   100% {
     box-shadow:
-      0 0 0 1px rgb(34 211 238),
-      0 0 22px -4px rgb(34 211 238 / 0.55);
+      0 0 0 1px rgb(92 201 155),
+      0 0 22px -4px rgb(92 201 155 / 0.5);
   }
   50% {
     box-shadow:
-      0 0 0 1px rgb(34 211 238),
-      0 0 30px 2px rgb(34 211 238 / 0.9);
+      0 0 0 1px rgb(92 201 155),
+      0 0 30px 2px rgb(92 201 155 / 0.8);
   }
 }
 
-/* The connector feeding the active node uses React Flow's built-in `animated` dash flow; brand
-   cyan stroke so the marching-ants are clearly visible on the dark canvas. */
-.react-flow__edge.edge-active .react-flow__edge-path {
-  stroke: rgb(34 211 238);
+/* Wires are all the brand green, in three intensities so run state still reads:
+   - idle: a softer green, so a static graph doesn't look like it's mid-run;
+   - active (the wire feeding the running node): full green, React Flow's `animated` dash flow,
+     and a glow that breathes in step with the node's `nodePulse`;
+   - done: solid green, no glow.
+   Also covers the template preview mini-canvases, which render React Flow edges too. */
+.react-flow__edge .react-flow__edge-path,
+.react-flow__connection-path {
+  stroke: rgb(92 201 155 / 0.5);
   stroke-width: 2;
 }
+.react-flow__edge.selected .react-flow__edge-path {
+  stroke: rgb(92 201 155 / 0.9);
+}
+.react-flow__edge.edge-active .react-flow__edge-path {
+  stroke: var(--state-running);
+  stroke-width: 2.5;
+  animation:
+    dashdraw 0.5s linear infinite,
+    edgeGlow 1.2s ease-in-out infinite;
+}
 .react-flow__edge.edge-done .react-flow__edge-path {
-  stroke: rgb(16 185 129 / 0.55);
+  stroke: rgb(92 201 155 / 0.85);
+}
+/* `filter` on the path rather than a wider blurred twin path: one element, and drop-shadow follows
+   the curve exactly. `dashdraw` is React Flow's own keyframe for `animated` edges — restated in
+   the shorthand above because setting `animation` here would otherwise replace it. */
+@keyframes edgeGlow {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgb(92 201 155 / 0.6));
+  }
+  50% {
+    filter: drop-shadow(0 0 6px rgb(92 201 155 / 0.95));
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .react-flow__edge.edge-active .react-flow__edge-path {
+    animation: none;
+    filter: drop-shadow(0 0 4px rgb(92 201 155 / 0.8));
+  }
 }
 
 /* Shimmering "Thinking…" text for the AI assistant while it drafts a graph. A moving

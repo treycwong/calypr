@@ -18,7 +18,7 @@ import { mediaNodesEnabled } from "@/lib/flags";
  * and left the running state competing for attention.
  */
 export const TILE_CLASS =
-  "flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.02] px-2 text-center transition hover:border-white/25 hover:bg-white/[0.07]";
+  "flex aspect-[4/3] w-full flex-col items-center justify-center gap-2 rounded-[12px] border border-white/[0.07] bg-surface-2 px-2 text-center transition-colors hover:border-white/[0.14] hover:bg-surface-3";
 
 /** The dataTransfer key a dragged block travels under. A custom MIME type rather than
  *  `text/plain`, so the canvas can tell one of our blocks from a dragged file, link or text

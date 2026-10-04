@@ -38,9 +38,13 @@ import type { CalyprNodeType } from "@/lib/graph";
  * this block, which is where colour still earns its place. A wire is a thin line with no label,
  * so on a graph of any size the only way to see what feeds what is by hue. These are the Tailwind
  * `-500`s: they started as `-300` pastels, which were too washed out to trace across a busy
- * canvas. They are also the only colour left on the canvas apart from run state, which stays cyan
- * (running) and emerald (done) and overrides the wire tint while a run is in flight — so no wire
- * may be cyan, or a static graph would read as mid-run.
+ * canvas. They are also the only colour left on the canvas apart from run state, which is the brand
+ * green (running) and a neutral white (done) and overrides the wire tint while a run is in flight —
+ * so no wire may be green, or a static graph would read as mid-run.
+ *
+ * **`edge` is currently unused** (2026-10-04): every wire is the brand green, styled in
+ * `app/canvas/canvas.css`. The tints are kept so the per-block colouring can come back by restoring
+ * the `edgeColor` lookup in `app/canvas/page.tsx`.
  *
  * `description` is what the hover info box shows; it is the only place a block explains itself,
  * so keep these written for someone who has never seen the block before.
@@ -142,7 +146,8 @@ export const NODE_STYLE: Record<
   },
   output: {
     icon: MessageSquareReply,
-    edge: "#10b981",
+    // Cyan, not the emerald it used to be: emerald sat right next to the running green.
+    edge: "#06b6d4",
     description: "Where the run ends. Whatever reaches here is the reply.",
   },
 };

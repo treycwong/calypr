@@ -221,17 +221,24 @@ test("Add connection sits on the section header, not in the grid", async ({ page
   await expect(page.getByTestId("connected-accounts")).not.toContainText("Add");
 });
 
-test("wires take the colour of the block they leave", async ({ page }) => {
+test("every wire is the brand green, whatever block it leaves", async ({ page }) => {
   await openCanvas(page);
 
   await buildChain(page, ["input", "image", "output"]);
 
-  const strokes = await page
-    .locator(".react-flow__edge-path")
-    .evaluateAll((els) => els.map((e) => (e as SVGElement).style.stroke));
+  const wires = await page.locator(".react-flow__edge-path").evaluateAll((els) =>
+    els.map((e) => ({
+      inline: (e as SVGElement).style.stroke,
+      computed: getComputedStyle(e).stroke,
+    })),
+  );
 
-  // sky-500 leaving Input, pink-500 leaving Image — the source block's colour, not the target's.
-  // These were the -300 pastels until they proved too washed out to trace across a busy canvas.
-  expect(strokes[0]).toBe("rgb(14, 165, 233)");
-  expect(strokes[1]).toBe("rgb(236, 72, 153)");
+  // Wires were tinted by their source block (sky leaving Input, pink leaving Image) until
+  // 2026-10-04; now canvas.css paints every idle wire the brand green at 50%. No inline stroke:
+  // one would beat the run-state classes, and the processing glow would never show.
+  expect(wires).toHaveLength(2);
+  for (const w of wires) {
+    expect(w.inline).toBe("");
+    expect(w.computed).toBe("rgba(92, 201, 155, 0.5)");
+  }
 });

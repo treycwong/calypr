@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-09-04.
+> record — what shipped and why. Updated 2026-10-04.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -621,6 +621,118 @@ RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, C
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
 
 ---
+
+## 🟡 One design system: dashboard + canvas on the website palette — IN WORKING TREE (2026-10-04), uncommitted
+
+Follow-on to the palette section below, on the user's request to make the product "look and feel
+like a professional product design system like Figma" and modernise the sidebar "like Google
+Stitch". User's calls: **white primary buttons in the app**, **collapsible sidebar**, **canvas run
+glow → soft green**, share page and dashboard grid backdrop **out of scope**. The reference for
+anyone touching UI is now `apps/web/src/components/DESIGN.md`.
+
+### What changed
+- **Tokens are global.** The three split blocks (stock shadcn light `:root`, stock `.dark`, the
+  marketing-only `[data-brand="spectra"]`) collapsed into one app `:root` in `globals.css`; every
+  `data-brand` attribute is gone. New: an elevation ladder `--surface-0…4` (+ `bg-surface-*`
+  utilities), state tokens `--state-running/done/warning`, `--canvas-dot`, real `--sidebar*` and
+  `--chart-*` values, `--radius` 12px. `--primary` is white app-wide (the auth-panel override was
+  deleted); `--accent` sits one step above `--popover` so menu hover is visible.
+- **Primitives (`components/ui/*`)** restyled to the system: hairline `outline`/`ghost` buttons,
+  10px menus and 16px dialogs on one shadow, darker dialog scrim, pill `tabs`, `Badge
+  variant="label"` (mono caps), quieter focus rings.
+- **Sidebar rewritten** (`components/dashboard/sidebar.tsx`): floating 16px panel, white
+  "New project" pill, pill nav with a mono "WORKSPACE" label, account row → menu (Settings, Sign
+  out), collapse to a 60px icon rail with tooltips (`RailTip`). State in the `calypr-sidebar`
+  cookie, read in `app/dashboard/layout.tsx` so there's no flash — the name lives in
+  `lib/sidebar.ts` because a server component importing a value from a `"use client"` module gets
+  a client reference, not the string. All existing test ids kept; new: `sidebar-toggle`,
+  `sidebar-new-project`, `user-menu`.
+- **Dashboard:** shell is panels on a ground; new `dashboard/PageHeader` on every route; project
+  and workflow cards are `surface-2` cards; `ProjectArt` confined to a cool 165–285° band (never
+  green); usage meters fill `bg-brand`; amber → `--state-warning`; the page's own "New Project"
+  became `outline` (the sidebar holds the primary; this one stays because it owns the cap upsell).
+- **Canvas:** chrome on `surface-1`, canvas on `surface-0`, dots from `--canvas-dot`; rail items
+  match the sidebar; node cards 12px on `surface-2`; palette tiles lifted to `surface-2`. Run state:
+  active = green pulse + green marching wire, done = neutral white (green would read as still
+  live). Output's wire tint moved emerald → cyan (cyan is free now that running isn't cyan).
+  Success ticks/dots → `text-brand`; amber literals → `--state-warning`.
+- `e2e/tests/phase6.spec.ts` opens `user-menu` before asserting `sign-out`.
+- **All wires are brand green now (on request, "let's see how it looks").** The per-block tint
+  lookup in `app/canvas/page.tsx` is gone; `canvas.css` styles every edge: idle green at 50%,
+  processing = full green + marching dashes + breathing `drop-shadow` glow (`edgeGlow`, off under
+  reduced motion), done = green 85%. `NODE_STYLE[type].edge` is kept but unused, so restoring the
+  tints is one small lookup. Supersedes the "no wire may be green" rule above.
+
+### Verified
+- typecheck, lint, `next build` clean. Before/after screenshots of dashboard, usage, settings,
+  canvas in `.playwright-mcp/` (`before-*`, `p3-*`–`p5-*`). Collapse survives reload at 60px
+  server-side. Run-state colours checked by computed style (active wire `rgb(92,201,155)`, done
+  `rgba(243,245,248,.45)`, node `nodePulse`). Homepage/pricing unchanged.
+- Full e2e: 193 passed, 4 failed (phase3, phase5 template-apply, phase8 hand-edit, phase27 delete —
+  all 30s timeouts on `mouse.move`/`keyboard.press`/`fill`, not selector misses; phase3's file took
+  13.8 min). Rerunning those four files alone: **28/28 passed in 1.2 min**. Read as load-induced
+  flake (dev server, API, a second Playwright browser and a `next build` were all running), but
+  watch them in CI.
+
+### Still open
+- [ ] **Commit + PRs** — plan was three (tokens+primitives / sidebar+dashboard / canvas); it's one
+      working tree, so split by path when committing. Tag `ui-pre-app-theme` first.
+- [ ] Share page (`/s/…`) still has its cyan ASCII art on the new graphite surfaces — out of scope
+      by decision; it now picks up the global tokens for its chrome.
+- [ ] Selected node keeps `bg-neutral-700` (pure grey, not graphite) because `phase19`'s selection
+      test parses `lab()`/`oklab()` and would read an `rgb()` surface token as lightness 0. Move it
+      to `bg-surface-4` together with a parser fix in that test.
+- [ ] The two "New project" entry points on /dashboard (sidebar + header) — consider dropping the
+      header one once the sidebar link handles the cap upsell itself.
+- [ ] Remaining dashboard internals (settings-view's 1.2k lines, UpgradeDialog) only inherit the
+      tokens/primitives; no bespoke pass yet.
+
+## 🟡 Marketing palette: green toned down, tech backdrop — IN WORKING TREE (2026-10-04), uncommitted
+
+The user's call after seeing it live: **"I like this color theme."** This retunes the Spectra
+surface (the `[data-brand="spectra"]` scope), so it reaches the homepage, pricing, blog, checkout,
+waitlist and sign-in/up. Canvas, dashboard and settings are still on their pre-Spectra look and
+are untouched.
+
+### What changed
+- **Ink is neutral graphite now, not green-tinted.** Every ink/slate token was remapped to a cool
+  near-neutral (`#06110c → #07090c`, card `#0e1d16 → #0f1216`, muted text `#9db3a6 → #a0a9b4`, …)
+  in both `app/spectra.css` and the `@theme` ramp in `globals.css`, plus the literal rgba copies
+  (`--glass-dark`, `--grad-fade-dark`, the light-surface shadows). **`spectra.css` now diverges from
+  the design bundle** — its header says to re-flatten from the bundle; don't, or this reverts.
+- **The accent is softer.** `--brand`/`--ring` `#3ece8b → #5cc99b`, `--primary` `#22b573 → #3fae80`,
+  the CTA gradient (`--grad-accent`) desaturated, `--glow-accent*` and the soft accent fills roughly
+  halved, the hero's green glow cut from 0.07 to 0.04 alpha. Hard-coded greens in `Capabilities`,
+  `UiBuilderTeaser`, `LandingCta` and `TemplateArt` point at the same `#5cc99b`.
+- **Headings are all white.** `SectionHeading`'s `accent` phrase no longer turns green on dark (light
+  tone still uses `--accent-on-light`); the hero's "agentic app" line uses the same white→grey
+  gradient as "Craft your next". The two-part `accent` prop is kept as structure.
+- **Sign-in/up buttons and links are white.** `AuthPanel`'s card repoints `--primary` at white, so
+  the dev "Continue" and both provider buttons render white with ink type; the "Create an account" /
+  "Log in" footer links are white too. **Trap:** the override has to sit on the inner card, not on
+  `<main>` — `[data-brand="spectra"]` is unlayered CSS and beats a Tailwind arbitrary-property
+  utility on the same element (first attempt silently stayed green).
+- **Card art is cool, not green.** `TemplateArt` blobs moved to a slate-blue→teal band at lower
+  saturation, so the one lit node is the only green in the frame.
+- **New `.tech-backdrop`** (end of `globals.css`), placed once in `app/page.tsx`: a 64px grid at 5%
+  white, masked brightest under the hero and ~35% below, plus five faint radial washes (blue, teal,
+  indigo, blue, a last green near the CTA). Absolute, not fixed — it scrolls with the content. The
+  page wrapper got `isolate` so its `-z-10` sits above the wrapper background and below sections;
+  the hero lost its opaque `bg-[var(--ink-950)]` so the grid shows through.
+
+### Still open
+- [ ] **Commit + PR** (nothing is committed yet). Files: `app/globals.css`, `app/spectra.css`,
+      `app/page.tsx`, `app/sign-in/page.tsx`, `app/sign-up/page.tsx`,
+      `components/auth/auth-panel.tsx`, `components/spectra/SectionHeading.tsx`,
+      `components/landing/{Capabilities,LandingCta,TemplateArt,UiBuilderTeaser}.tsx`.
+- [ ] **Backdrop on the inner pages?** Only the homepage has `.tech-backdrop`; pricing, blog, auth
+      etc. have the new colours but a flat ground. One `<div aria-hidden className="tech-backdrop" />`
+      plus `isolate` on each page wrapper if wanted.
+- [ ] **Small green labels** (mono eyebrows, card meta, pricing checkmarks, status dots) are still
+      green by design — the user has only asked for headings and auth buttons in white so far.
+- [ ] Social sign-in buttons inherit the white primary but couldn't be seen locally (Better Auth
+      keys unset → dev "Continue" only). Glance at them on staging.
+- [ ] Update the `spectra-design-system` memory / bundle so the next re-flatten doesn't undo this.
 
 ## 🟢 Media is credit-only, and never billed when it can't be delivered — DONE (2026-08-30), merged + live (PRs #91, #92)
 
