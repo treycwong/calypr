@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { fetchWorkspaces } from "@/lib/api-server";
 import { betterAuthEnabled, getSession } from "@/lib/auth";
+import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 
 export default async function DashboardLayout({
   children,
@@ -27,14 +29,18 @@ export default async function DashboardLayout({
   // first paint without a second request — see `WorkspaceList` in the API schemas.
   const { workspaces, can_create } = await fetchWorkspaces();
   const current = workspaces.find((w) => w.is_current);
+  const sidebarCollapsed = (await cookies()).get(SIDEBAR_COOKIE)?.value === "1";
 
   return (
-    <div className="flex h-screen">
+    // Panels on a ground: the sidebar and the page are two rounded surfaces with an 8px gutter
+    // between and around them, on the darkest step of the ladder.
+    <div className="flex h-screen gap-2 bg-surface-0 p-2">
       <Sidebar
         session={session}
         betterAuth={betterAuthEnabled()}
         workspaces={workspaces}
         canCreateWorkspace={can_create}
+        defaultCollapsed={sidebarCollapsed}
       />
       {/* Keyed on the resolved workspace so switching remounts the page beneath. The pages here
           are client components that fetch in a mount effect, and `router.refresh()` — what the
@@ -42,7 +48,10 @@ export default async function DashboardLayout({
           this key the shell renamed itself correctly and the projects underneath stayed those of
           the workspace you just left. Belongs in the layout, not in each page: every route under
           /dashboard reads workspace-scoped data and every one of them had the same staleness. */}
-      <main key={current?.id ?? "none"} className="flex-1 overflow-auto">
+      <main
+        key={current?.id ?? "none"}
+        className="min-w-0 flex-1 overflow-auto rounded-[16px] border border-border bg-surface-1"
+      >
         {children}
       </main>
     </div>

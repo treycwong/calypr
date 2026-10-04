@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { flashToast } from "@/components/ui/toast";
 import { Tooltip, TooltipGroup } from "@/components/ui/tooltip";
 import {
@@ -265,7 +266,7 @@ export function SettingsView({
 
   return (
     <div className="w-full max-w-2xl px-10 py-8">
-      <h1 className="font-heading text-2xl">Settings</h1>
+      <PageHeader title="Settings" />
       <Tabs value={tab} onValueChange={setTab} className="mt-6">
         {/* Sized up from the shared default (h-8, px-1.5 triggers), which is tuned for dense
             in-panel tab strips and reads as cramped under a page heading. Overridden here rather

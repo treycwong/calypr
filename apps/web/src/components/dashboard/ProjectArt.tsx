@@ -46,8 +46,14 @@ export function ProjectArt({ seed }: { seed: string }) {
   // rather than a clash. Kept well off full saturation: these are the largest surfaces on the
   // dashboard, and at 85% they competed with the project names for attention. Muted still reads
   // as colour against near-black.
-  const base = Math.floor(random() * 360);
-  const hues = [base, (base + pick(25, 65)) % 360, (base + pick(150, 210)) % 360];
+  //
+  // Confined to the cool band (teal → blue → violet, 165–285°) so the art sits on the graphite
+  // ground the way the website's card art does, and never lands on the brand green — green is
+  // reserved for state. ~120° of hue still separates cards easily at a glance.
+  const base = pick(165, 285);
+  const hues = [base, base + pick(-30, 30), base + pick(-45, 45)].map(
+    (h) => Math.min(285, Math.max(165, h)),
+  );
 
   // Soft colour fields, and nothing else — an earlier version drew pale strokes across them,
   // which at card size looked like scratches on the glass rather than part of the image. Radii
@@ -58,7 +64,7 @@ export function ProjectArt({ seed }: { seed: string }) {
     cx: pick(-10, 110),
     cy: pick(-10, 110),
     r: pick(50, 100),
-    color: `hsl(${h} ${pick(45, 65)}% ${pick(42, 58)}%)`,
+    color: `hsl(${h} ${pick(30, 50)}% ${pick(42, 58)}%)`,
     opacity: pick(0.4, 0.65),
   }));
 

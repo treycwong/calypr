@@ -33,6 +33,7 @@ import {
 import { ProjectArt } from "@/components/dashboard/ProjectArt";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
 import { UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
+import { PageHeader } from "@/components/dashboard/PageHeader";
 import { track } from "@/lib/analytics";
 import { PLAN_LIMITS } from "@/lib/plans";
 
@@ -99,9 +100,10 @@ export default function ProjectsPage() {
     // anything wider left the grid hugging the sidebar with a growing empty gutter on the right —
     // the page looked mis-aligned rather than centred.
     <div className="w-full px-10 py-8">
-      <header className="flex items-center justify-between gap-4">
-        <h1 className="font-heading text-2xl">Projects</h1>
-        <div className="flex items-center gap-2">
+      <PageHeader
+        title="Projects"
+        actions={
+          <>
           <Input
             placeholder="Search projects…"
             value={query}
@@ -109,16 +111,19 @@ export default function ProjectsPage() {
             className="w-48"
             data-testid="project-search"
           />
+          {/* Outline, not the white primary: the sidebar's "New project" is the shell's one
+              primary action. This one stays because it owns the cap upsell (`newProject`). */}
           <Link
             href="/dashboard/new"
-            className={buttonVariants({ size: "sm" })}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
             data-testid="new-project"
             onClick={newProject}
           >
             <Plus className="h-4 w-4" /> New Project
           </Link>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="mt-6">
         {/* Counts the *whole* account, not the filtered view — a search that hides every locked
@@ -139,7 +144,7 @@ export default function ProjectsPage() {
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : filtered.length === 0 ? (
           <div
-            className="dotted flex flex-col items-center justify-center rounded-lg border border-dashed border-border py-16 text-center"
+            className="dotted flex flex-col items-center justify-center rounded-[16px] border border-dashed border-white/[0.1] py-16 text-center"
             data-testid="projects-empty"
           >
             <p className="text-sm font-medium">
@@ -167,7 +172,7 @@ export default function ProjectsPage() {
             {filtered.map((a) => (
               <div
                 key={a.id}
-                className="group relative"
+                className="group relative rounded-[16px] border border-border bg-surface-2 p-2 transition-colors hover:border-white/[0.12] hover:bg-surface-3"
                 data-testid="project-card"
                 data-locked={a.locked ? "true" : "false"}
               >
@@ -178,10 +183,10 @@ export default function ProjectsPage() {
                       graphs are a short line of dots, so drawing them made every card look the
                       same. This carries no information, which is exactly what frees it to be
                       distinctive enough to find a project by. */}
-                  <div className="aspect-[16/10] overflow-hidden rounded-lg border border-border transition group-hover:border-foreground/20">
+                  <div className="aspect-[16/10] overflow-hidden rounded-[10px]">
                     <ProjectArt seed={a.id} />
                   </div>
-                  <div className="mt-2 flex items-center gap-1.5 pr-6">
+                  <div className="mt-2.5 flex items-center gap-1.5 px-1.5 pr-6">
                     <span className="truncate text-sm font-medium">{a.name}</span>
                     {a.locked ? (
                       <span
@@ -193,16 +198,16 @@ export default function ProjectsPage() {
                       </span>
                     ) : null}
                   </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
+                  <div className="mt-0.5 px-1.5 pb-1 text-xs text-muted-foreground">
                     Edited {relativeTime(a.updated_at)}
                   </div>
                 </Link>
-                <div className="absolute top-2 right-2">
+                <div className="absolute top-4 right-4">
                   <DropdownMenu>
                     <DropdownMenuTrigger
                       aria-label="Project actions"
                       data-testid="project-menu"
-                      className="rounded-md bg-background/80 p-1 text-muted-foreground opacity-0 transition hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
+                      className="rounded-md bg-surface-0/80 p-1 text-muted-foreground opacity-0 transition hover:bg-muted group-hover:opacity-100 data-[popup-open]:opacity-100"
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </DropdownMenuTrigger>

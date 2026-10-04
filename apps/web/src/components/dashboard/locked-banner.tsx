@@ -37,11 +37,11 @@ export function LockedBanner({
 
   return (
     <div
-      className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/5 p-4"
+      className="mb-4 rounded-[12px] border border-state-warning/30 bg-state-warning/[0.06] p-4"
       data-testid="locked-banner"
     >
       <div className="flex items-center gap-2">
-        <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-500" />
+        <Lock className="h-3.5 w-3.5 shrink-0 text-state-warning" />
         <span className="text-sm font-medium">
           {parts.join(" and ")} {parts.length === 1 && !parts[0].endsWith("s") ? "is" : "are"}{" "}
           read-only
