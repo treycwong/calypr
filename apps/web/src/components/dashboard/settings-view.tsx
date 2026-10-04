@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { flashToast } from "@/components/ui/toast";
 import { Tooltip, TooltipGroup } from "@/components/ui/tooltip";
 import {
   type AssistantModelOption,
@@ -915,6 +916,7 @@ function DeleteWorkspaceCard({ workspace }: { workspace: WorkspaceInfo | null })
     // merely survivable. A full navigation, not `router.refresh()`: we are leaving a workspace
     // that is gone, and every client page still holding its data has to be rebuilt from scratch.
     await switchWorkspace().catch(() => {});
+    flashToast(`Workspace "${target.name}" deleted.`);
     window.location.assign("/dashboard");
   }
 
