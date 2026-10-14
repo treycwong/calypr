@@ -323,7 +323,14 @@ The code is merged and correct; nothing works until three values exist. See
 - [x] **The live cancel is on record (checked 2026-10-14):** `stripe_event` holds
       `evt_1UB5zOQ4CLwWKY6VaXk6Qkxw` (`customer.subscription.deleted`, 2026-09-02 04:41 UTC). A
       row is written only after the signature verifies, so it was delivered and accepted.
-- [ ] **Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**
+- [x] **Webhook audit done (2026-10-14): there is exactly one live destination**, at
+      `…railway.app/billing/webhook`, Active, 6 events. So the "stray second endpoint" theory is
+      wrong, and the cause of the 400s is still open. The likeliest remaining explanation is
+      unsigned requests from scanners hitting a public URL, which a 400 correctly rejects. Before
+      treating them as a problem, check their request headers for a `Stripe-Signature`. The
+      refund and the receipt were dropped by the founder's call: it was the founder's own
+      subscription. Original entry below.
+- [ ] ~~**Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**~~
       The 200s prove the live secret is right, so the 400s are deliveries whose signature doesn't
       verify — almost certainly a **second (test-mode) endpoint pointed at the prod URL** with the
       wrong secret. Stripe → Developers → Webhooks should list exactly one live endpoint at
