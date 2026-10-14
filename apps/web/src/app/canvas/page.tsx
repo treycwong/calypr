@@ -13,6 +13,7 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStoreApi,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import "./canvas.css";
@@ -154,7 +155,16 @@ function CanvasInner() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // Arrow vs hand. Drives React Flow's drag props below, and the pane cursor via `canvas-pan`.
   const [tool, setTool] = useState<CanvasTool>("select");
-  const { zoomIn, zoomOut, screenToFlowPosition, getViewport, setViewport } = useReactFlow();
+  const {
+    zoomIn,
+    zoomOut,
+    screenToFlowPosition,
+    getViewport,
+    setViewport,
+    getInternalNode,
+    setCenter,
+  } = useReactFlow();
+  const flowStore = useStoreApi();
   const [showPlayground, setShowPlayground] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   /** The graph as it was last persisted, serialized. Compared against the live canvas to tell
@@ -861,7 +871,33 @@ function CanvasInner() {
   // canvas node state so it never persists into the saved graph or the undo history — it's
   // injected only into the decorated arrays handed to <ReactFlow> below.
   const [runStatus, setRunStatus] = useState<Record<string, NodeStatus>>({});
+  // Bring a block that just started into view, unless all of it is already on screen.
+  //
+  // Opening the Playground narrows the canvas without moving the view, so the last blocks of a
+  // chain can end up past its right edge. That is exactly where a slow block like Video sits, and
+  // it pulsed for minutes where nobody could see it. The test is "wholly visible", not "mostly":
+  // a card 75% on screen still had its glowing edge cut off, which is the bug. The zoom is kept,
+  // so a run on a graph that already fits never moves it.
+  const revealNode = useCallback(
+    (nodeId: string) => {
+      const node = getInternalNode(nodeId);
+      const w = node?.measured.width;
+      const h = node?.measured.height;
+      if (!node || !w || !h) return;
+      const { width: paneW, height: paneH, transform } = flowStore.getState();
+      const [tx, ty, zoom] = transform;
+      const { x, y } = node.internals.positionAbsolute;
+      const left = x * zoom + tx;
+      const top = y * zoom + ty;
+      const onScreen =
+        left >= 0 && top >= 0 && left + w * zoom <= paneW && top + h * zoom <= paneH;
+      if (onScreen) return;
+      void setCenter(x + w / 2, y + h / 2, { zoom, duration: 400 });
+    },
+    [getInternalNode, flowStore, setCenter],
+  );
   const onNodeEvent = useCallback((nodeId: string, phase: "start" | "end") => {
+    if (phase === "start") revealNode(nodeId);
     setRunStatus((prev) => {
       const next = { ...prev };
       // Each node's own `start`/`end` decides its state, and nothing else touches it.
@@ -876,7 +912,7 @@ function CanvasInner() {
       else if (next[nodeId] === "active") next[nodeId] = "done";
       return next;
     });
-  }, []);
+  }, [revealNode]);
   // What each media block produced, so the block can show it in place rather than making the user
   // open the chat. Keyed by node id and kept beside `runStatus` for the same reason: it is a run
   // result, and `buildGraphSpec` must never see it.

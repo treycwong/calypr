@@ -41,6 +41,7 @@ const INTENTS = ["Next", "Harder", "Explain that"];
 export function PlaygroundChat({
   messages,
   busy,
+  running = [],
   locked = false,
   scope,
   memoryExpired,
@@ -49,6 +50,9 @@ export function PlaygroundChat({
 }: {
   messages: ChatMsg[];
   busy: boolean;
+  /** What is running right now, already worded ("Video · generating…"). Shown under the
+   *  transcript while a run is in flight, because a slow block streams nothing into it. */
+  running?: string[];
   /** This project is read-only after a downgrade. The API refuses the run either way
    *  (`locking.py`); saying so here is what stops someone typing a message, waiting for a
    *  stream, and getting a billing error where the answer should be. */
@@ -153,6 +157,16 @@ export function PlaygroundChat({
           </div>
           );
         })}
+        {busy && running.length > 0 ? (
+          <p
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+            data-testid="chat-running"
+            aria-live="polite"
+          >
+            <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-state-running" />
+            {running.join(" · ")}
+          </p>
+        ) : null}
       </div>
       {memoryExpired ? (
         <p

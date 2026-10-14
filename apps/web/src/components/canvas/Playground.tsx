@@ -10,6 +10,7 @@ import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
 import { isKeyProblem } from "@/lib/errors";
 import { type ConversationDetail, runAgent } from "@/lib/api";
+import { type CalyprNodeType, NODE_LABELS } from "@/lib/graph";
 
 import { HistoryTab } from "./playground/HistoryTab";
 import { PlaygroundChat, type ChatMsg } from "./playground/PlaygroundChat";
@@ -24,6 +25,11 @@ let seq = 0;
  *  mutating `messages[length - 1]`, which is fine until a tab switch or a reload reorders
  *  anything. */
 const nextId = () => `m${++seq}`;
+
+/** Blocks whose start isn't worth announcing: Input and Output take no visible time. */
+const QUIET_BLOCKS = new Set(["input", "output"]);
+/** Blocks that produce a file. They are the slow ones, and "generating" says what's happening. */
+const MEDIA_BLOCKS = new Set(["image", "mesh", "video", "tts"]);
 
 export function Playground({
   getGraph,
@@ -63,6 +69,13 @@ export function Playground({
   // mid-answer — taking the in-flight stream's target with it.
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [busy, setBusy] = useState(false);
+  // The blocks running right now, as the chat should name them ("Video · generating…").
+  //
+  // A Video block runs for one to three minutes with nothing streaming into the transcript, and
+  // the canvas glow alone was not enough: with the Playground open the running block can sit
+  // off the edge of the narrowed canvas. This line says what is happening whatever the canvas
+  // is showing. Keyed by node id, so a fan-out lists each branch until its own `end`.
+  const [running, setRunning] = useState<Record<string, string>>({});
   const [threadId, setThreadId] = useState(newThread);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [tab, setTab] = useState("chat");
@@ -135,6 +148,21 @@ export function Playground({
     const append = (chunk: string) => patch((prev) => ({ ...prev, text: prev.text + chunk }));
 
     const graph = getGraph();
+    const typeOf = new Map((graph.nodes ?? []).map((n) => [n.id, n.type as string]));
+    const onNode = (nodeId: string, phase: "start" | "end") => {
+      const type = typeOf.get(nodeId) ?? "";
+      if (QUIET_BLOCKS.has(type)) return;
+      setRunning((prev) => {
+        const next = { ...prev };
+        if (phase === "end") delete next[nodeId];
+        else {
+          const label = NODE_LABELS[type as CalyprNodeType] ?? "Block";
+          next[nodeId] = `${label} · ${MEDIA_BLOCKS.has(type) ? "generating" : "running"}…`;
+        }
+        return next;
+      });
+    };
+    setRunning({});
     track("run_started", { nodes: graph.nodes?.length ?? 0 });
     onRunReset?.(); // clear the previous run's node glow before this one starts
     const controller = new AbortController();
@@ -150,7 +178,10 @@ export function Playground({
         controller.signal,
       )) {
         if (ev.type === "token") append(ev.text);
-        else if (ev.type === "node") onNodeEvent?.(ev.node_id, ev.phase);
+        else if (ev.type === "node") {
+          onNode(ev.node_id, ev.phase);
+          onNodeEvent?.(ev.node_id, ev.phase);
+        }
         else if (ev.type === "asset") onAssetGenerated?.(ev);
         else if (ev.type === "conversation") {
           // The turn is now durable. A conversation the user just spoke into has live state by
@@ -184,6 +215,7 @@ export function Playground({
     } finally {
       if (abort.current === controller) abort.current = null;
       setBusy(false);
+      setRunning({});
       onRunFinished?.();
     }
   }
@@ -232,6 +264,7 @@ export function Playground({
           <PlaygroundChat
             messages={messages}
             busy={busy}
+            running={Object.values(running)}
             locked={locked}
             scope={threadId}
             memoryExpired={loaded !== null && !loaded.hasState}
