@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+from collections.abc import MutableMapping
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -84,3 +87,39 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+
+#: The production Vercel Blob store (`calypr-media`). Not a secret — a read-write token embeds its
+#: store id (`vercel_blob_rw_<id>_…`), which is the only way to tell from a token which store it
+#: writes to.
+PROD_BLOB_STORE_ID = "pR7HOMSJYVqYPjEW"
+
+
+def guard_prod_blob_store(environ: MutableMapping[str, str] = os.environ) -> bool:
+    """Drop a production blob token from any non-production process. True if one was dropped.
+
+    For six weeks every local test image and mp3 was written to the production store, because the
+    repo-root `.env` held its token. Those puts exhausted the Hobby plan's Advanced Operations
+    quota and suspended 3D and Video in production (TODO.md, 2026-09-01). A comment in
+    `.env.example` did not stop it, so this does.
+
+    It **drops** the token rather than refusing to start, so local dev keeps working: images fall
+    back to `data:` URIs and the 3D/Video blocks fail up front through `blob_configured()`. A
+    `railway run` against production injects `CALYPR_ENVIRONMENT=production`, so the operator
+    scripts that are *meant* to reach the production store are unaffected."""
+    if settings.environment == "production":
+        return False
+    token = environ.get("BLOB_READ_WRITE_TOKEN") or ""
+    if PROD_BLOB_STORE_ID not in token:
+        return False
+    del environ["BLOB_READ_WRITE_TOKEN"]
+    logging.getLogger(__name__).warning(
+        "BLOB_READ_WRITE_TOKEN belongs to the production store (calypr-media) but "
+        "CALYPR_ENVIRONMENT is %r — ignoring it. Point local dev at its own store; see "
+        "apps/api/.env.example.",
+        settings.environment,
+    )
+    return True
+
+
+guard_prod_blob_store()

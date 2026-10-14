@@ -13,7 +13,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
-from calypr_api import purge, storage_usage
+from calypr_api import credits, purge, storage_usage
 from calypr_api.config import settings
 from calypr_api.db.session import SessionLocal
 
@@ -68,6 +68,23 @@ def purge_accounts(request: Request) -> dict[str, int]:
         result["purged"], result["failed"], result["considered"],
     )
     return result
+
+
+@router.post("/gc/credit-drift")
+def gc_credit_drift(request: Request) -> dict[str, object]:
+    """Report every account whose cached credit balance disagrees with its ledger.
+
+    It reports and does not repair, because a repair would erase the evidence. Any drift is
+    logged at ERROR so it surfaces in Railway's logs."""
+    _require_internal_key(request)
+    with SessionLocal() as session:
+        drifted = credits.find_drift(session)
+    for row in drifted:
+        log.error(
+            "credit drift on account %s: cached %s micro, ledger %s micro",
+            row["account_id"], row["cached_micro"], row["ledger_micro"],
+        )
+    return {"drifted": len(drifted), "accounts": drifted}
 
 
 @router.post("/gc/orphan-blobs")

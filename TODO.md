@@ -144,8 +144,10 @@ Worth fixing before this recurs, in rough priority order:
             `trig_012Eui49zFKFttCvgsVqPrKd`, https://claude.ai/code/routines/trig_012Eui49zFKFttCvgsVqPrKd
             The 30th, not the 29th: the rolling window lapses 2026-09-29 20:53 UTC, which is
             04:53 on the 30th local, so a reminder on the 29th would fire before the reset.
-      - [ ] Consider a startup guard that refuses to run non-production against the production
-            store — a comment did not stop this happening for six weeks.
+      - [x] **Startup guard shipped (2026-10-14):** `config.guard_prod_blob_store` drops a
+            `calypr-media` token from any process whose `CALYPR_ENVIRONMENT` isn't `production`
+            and logs a warning. It drops rather than refuses, so local dev still runs (images
+            inline as `data:` URIs, and 3D/Video fail up front). `railway run` is unaffected.
 - [ ] **Schedule the orphan sweep** instead of leaving it a manual `railway run`. It does not
       recover operations, but it bounds storage and transfer, and 1,937 uncollected objects with
       zero users is the signal that nothing is watching.
@@ -474,7 +476,15 @@ Build order (each step is useful on its own):
 
 ### 3. Before the first real charge (money safety)
 
-- [ ] **UNEXPLAINED — a local database accumulated ~22,900 credits of cache/ledger drift.**
+- [x] **EXPLAINED + alarmed (2026-10-14) — the local drift was a test.**
+      `test_anonymous_traffic_is_never_credit_limited` set the *shared dev account's* cached
+      balance directly and reset it to `0` in `finally`, while local playground runs kept debiting
+      that account's ledger, so every test run re-opened the gap. It now restores the original value.
+      A nightly `POST /internal/gc/credit-drift` (`credits.find_drift`, in the Vercel cron
+      route) reports any drifted account and logs it at ERROR. It does not repair, so the evidence
+      survives. `scripts/set_credits.py` had been broken since 0016 (it read `workspace.plan`) and
+      now acts on the workspace's account. Original entry below.
+- [ ] ~~**UNEXPLAINED — a local database accumulated ~22,900 credits of cache/ledger drift.**~~
       `workspace.credit_balance_micro` had diverged from `SUM(credit_ledger.delta_micro)` on the
       shared dev workspace. **Production was checked and has none, on any workspace**, which is
       why this is not urgent — but the cause was never found, and "we don't know why the money
@@ -622,7 +632,7 @@ Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the s
 
 ---
 
-## 🟡 One design system: dashboard + canvas on the website palette — IN WORKING TREE (2026-10-04), uncommitted
+## 🟢 One design system: dashboard + canvas on the website palette — DONE (2026-10-04), merged + live (PRs #97, #98, #99)
 
 Follow-on to the palette section below, on the user's request to make the product "look and feel
 like a professional product design system like Figma" and modernise the sidebar "like Google
@@ -675,8 +685,11 @@ anyone touching UI is now `apps/web/src/components/DESIGN.md`.
   watch them in CI.
 
 ### Still open
-- [ ] **Commit + PRs** — plan was three (tokens+primitives / sidebar+dashboard / canvas); it's one
-      working tree, so split by path when committing. Tag `ui-pre-app-theme` first.
+- [x] **Committed + merged** as stacked PRs #97 → #98 → #99, all live 2026-10-04 (verified on
+      production by the user). Local tag `ui-pre-app-theme` marks the pre-redesign state.
+- [x] **`build-test` is a required check on `main` (2026-10-04).** Branch protection: that one
+      check, no review requirement, not strict (no forced rebase), admins can bypass. Before this,
+      `gh pr merge --auto` merged instantly — #98 landed before its post-rebase CI ran.
 - [ ] Share page (`/s/…`) still has its cyan ASCII art on the new graphite surfaces — out of scope
       by decision; it now picks up the global tokens for its chrome.
 - [ ] Selected node keeps `bg-neutral-700` (pure grey, not graphite) because `phase19`'s selection
@@ -687,7 +700,7 @@ anyone touching UI is now `apps/web/src/components/DESIGN.md`.
 - [ ] Remaining dashboard internals (settings-view's 1.2k lines, UpgradeDialog) only inherit the
       tokens/primitives; no bespoke pass yet.
 
-## 🟡 Marketing palette: green toned down, tech backdrop — IN WORKING TREE (2026-10-04), uncommitted
+## 🟢 Marketing palette: green toned down, tech backdrop — DONE (2026-10-04), merged + live (PR #97)
 
 The user's call after seeing it live: **"I like this color theme."** This retunes the Spectra
 surface (the `[data-brand="spectra"]` scope), so it reaches the homepage, pricing, blog, checkout,

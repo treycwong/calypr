@@ -78,6 +78,35 @@ def recompute_balance(session: Session, account_id: uuid.UUID) -> int:
     return total
 
 
+def find_drift(session: Session) -> list[dict[str, object]]:
+    """Every account whose cached balance disagrees with its ledger. Reads only; repairs nothing.
+
+    A local database once drifted by ~22,900 credits and the cause was never found (TODO.md §3).
+    Repairing silently here would erase the evidence the next time it happens. So this only reports;
+    an operator repairs it deliberately with `recompute_balance` after looking at the rows.
+
+    One grouped query over the ledger, so its cost scales with ledger rows rather than one query
+    per account. An account with no ledger rows at all should be cached at zero."""
+    ledger = (
+        select(
+            CreditLedger.account_id,
+            func.sum(CreditLedger.delta_micro).label("total"),
+        )
+        .group_by(CreditLedger.account_id)
+        .subquery()
+    )
+    ledger_total = func.coalesce(ledger.c.total, 0)
+    rows = session.execute(
+        select(Account.id, Account.credit_balance_micro, ledger_total)
+        .outerjoin(ledger, ledger.c.account_id == Account.id)
+        .where(Account.credit_balance_micro != ledger_total)
+    ).all()
+    return [
+        {"account_id": str(acct), "cached_micro": int(cached), "ledger_micro": int(total)}
+        for acct, cached, total in rows
+    ]
+
+
 def _write(
     session: Session,
     account_id: uuid.UUID,

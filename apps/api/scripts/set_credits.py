@@ -1,7 +1,11 @@
-"""Set a workspace's plan and credit balance — a **testing** tool for local databases.
+"""Set an account's plan and credit balance — a **testing** tool for local databases.
+
+Takes `--workspace` because that is the id you have to hand, and acts on the workspace's
+**account**: plan and credits have lived on the account since 0016, so every workspace of that
+account sees the change.
 
 Exists because exercising the paid tiers by hand otherwise means either paying Stripe or writing
-UPDATEs by hand, and a hand-written UPDATE moves `workspace.credit_balance_micro` without a
+UPDATEs by hand, and a hand-written UPDATE moves `account.credit_balance_micro` without a
 `credit_ledger` row, which is exactly the drift the ledger exists to make impossible.
 
 So this writes a real `kind='adjust'` ledger row through `credits._write`: the balance and its
@@ -31,9 +35,8 @@ import sys
 
 from calypr_api import credits, entitlements
 from calypr_api.config import settings
-from calypr_api.db.models import CreditLedger, Workspace
+from calypr_api.db.models import Account, Workspace
 from calypr_api.db.session import SessionLocal
-from sqlalchemy import func, select
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1", "::1")
 
@@ -43,11 +46,11 @@ def _is_local(url: str) -> bool:
     return any(h in host for h in LOCAL_HOSTS)
 
 
-def _show(session, workspace: Workspace) -> None:
-    balance = credits.balance_micro(session, workspace.id)
-    print(f"  plan               {workspace.plan!r}")
+def _show(session, account: Account) -> None:
+    balance = credits.balance_micro(session, account.id)
+    print(f"  plan               {account.plan!r}")
     print(f"  credit_balance     {balance / credits.MICRO:,.3f} credits ({balance:,} micro)")
-    print(f"  grant_cycle_anchor {workspace.grant_cycle_anchor}")
+    print(f"  grant_cycle_anchor {account.grant_cycle_anchor}")
 
 
 def main() -> None:
@@ -82,8 +85,14 @@ def main() -> None:
         if workspace is None:
             sys.exit(f"no workspace with id {args.workspace!r}")
 
-        print(f"workspace {workspace.id} ({workspace.name!r})\nbefore:")
-        _show(session, workspace)
+        account = session.get(Account, workspace.account_id)
+        if account is None:
+            sys.exit(f"workspace {args.workspace!r} has no account")
+
+        print(
+            f"workspace {workspace.id} ({workspace.name!r}) → account {account.id}\nbefore:"
+        )
+        _show(session, account)
 
         # Reconcile against the ledger before doing anything else. `balance_micro` reads the
         # *cache*, so computing the adjustment from it would size the delta against a number
@@ -91,25 +100,22 @@ def main() -> None:
         # the discrepancy exactly as large as before. Drift would survive every run of this
         # script and never be visible. The ledger is the truth (`credits.recompute_balance`),
         # so start from it and say so when they disagree.
-        ledger_micro = int(
-            session.scalar(
-                select(func.coalesce(func.sum(CreditLedger.delta_micro), 0)).where(
-                    CreditLedger.workspace_id == workspace.id
-                )
-            )
-            or 0
+        drift = next(
+            (d for d in credits.find_drift(session) if d["account_id"] == str(account.id)),
+            None,
         )
-        cached_micro = credits.balance_micro(session, workspace.id)
-        if ledger_micro != cached_micro:
+        cached_micro = credits.balance_micro(session, account.id)
+        ledger_micro = int(drift["ledger_micro"]) if drift else cached_micro
+        if drift:
             print(
                 f"\n  ** cache/ledger drift: cached {cached_micro / credits.MICRO:,.3f} vs "
                 f"ledger {ledger_micro / credits.MICRO:,.3f} credits — the ledger wins **"
             )
 
-        plan = args.plan or workspace.plan
+        plan = args.plan or account.plan
         changes: list[str] = []
-        if args.plan and args.plan != workspace.plan:
-            changes.append(f"plan {workspace.plan!r} → {args.plan!r}")
+        if args.plan and args.plan != account.plan:
+            changes.append(f"plan {account.plan!r} → {args.plan!r}")
         delta = 0
         if args.credits is not None:
             target = credits.to_micro(args.credits)
@@ -129,11 +135,11 @@ def main() -> None:
             return
 
         if args.plan:
-            workspace.plan = args.plan
+            account.plan = args.plan
         if args.credits is not None and delta:
             credits._write(
                 session,
-                workspace.id,
+                account.id,
                 delta,
                 "adjust",
                 source="admin",
@@ -142,7 +148,7 @@ def main() -> None:
         if args.credits is not None:
             # Anchor this cycle so `ensure_current_grant` doesn't immediately top the balance
             # back up to the plan allowance and silently undo what was just set.
-            workspace.grant_cycle_anchor = credits.date.today()
+            account.grant_cycle_anchor = credits.date.today()
             # Repair the cache from the ledger rather than trusting the running total. The
             # adjust above was sized against the ledger, so this is what actually lands the
             # cache on the target when the two had drifted.
@@ -151,12 +157,12 @@ def main() -> None:
             # reads the ledger *without* it — recomputing the cache to the pre-adjustment total
             # and overwriting the very correction just made.
             session.flush()
-            credits.recompute_balance(session, workspace.id)
+            credits.recompute_balance(session, account.id)
         session.commit()
 
-        session.refresh(workspace)
+        session.refresh(account)
         print("\nafter:")
-        _show(session, workspace)
+        _show(session, account)
 
 
 if __name__ == "__main__":
