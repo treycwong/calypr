@@ -259,6 +259,29 @@ def test_the_ledger_wins_when_the_cache_drifts(account):
         assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
 
 
+@requires_db
+def test_the_usage_summary_grant_is_committed(account):
+    """The production bug. `usage_summary` granted on the request's session, which nothing
+    commits, so the page showed a topped-up balance that rolled back after every view. A Plus
+    account at 1,606 credits read "2,000 of 2,000" however much it spent."""
+    with SessionLocal() as s:
+        acct = s.get(Account, account)
+        credits.grant_monthly(s, acct, ref_id="in_1", cycle=date(2000, 1, 1))  # an old cycle
+        credits.debit_run(s, account, 400, source="run")
+        s.commit()
+        assert credits.balance_micro(s, account) == 1_600 * credits.MICRO
+
+    with SessionLocal() as s:
+        summary = credits.usage_summary(s, s.get(Account, account))
+        s.rollback()  # what the request's session does: it never commits
+    assert summary["remaining"] == 2_000
+
+    # The grant outlived the request, so what was shown is what is stored.
+    with SessionLocal() as s:
+        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert s.get(Account, account).grant_cycle_anchor.month == date.today().month
+
+
 def _drift_for(session, account_id):
     """This test's own row from `find_drift`, ignoring any other account in a shared database."""
     return next(

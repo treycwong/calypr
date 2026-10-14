@@ -313,13 +313,30 @@ def check_can_run(workspace_id: uuid.UUID | None) -> str | None:
         return None
 
 
+def grant_if_due(account_id: uuid.UUID) -> bool:
+    """Issue this cycle's grant if it is due, and **commit it**, in a session of its own.
+
+    `usage_summary` used to call `ensure_current_grant` on the request's session, which nothing
+    ever commits. The page showed the topped-up balance, the transaction rolled back, and the
+    stored balance never moved. A Plus account at 1,606 credits read "2,000 of 2,000" on every
+    page view, and kept reading it after it spent credits, because each view applied the same
+    uncommitted top-up again. Its own session is what makes the grant real. Committing the
+    request's session instead would end the transaction its tenant scoping lives in."""
+    with SessionLocal() as session:
+        account = session.get(Account, account_id)
+        if account is None or not ensure_current_grant(session, account):
+            return False
+        session.commit()
+        return True
+
+
 def usage_summary(session: Session, account: Account) -> dict[str, object]:
     """What the Usage tab shows: how much of this cycle's allowance is left.
 
     Grants lazily first, so an account that has never run sees its real allowance rather than
     a zero that looks like a bug. Reported in whole credits — micro is a storage detail, and
     "1,983.4 credits" is noise to a person deciding whether they can run something."""
-    ensure_current_grant(session, account)
+    grant_if_due(account.id)
     allowance = MONTHLY_GRANT.get(account.plan or entitlements.FREE, 0)
     remaining_micro = balance_micro(session, account.id)
     # Clamp the display at zero: a negative balance is the bounded overshoot of a run that was

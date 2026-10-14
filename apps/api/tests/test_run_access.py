@@ -18,7 +18,11 @@ from calypr_api import credits, entitlements, run_access
 from calypr_api.config import settings
 from calypr_api.db.models import Account, ProviderKey, Workspace
 from calypr_api.db.session import SessionLocal, engine
-from calypr_api.model_access import platform_key_models, runs_on_own_key
+from calypr_api.model_access import (
+    platform_key_models,
+    platform_media_models,
+    runs_on_own_key,
+)
 from calypr_api.pricing import credits_for, platform_cost_usd, platform_credits_for
 from calypr_compiler.golden import input_agent_output
 from calypr_dsl import NodeSpec
@@ -144,6 +148,40 @@ def test_non_llm_nodes_contribute_nothing() -> None:
     graph = input_agent_output(model="gpt-4o-mini")
     assert len(graph.nodes) > 1  # there really are non-LLM nodes in this fixture
     assert platform_key_models(graph, set()) == ["gpt-4o-mini"]
+
+
+def _image_to_video():
+    """The shipped Image to video template: Input → Image → Video → Output, no LLM block."""
+    from calypr_compiler.templates import image_to_video
+
+    return image_to_video()
+
+
+def test_media_blocks_on_our_key_are_counted() -> None:
+    """The hole: `platform_key_models` looks only at LLM blocks, so this graph read as costing us
+    nothing, and the credit check never ran for it."""
+    graph = _image_to_video()
+    assert platform_key_models(graph, set()) == []  # still blind to media, by design
+    assert platform_media_models(graph, set()) == [
+        "gpt-image-2",
+        "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video",
+    ]
+
+
+def test_an_openai_key_covers_image_but_never_video() -> None:
+    """Image runs on the workspace's OpenAI key when it has one. Video is fal and credit-only, so
+    no key a workspace can hold takes it off ours."""
+    assert platform_media_models(_image_to_video(), {"openai", "fal"}) == [
+        "fal-ai/bytedance/seedance/v1/pro/fast/image-to-video"
+    ]
+
+
+def test_fake_media_costs_nothing() -> None:
+    graph = _image_to_video()
+    for node in graph.nodes:
+        if node.type in ("image", "video"):
+            node.config["model"] = "fake"
+    assert platform_media_models(graph, set()) == []
 
 
 def test_models_are_deduplicated() -> None:
@@ -374,6 +412,26 @@ def test_a_video_block_is_charged_rather_than_refused(monkeypatch, ws_factory) -
     gate = run_access.check_run_gates(wid, _video_graph())
     assert gate is not None
     assert gate[0] == credits.INSUFFICIENT_CREDITS
+
+
+@requires_db
+def test_an_exhausted_account_is_refused_image_to_video(monkeypatch, ws_factory) -> None:
+    """The production bug. Image → Video has no LLM block, so the gate never asked for the
+    balance, and an account at zero could keep generating video on our fal key. Text to video
+    was only refused because it happens to contain an Agent. An OpenAI key is on file so that
+    only the Video block is ours, which is the case a key-holder would hit."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS, providers=("openai",), exhausted=True)
+    gate = run_access.check_run_gates(wid, _image_to_video())
+    assert gate is not None
+    assert gate[0] == credits.INSUFFICIENT_CREDITS
+
+
+@requires_db
+def test_a_solvent_account_runs_image_to_video(monkeypatch, ws_factory) -> None:
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.PLUS)
+    assert run_access.check_run_gates(wid, _image_to_video()) is None
 
 
 @requires_db

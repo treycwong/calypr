@@ -40,7 +40,11 @@ from calypr_api.constants import DEV_WORKSPACE_ID
 from calypr_api.db.models import Workspace
 from calypr_api.db.session import SessionLocal
 from calypr_api.errors import PLAN_REQUIRED, WORKSPACE_LOCKED
-from calypr_api.model_access import platform_key_models, runs_on_own_key
+from calypr_api.model_access import (
+    platform_key_models,
+    platform_media_models,
+    runs_on_own_key,
+)
 from calypr_api.provider_keys import byok_providers
 
 log = logging.getLogger(__name__)
@@ -114,7 +118,9 @@ def check_run_gates(
             if gated := entitlements.gated_nodes_in(graph, plan):
                 return (PLAN_REQUIRED, _plan_required_message(gated))
             providers = byok_providers(workspace_id)
-            on_platform = platform_key_models(graph, providers, workspace.default_model or "")
+            on_platform = platform_key_models(
+                graph, providers, workspace.default_model or ""
+            ) + platform_media_models(graph, providers)
             if not on_platform:
                 return None  # every node runs on their own key — nothing of ours is being spent
     except Exception:
