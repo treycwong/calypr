@@ -259,6 +259,48 @@ def test_the_ledger_wins_when_the_cache_drifts(account):
         assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
 
 
+def _drift_for(session, account_id):
+    """This test's own row from `find_drift`, ignoring any other account in a shared database."""
+    return next(
+        (d for d in credits.find_drift(session) if d["account_id"] == str(account_id)), None
+    )
+
+
+@requires_db
+def test_drift_is_reported_and_not_repaired(account):
+    """The nightly alarm. It has to find a cache that disagrees with its ledger, and it must leave
+    the cache wrong. Repairing it silently would destroy the only evidence of what went wrong."""
+    with SessionLocal() as s:
+        credits.grant_monthly(s, s.get(Account, account), ref_id="in_1")
+        s.commit()
+        assert _drift_for(s, account) is None
+
+        s.query(Account).filter(Account.id == account).update({"credit_balance_micro": 42})
+        s.commit()
+
+        assert _drift_for(s, account) == {
+            "account_id": str(account),
+            "cached_micro": 42,
+            "ledger_micro": 2_000 * credits.MICRO,
+        }
+        assert credits.balance_micro(s, account) == 42  # reported, not repaired
+
+
+@requires_db
+def test_an_account_with_no_ledger_rows_drifts_if_its_cache_is_not_zero(account):
+    """No ledger rows means a balance of zero. The outer join is what makes this account visible
+    at all; an inner join would skip exactly the case where credits came from nowhere."""
+    with SessionLocal() as s:
+        s.query(CreditLedger).filter(CreditLedger.account_id == account).delete()
+        s.query(Account).filter(Account.id == account).update({"credit_balance_micro": 0})
+        s.commit()
+        assert _drift_for(s, account) is None
+
+        s.query(Account).filter(Account.id == account).update({"credit_balance_micro": 5})
+        s.commit()
+        assert _drift_for(s, account)["ledger_micro"] == 0
+
+
 @requires_db
 def test_has_credits_is_false_at_exactly_zero(account):
     with SessionLocal() as s:
@@ -295,6 +337,10 @@ def test_anonymous_traffic_is_never_credit_limited(monkeypatch):
         if dev_account is None:
             pytest.skip("no dev workspace")
         dev_account_id = dev_account.id
+        # Restore exactly this afterwards, not 0. This is the *shared* dev account, whose ledger
+        # real local runs keep debiting. Resetting its cache to 0 left it disagreeing with its
+        # own ledger after every test run, and that was the "unexplained" local drift in TODO §3.
+        original = dev_account.credit_balance_micro
         # Even deeply overdrawn, it must not be refused.
         dev_account.credit_balance_micro = -999_000
         s.commit()
@@ -302,7 +348,7 @@ def test_anonymous_traffic_is_never_credit_limited(monkeypatch):
         assert credits.check_can_run(dev) is None
     finally:
         with SessionLocal() as s:
-            s.get(Account, dev_account_id).credit_balance_micro = 0
+            s.get(Account, dev_account_id).credit_balance_micro = original
             s.commit()
 
 
@@ -347,3 +393,27 @@ def test_the_check_fails_open_when_the_database_is_unreachable(monkeypatch, tena
         credits, "SessionLocal", lambda: (_ for _ in ()).throw(RuntimeError("db down"))
     )
     assert credits.check_can_run(tenant.workspace_id) is None
+
+
+def test_the_drift_endpoint_fails_closed_without_a_key(monkeypatch):
+    from calypr_api.main import app
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setattr(settings, "internal_key", "")
+    assert TestClient(app).post("/internal/gc/credit-drift").status_code == 503
+
+
+@requires_db
+def test_the_drift_endpoint_reports_a_drifted_account(monkeypatch, account):
+    from calypr_api.main import app
+    from fastapi.testclient import TestClient
+
+    with SessionLocal() as s:
+        s.query(Account).filter(Account.id == account).update({"credit_balance_micro": 7})
+        s.commit()
+    monkeypatch.setattr(settings, "internal_key", "k")
+    client = TestClient(app)
+    assert client.post("/internal/gc/credit-drift").status_code == 401
+    r = client.post("/internal/gc/credit-drift", headers={"x-calypr-internal-key": "k"})
+    assert r.status_code == 200
+    assert str(account) in {row["account_id"] for row in r.json()["accounts"]}

@@ -39,11 +39,15 @@ export async function GET(req: Request) {
   // `orphan-blobs` retries objects a live delete already failed on. It runs before
   // `measure-storage` for the same reason as the others: those bytes should stop counting the
   // night they actually go away, not the night after.
+  //
+  // `credit-drift` only reads. It reports any account whose cached balance disagrees with its
+  // ledger, and logs each one at ERROR on the API.
   for (const job of [
     "purge-accounts",
     "checkpoints",
     "orphan-blobs",
     "measure-storage",
+    "credit-drift",
   ] as const) {
     const r = await fetch(`${API_URL}/internal/gc/${job}`, { method: "POST", headers });
     results[job] = r.ok ? await r.json() : { error: r.status };
