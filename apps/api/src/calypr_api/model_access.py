@@ -111,6 +111,42 @@ def platform_key_models(
     return on_platform
 
 
+#: Blocks that generate media on a provider key: Image and Voice (OpenAI), 3D and Video (fal).
+#: They are not LLMs, so `platform_key_models` never sees them, and a graph made only of these,
+#: like Image → Video, used to skip the credit check entirely while billing dollars per clip.
+MEDIA_NODE_TYPES = frozenset({"image", "tts", "mesh", "video"})
+#: Media blocks that always run on the platform's fal key. fal BYO keys were removed (#91) and
+#: the key API no longer accepts one, so a stored `fal` row could only be a leftover. It must not
+#: take a clip off our bill.
+CREDIT_ONLY_NODE_TYPES = frozenset({"mesh", "video"})
+
+
+def platform_media_models(graph: GraphSpec, providers: set[str] | None) -> list[str]:
+    """Every distinct media model in `graph` that would run on the **platform's** key.
+
+    The media counterpart of `platform_key_models`, answering the same question for the run gate.
+    Image and Voice run on the workspace's OpenAI key when it has one, so those cost us nothing.
+    3D and Video are credit-only (`CREDIT_ONLY_NODE_TYPES`) whatever keys are on file. `fake`
+    costs nothing. An empty model id is counted
+    as ours: media configs carry concrete defaults, so an empty one is unexpected, and when in
+    doubt the gate should ask for the balance rather than wave the run through."""
+    on_platform: list[str] = []
+    for node in graph.nodes:
+        if node.type not in MEDIA_NODE_TYPES or not isinstance(node.config, dict):
+            continue
+        configured = node.config.get("model")
+        model = configured if isinstance(configured, str) else ""
+        if model == "fake":
+            continue
+        own = node.type not in CREDIT_ONLY_NODE_TYPES and runs_on_own_key(model, providers)
+        if model and own:
+            continue
+        key = model or node.type
+        if key not in on_platform:
+            on_platform.append(key)
+    return on_platform
+
+
 #: Display names for the error copy. `.title()` would render "Openai" and "Moonshot (kimi)".
 _PROVIDER_LABELS = {
     "openai": "OpenAI",

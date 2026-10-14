@@ -647,6 +647,36 @@ Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the s
 
 ---
 
+## 🟢 Credits: a meter that never moved, and media graphs that were never checked — DONE (2026-10-14)
+
+Reported by the founder: after using the AI on calypr.co, the meter still read "2,000 of 2,000".
+Production said otherwise. The ledger held 1,606.095, today's Image → Video runs had debited
+~56.5 each, and the cache matched the ledger. Two bugs, the second worse than the one reported:
+
+- **The display applied a grant it never kept.** `usage_summary` called `ensure_current_grant`
+  on the request's tenant session, which nothing commits. October's grant was due (anchor
+  `2026-09-03`), so every page view topped 1,606 up to 2,000, rendered that, and rolled back.
+  Fixed with `credits.grant_if_due`, which grants in its own session and commits. It doesn't
+  commit the tenant session, because that would end the transaction its scoping lives in.
+- **Media-only graphs skipped the credit check.** The run gate asked for the balance only when
+  `platform_key_models` found an LLM block (`LLM_NODE_TYPES`). Image → Video and Image → 3D have
+  none, so an account at zero could keep generating video on our fal key, with the balance going
+  further negative every clip. Text to video was refused only because it happens to contain an
+  Agent, and that is the case the existing test covered. Fixed with
+  `model_access.platform_media_models`: Image and Voice count unless an OpenAI key covers them,
+  and 3D and Video always count (`CREDIT_ONLY_NODE_TYPES`), whatever keys are on file. It is
+  also why October's grant had never been committed: only the gate issues it, and the gate never
+  reached it.
+- Tests: `test_the_usage_summary_grant_is_committed` and
+  `test_an_exhausted_account_is_refused_image_to_video`, both confirmed to fail on the old code,
+  plus unit tests for the media model list.
+- [ ] **Metering has the same theoretical blind spot.** `RunRecorder` zero-rates any provider in
+      `_byok`, so a leftover `fal` key row would make a clip free. None exist (prod holds only
+      `tavily` and `unsplash`), and the key API no longer accepts `fal`, but `CREDIT_ONLY_NODE_TYPES`
+      should probably apply there too.
+
+---
+
 ## 🟢 A running block stays visible — DONE (2026-10-14)
 
 Found in production: during an Image → Video run the Video block "stopped pulsing" once the image
