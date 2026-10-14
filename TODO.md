@@ -1,7 +1,7 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-10-04.
+> record — what shipped and why. Updated 2026-10-14.
 
 ## ⏭️ NEXT — what's actually blocking
 
@@ -76,7 +76,18 @@ deployed with green CI. Each has its own section below.
    charged 10 credits for a mesh that was then discarded; `usage` now fires only once the file is
    durable.
 
-### ⚠️ Blocking: the Vercel blob store is suspended until 29 September
+### ✅ RESOLVED (2026-10-14): the Vercel blob store was suspended until 29 September
+
+**Status 2026-10-14:** `calypr-media` reports `Billing State: Active` again. Local dev now has its
+own store, `calypr-media-dev` (`store_9DZBqr52pjRdSMdl`), and its token is in the repo-root `.env`.
+A put/delete round-trip was verified. The guard from #101 drops the production token from any
+non-production process. Still to do: one real 3D and one Video run in production. **Done 2026-10-14: Image → Video verified working in production.**
+The founder account (workspace `914f15cf…`) was promoted to `plus` through the admin endpoint for
+that test, and **stays on Plus by the founder's choice**. That is a comp: there is no Stripe
+subscription behind it, so no `invoice.paid` grants arrive, and the monthly grant comes only from
+`ensure_current_grant`. Remember this account when reading billing data, and when Part B
+of the retier archives the $20 price. The
+history below is kept for the record.
 
 `calypr-media` hit its **Hobby usage limit**, so `PUT` returns `403 store_suspended` and **3D and
 Video cannot succeed in production** until it is reactivated — upgrade to Pro, or point
@@ -139,8 +150,8 @@ Worth fixing before this recurs, in rough priority order:
       **Documented in `apps/api/.env.example` in the meantime**, with the production store id
       (`store_pR7HOMSJYVqYPjEW` — the token is wrong if it contains `pR7HOMSJYV`) so the next
       person to fill in a `.env` cannot repeat it by accident.
-      - [ ] On **30 Sept** (or at upgrade): create the store, swap the token in the repo-root
-            `.env`. **A one-shot reminder is scheduled** for 2026-09-30 09:00 +08 —
+      - [x] **Done 2026-10-14:** `calypr-media-dev` created and its token swapped into the
+            repo-root `.env`. **A one-shot reminder is scheduled** for 2026-09-30 09:00 +08 —
             `trig_012Eui49zFKFttCvgsVqPrKd`, https://claude.ai/code/routines/trig_012Eui49zFKFttCvgsVqPrKd
             The 30th, not the 29th: the rolling window lapses 2026-09-29 20:53 UTC, which is
             04:53 on the 30th local, so a reminder on the 29th would fire before the reset.
@@ -599,7 +610,11 @@ demotion stick — before that fix, demoting the cohort would have silently undo
       and therefore clickable before React attaches, so an early click is swallowed. The fix that
       worked for the same problem in `phase13-workspaces.spec.ts` is to retry the click until it
       demonstrably had an effect (`expect(async () => {...}).toPass()`), rather than assume it did.
-- [ ] **`calypr.co` (apex) does not resolve — only `www.calypr.co` works.** Found 2026-08-02.
+- [x] **FIXED 2026-10-14: `calypr.co` now redirects (308) to `www.calypr.co`.** The apex was
+      never attached to the Vercel project; it is now, set to redirect. Namecheap has an `@`
+      A record pointing at `216.198.79.1` (Vercel's project-specific IP, not `76.76.21.21`), and the
+      certificate was issued. Original entry below.
+- [ ] ~~**`calypr.co` (apex) does not resolve — only `www.calypr.co` works.** Found 2026-08-02.~~
       `dig`, `curl` and Python's resolver all fail to get an address for the bare domain while
       `example.com` resolves normally, so it is not a local/sandbox artifact. The domain sits on
       third-party nameservers (`dns1/dns2.registrar-servers.com`) with a **CNAME at the apex**,
@@ -629,6 +644,29 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, Chroma provider,
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
+
+---
+
+## 🟢 A running block stays visible — DONE (2026-10-14)
+
+Found in production: during an Image → Video run the Video block "stopped pulsing" once the image
+landed. It never stopped. **With the Playground open the canvas narrows without moving the view**,
+so the last blocks of a chain sit past its right edge: at a 1280 px window ~85% of the Video card,
+glow included, was clipped. Every link in the event chain was correct (compiler emits
+`start`/`end`, `/runs` relays, Playground forwards, card gets `data-status="active"`).
+
+- **The canvas follows the running block** (`app/canvas/page.tsx` `revealNode`): on a `start`, if
+  the card is not *wholly* on screen, `setCenter` on it at the current zoom. "Mostly visible" was
+  tried first and missed the reported case exactly: the card was 75% visible with its glowing
+  edge cut off. A graph that already fits never moves.
+- **The chat names what is running** (`Playground.tsx` → `PlaygroundChat` `running`): a pulsing
+  "Video · generating…" line under the transcript, "running…" for non-media blocks, one entry per
+  fan-out branch, cleared when the run settles. Media blocks stream nothing for minutes, so this
+  works whatever the canvas is showing.
+- Verified in the browser at 1280 px by replaying the event sequence through a scripted
+  `/api/runs` stream, so no fal spend. Existing canvas/Playground e2e specs pass.
+- [ ] **No e2e coverage for either.** Both exist only mid-run, and the suite cannot hold a run
+      open. A `page.route` that streams a scripted SSE body with delays would cover both.
 
 ---
 
