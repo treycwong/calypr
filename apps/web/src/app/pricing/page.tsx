@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Plus } from "lucide-react";
 import type { Metadata } from "next";
 
 import { SiteFooter } from "@/components/site/Footer";
@@ -11,7 +11,7 @@ import { Card, CardDivider } from "@/components/spectra/Card";
 import { GridLines } from "@/components/spectra/GridLines";
 import { SectionHeading } from "@/components/spectra/SectionHeading";
 import { SectionLabel } from "@/components/spectra/SectionLabel";
-import { CREDIT_GUIDE, PLAN_LIMITS, PLANS as PLAN_DATA } from "@/lib/plans";
+import { CREDIT_GUIDE, PLAN_LIMITS, PLANS as PLAN_DATA, PRICING_FAQ } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = {
@@ -176,6 +176,38 @@ export default function PricingPage() {
             runs. Credits reset each month and only meter what our keys spend for you; runs on
             your own key never touch them.
           </p>
+        </section>
+
+        {/* Native <details>: keyboard and screen-reader accessible with no JavaScript, and it
+            stays a server component. `id="faq"` is what the footer's FAQs link lands on. */}
+        <section
+          id="faq"
+          className="mx-auto mt-24 max-w-2xl scroll-mt-24"
+          aria-labelledby="faq-heading"
+          data-testid="pricing-faq"
+        >
+          <h2
+            id="faq-heading"
+            className="text-center font-heading text-3xl font-light tracking-[-0.02em] text-[var(--text-on-dark)]"
+          >
+            Questions
+          </h2>
+          <div className="mt-8 divide-y divide-white/[0.08] border-y border-white/[0.08]">
+            {PRICING_FAQ.map((item) => (
+              <details key={item.q} className="group py-5" data-testid="faq-item">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-6 text-[16px] font-medium text-[var(--text-on-dark)] [&::-webkit-details-marker]:hidden">
+                  {item.q}
+                  <Plus
+                    aria-hidden
+                    className="h-4 w-4 shrink-0 text-[var(--text-on-dark-muted)] transition-transform group-open:rotate-45"
+                  />
+                </summary>
+                <p className="mt-3 pr-10 text-[15px] leading-[1.6] text-[var(--text-on-dark-muted)]">
+                  {item.a}
+                </p>
+              </details>
+            ))}
+          </div>
         </section>
       </main>
 

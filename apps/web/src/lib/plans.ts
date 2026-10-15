@@ -114,6 +114,46 @@ export const CREDIT_GUIDE = [
   { what: "A 5-second video", credits: "about 54" },
 ] as const;
 
+/** The pricing page FAQ. Each answer describes what billing does **today**; if the behaviour
+ *  changes, change the answer in the same PR. Where it rests on a policy rather than on code,
+ *  the comment beside it says so. */
+export const PRICING_FAQ = [
+  {
+    q: "What happens when I upgrade?",
+    // `billing.set_plan` clears the month's grant anchor on an upgrade, so the top-up runs now.
+    a: "Your new plan starts straight away. Your credits are topped up to the new plan's monthly allowance on the spot, so going from Starter to Plus mid-month takes you to 1,000 credits, not next month. Stripe charges only the difference for the rest of the billing period.",
+  },
+  {
+    q: "What happens when I downgrade or cancel?",
+    // `cancel_at_period_end` keeps the plan until the period ends; over-cap work is locked, not
+    // deleted (downgrade path, PRs #63/#66); retention keeps the paid window for 7 more days.
+    a: "You keep your current plan until the end of the period you've paid for. After that, anything over the new plan's limits becomes read-only rather than deleted: you can still open and export it, and you get it back by upgrading or by deleting down to the limit. Your agents' memory of past conversations is kept for 7 more days at the old retention before the new plan's applies.",
+  },
+  {
+    q: "What if I still have credits when I downgrade?",
+    // `grant_monthly` only ever tops up, never down, so a leftover balance is never taken back.
+    a: "You keep them. Credits you've been given are never taken back. You spend down what you have, and the smaller monthly top-up only starts again once your balance falls below the new plan's allowance.",
+  },
+  {
+    q: "Do unused credits roll over?",
+    a: "No. Each month your balance is topped up to your plan's allowance, so unused credits don't pile up from month to month. Whatever you have left when the month turns is simply topped back up to the full amount.",
+  },
+  {
+    q: "Can I top up credits?",
+    // Policy, not code: the ledger has a `topup` kind but nothing sells one yet.
+    a: "Not yet. If you run out mid-month you can upgrade, wait for the monthly reset, or add your own OpenAI key in Settings: text, image and voice runs on your own key cost no credits at all. Video and 3D always run on our keys and always use credits.",
+  },
+  {
+    q: "Can I get a refund?",
+    // Policy, not code: placeholder until the founder decides the refund policy.
+    a: "You can cancel any time from Billing, and you keep your plan until the end of the period you've paid for. If something went wrong with a charge, get in touch and we'll sort it out.",
+  },
+  {
+    q: "What is a credit?",
+    a: "Credits measure what our AI providers charge when your agents run on our keys. A text run costs well under one credit; images, voice, 3D and video cost more. The table above shows typical costs.",
+  },
+] as const;
+
 /** The plan badge + one-line summary in Settings → Billing. */
 export const PLAN_COPY: Record<string, { label: string; blurb: string }> = {
   free: {

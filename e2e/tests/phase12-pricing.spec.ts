@@ -151,3 +151,25 @@ test("the inner-page nav keeps the CTA visible with no hamburger on desktop", as
   await expect(page.getByLabel("Open menu")).not.toBeVisible();
   await expect(page.locator("header").getByRole("link", { name: "Get Started" })).toBeVisible();
 });
+
+test("the pricing FAQ answers the billing questions, and the footer links to it", async ({
+  page,
+}) => {
+  await page.goto("/pricing");
+  const faq = page.getByTestId("pricing-faq");
+  await expect(faq).toBeVisible();
+  for (const q of ["upgrade", "downgrade", "top up", "refund"]) {
+    await expect(faq.getByText(new RegExp(q, "i")).first()).toBeVisible();
+  }
+
+  // Closed until asked, then open: plain <details>, no script involved.
+  const first = faq.getByTestId("faq-item").first();
+  await expect(first).not.toHaveAttribute("open", "");
+  await first.locator("summary").click();
+  await expect(first).toHaveAttribute("open", "");
+
+  await expect(page.locator("footer").getByRole("link", { name: "FAQs" })).toHaveAttribute(
+    "href",
+    "/pricing#faq",
+  );
+});
