@@ -27,6 +27,16 @@ log = logging.getLogger(__name__)
 SECRET_KEY_ENV = "STRIPE_SECRET_KEY"
 WEBHOOK_SECRET_ENV = "STRIPE_WEBHOOK_SECRET"
 PRICE_ID_ENV = "STRIPE_PLUS_PRICE_ID"
+STARTER_PRICE_ID_ENV = "STRIPE_STARTER_PRICE_ID"
+
+#: Which env var holds each sellable plan's Stripe price. One map, read in both directions: by
+#: checkout (plan → price) and by the webhook (price → plan). Before the retier the webhook
+#: assumed any paid subscription was Plus, which is exactly the bug a second paid tier would hit
+#: only in production.
+_PRICE_ENV_BY_PLAN = {
+    entitlements.STARTER: STARTER_PRICE_ID_ENV,
+    entitlements.PLUS: PRICE_ID_ENV,
+}
 
 
 def secret_key() -> str:
@@ -41,13 +51,63 @@ def plus_price_id() -> str:
     return os.getenv(PRICE_ID_ENV, "")
 
 
+def price_id_for(plan: str) -> str:
+    """The configured Stripe price for a sellable plan, or "" if it isn't set (or isn't sold)."""
+    env = _PRICE_ENV_BY_PLAN.get(plan)
+    return os.getenv(env, "") if env else ""
+
+
+def plan_for_price(price: object) -> str | None:
+    """The plan a Stripe price sells, or None if it is not one of ours.
+
+    Takes a price id or a Price object. The configured ids decide first. Failing that, the
+    `plan` tag each Calypr price carries in its Stripe metadata does, which keeps a subscription
+    on a price that has since been rotated out of the env from losing its entitlement."""
+    price_id = price if isinstance(price, str) else getattr(price, "id", None)
+    for plan in entitlements.PAID_PLANS:
+        if price_id and price_id == price_id_for(plan):
+            return plan
+    metadata = getattr(price, "metadata", None)
+    tagged = getattr(metadata, "plan", None) if metadata is not None else None
+    if tagged in entitlements.PAID_PLANS:
+        return str(tagged)
+    return None
+
+
+def plan_for_subscription(sub: object) -> str | None:
+    """The plan a Subscription pays for, read off its first item's price.
+
+    A subscription whose price we cannot place falls back to **Plus**, with a warning. Every
+    subscription sold before the retier was Plus at $20, and that price carries no `plan` tag;
+    leaving the plan untouched there would cut off someone who is paying. None only when there is
+    no price to read at all."""
+    try:
+        # Subscript access, not `.items`, which on a StripeObject is the dict method.
+        items = sub["items"].data  # type: ignore[index]
+    except (KeyError, AttributeError, TypeError):
+        return None
+    if not items:
+        return None
+    price = getattr(items[0], "price", None)
+    if price is None:
+        return None
+    plan = plan_for_price(price)
+    if plan is None:
+        log.warning(
+            "subscription %s is on unknown price %s; treating it as plus",
+            getattr(sub, "id", "?"), getattr(price, "id", price),
+        )
+        return entitlements.PLUS
+    return plan
+
+
 def is_configured() -> bool:
     """Whether billing is switched on. Unset (dev, CI, and prod until launch) ⇒ the routes 503
     rather than half-working, so a missing key can't look like a payment failure."""
     return bool(secret_key() and webhook_secret())
 
 
-#: Subscription statuses that entitle an account to Plus.
+#: Subscription statuses that entitle an account to the plan it pays for.
 #:
 #: `past_due` is deliberately included: the card failed but Stripe is still retrying, and the
 #: subscription is not over. Cutting someone off mid-dunning — while they may well fix the card
@@ -60,10 +120,14 @@ ENTITLING_STATUSES = frozenset({"active", "trialing", "past_due"})
 ENDING_STATUSES = frozenset({"canceled", "unpaid", "incomplete_expired"})
 
 
-def plan_for_status(status: str) -> str | None:
-    """The plan a subscription status implies, or None to leave the plan alone."""
+def plan_for_status(status: str, paid_plan: str | None = None) -> str | None:
+    """The plan a subscription status implies, or None to leave the plan alone.
+
+    `paid_plan` is what the subscription's price buys (`plan_for_subscription`). An entitling
+    status grants that; without one (an event that carried no price) it falls back to Plus, the
+    only tier there was before the retier."""
     if status in ENTITLING_STATUSES:
-        return entitlements.PLUS
+        return paid_plan or entitlements.PLUS
     if status in ENDING_STATUSES:
         return entitlements.FREE
     return None
@@ -94,6 +158,10 @@ def set_plan(account: Account, plan: str) -> bool:
         return False
     if account.plan == plan:
         return False
+    if entitlements.is_upgrade(account.plan, plan):
+        # Let this month's grant run again, so the bigger allowance arrives now rather than
+        # next month. `grant_monthly` only ever tops up, so this can't take credits away.
+        account.grant_cycle_anchor = None
     account.plan = plan
     account.plan_changed_at = datetime.now(UTC)
     return True

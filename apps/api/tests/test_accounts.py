@@ -206,7 +206,8 @@ def test_credits_are_pooled_not_per_workspace(user):
         acct = s.get(Account, account_id)
         credits.grant_monthly(s, acct, ref_id="test-pool")
         s.commit()
-        assert credits.balance_micro(s, account_id) == 2_000 * credits.MICRO
+        plus_grant = credits.MONTHLY_GRANT[entitlements.PLUS]
+        assert credits.balance_micro(s, account_id) == plus_grant * credits.MICRO
         assert accounts.workspace_count(s, account_id) == 2
 
     # Spend from one workspace; the other sees the same reduced balance.
@@ -220,7 +221,9 @@ def test_credits_are_pooled_not_per_workspace(user):
 
     for ws in workspaces:
         body = client.get("/workspaces/current", headers=_hdr(user, ws["id"])).json()
-        assert body["credits"]["remaining"] == 1_500, "one balance, seen from either workspace"
+        assert body["credits"]["remaining"] == credits.MONTHLY_GRANT[entitlements.PLUS] - 500, (
+            "one balance, seen from either workspace"
+        )
 
 
 # --- a workspace claim is validated, never trusted -----------------------------------------------

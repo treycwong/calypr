@@ -39,11 +39,12 @@ requires_db = pytest.mark.skipif(not _db_available(), reason="no database")
 # --- pure entitlement rules ------------------------------------------------------------------
 
 
-def test_only_beta_and_plus_get_the_roundtrip():
-    # `beta` gates on our confidence, `plus` on value capture — both currently unlock it, and
-    # `free` doesn't. When the round-trip graduates to free-for-all this becomes one edit.
-    assert entitlements.has_roundtrip("beta") is True
+def test_only_plus_gets_the_roundtrip():
+    """Code export is what $10 buys over $5 (TODO.md §3a, 2026-10-14). The beta cohort is moving
+    to Starter, so it loses code export too, by the founder's decision."""
     assert entitlements.has_roundtrip("plus") is True
+    assert entitlements.has_roundtrip("starter") is False
+    assert entitlements.has_roundtrip("beta") is False
     assert entitlements.has_roundtrip("free") is False
 
 
@@ -318,7 +319,17 @@ def test_parse_402s_for_a_workspace_that_has_not_paid(monkeypatch, tenant_factor
 
 
 @requires_db
-@pytest.mark.parametrize("plan", [entitlements.BETA, entitlements.PLUS])
+@pytest.mark.parametrize("plan", [entitlements.STARTER, entitlements.BETA])
+def test_parse_402s_for_the_cheaper_paid_plans(monkeypatch, plan: str, tenant_factory):
+    """Paying for Starter is not paying for code export."""
+    monkeypatch.setattr(settings, "internal_key", "internal-test-key")
+    ws_id = tenant_factory(plan).workspace_id
+    monkeypatch.setattr(deps, "_resolve_workspace_id", lambda request, session: ws_id)
+    assert client.post("/parse", json=_parse_body()).status_code == 402
+
+
+@requires_db
+@pytest.mark.parametrize("plan", [entitlements.PLUS])
 def test_parse_serves_an_entitled_workspace(monkeypatch, plan: str, tenant_factory):
     monkeypatch.setattr(settings, "internal_key", "internal-test-key")
     ws_id = tenant_factory(plan).workspace_id
@@ -352,8 +363,9 @@ def test_codegen_returns_the_whole_file_when_no_internal_key_is_set(monkeypatch)
     ("plan", "expect_truncated"),
     [
         (entitlements.FREE, True),
+        (entitlements.STARTER, True),
+        (entitlements.BETA, True),
         (entitlements.PLUS, False),
-        (entitlements.BETA, False),
     ],
 )
 def test_codegen_serves_the_file_only_to_an_entitled_plan(
@@ -480,33 +492,30 @@ def _graph_with(*types: str):
     )
 
 
-def test_free_may_not_run_a_3d_block():
-    gated = entitlements.gated_nodes_in(_graph_with("mesh"), entitlements.FREE)
-    assert gated == ["mesh"]
+@pytest.mark.parametrize("plan", entitlements.PLANS)
+@pytest.mark.parametrize("block", ["mesh", "video"])
+def test_every_plan_may_run_3d_and_video(plan, block):
+    """3D and Video are on every plan since 2026-10-14, paid in credits (TODO.md §3a). The credit
+    gate bounds the spend; see `test_run_access`."""
+    assert entitlements.gated_nodes_in(_graph_with(block), plan) == []
 
 
-@pytest.mark.parametrize("plan", [entitlements.PLUS, entitlements.BETA])
-def test_paid_plans_may_run_a_3d_block(plan):
-    """`beta` keeps it for the same reason it keeps code export — we don't take a shipped feature
-    back off the cohort already using it."""
-    assert entitlements.gated_nodes_in(_graph_with("mesh"), plan) == []
+@pytest.fixture
+def media_withheld(monkeypatch):
+    """A plan that withholds the media blocks again. No plan does today, but the gate is kept so
+    that withholding them is one field, and these tests keep that field honest."""
+    import dataclasses
+
+    withheld = dataclasses.replace(entitlements.LIMITS[entitlements.FREE], media_nodes=False)
+    monkeypatch.setitem(entitlements.LIMITS, entitlements.FREE, withheld)
+    return entitlements.FREE
 
 
-def test_free_may_not_run_a_video_block():
-    assert entitlements.gated_nodes_in(_graph_with("video"), entitlements.FREE) == ["video"]
-
-
-@pytest.mark.parametrize("plan", [entitlements.PLUS, entitlements.BETA])
-def test_paid_plans_may_run_a_video_block(plan):
-    """The plan gate opens. The *key* gate is a separate axis and still applies — see
-    `test_run_access.test_plus_without_a_fal_key_is_refused_a_video_block`."""
-    assert entitlements.gated_nodes_in(_graph_with("video"), plan) == []
-
-
-def test_both_paid_blocks_are_named_in_one_refusal():
+def test_a_plan_that_withholds_media_is_refused_both_blocks(media_withheld):
     """The message names blocks, so a graph with both should list both rather than refusing twice
     or naming only the first."""
-    assert entitlements.gated_nodes_in(_graph_with("mesh", "video"), "free") == ["mesh", "video"]
+    graph = _graph_with("mesh", "video")
+    assert entitlements.gated_nodes_in(graph, media_withheld) == ["mesh", "video"]
 
 
 def test_unpaid_blocks_are_never_gated():
@@ -516,12 +525,13 @@ def test_unpaid_blocks_are_never_gated():
     assert entitlements.gated_nodes_in(graph, entitlements.FREE) == []
 
 
-def test_gated_types_are_deduplicated_and_in_graph_order():
+def test_gated_types_are_deduplicated_and_in_graph_order(media_withheld):
     """Two 3D blocks are one refusal, not two — the message names blocks, not nodes."""
-    assert entitlements.gated_nodes_in(_graph_with("mesh", "agent", "mesh"), "free") == ["mesh"]
+    graph = _graph_with("mesh", "agent", "mesh")
+    assert entitlements.gated_nodes_in(graph, media_withheld) == ["mesh"]
 
 
-def test_an_unknown_plan_gets_the_free_answer():
-    """`limits()` fails to the smallest set, so a null or garbage plan opens no paid block."""
+def test_an_unknown_plan_gets_the_free_answer(media_withheld):
+    """`limits()` fails to the smallest set, so a null or garbage plan gets whatever Free gets."""
     assert entitlements.gated_nodes_in(_graph_with("mesh"), None) == ["mesh"]
     assert entitlements.gated_nodes_in(_graph_with("mesh"), "enterprise") == ["mesh"]

@@ -158,6 +158,13 @@ class BillingStatus(BaseModel):
     enabled: bool
 
 
+class CheckoutRequest(BaseModel):
+    """Which plan to buy. Optional, so a client that posts no body still buys Plus, the only
+    plan there was before the retier."""
+
+    plan: str = "plus"
+
+
 class CheckoutSession(BaseModel):
     """Where to send the browser to pay. The client redirects; Stripe hosts the form, so no
     card data ever reaches us."""
