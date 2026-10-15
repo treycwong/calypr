@@ -1,17 +1,17 @@
 import { expect, test } from "@playwright/test";
 
-// The pricing surface after the 2026-10-14 retier: Free / $5 Starter / $10 Plus, Plus
+// The pricing surface after the 2026-10-14 retier: Free / $5 Starter / $10 Plus, Starter
 // recommended, and a checkout step per paid plan. Prices and features come from `lib/plans.ts`.
 
-test("all three plans are shown, with Plus recommended", async ({ page }) => {
+test("all three plans are shown, with Starter recommended", async ({ page }) => {
   await page.goto("/pricing");
 
   for (const id of ["free", "starter", "plus"]) {
     await expect(page.getByTestId(`plan-${id}`)).toBeVisible();
   }
-  // The badge belongs to Plus, not just anywhere on the page.
+  // The badge belongs to Starter, the plan we lead with, and to nothing else on the page.
   await expect(page.getByTestId("plan-recommended")).toHaveCount(1);
-  await expect(page.getByTestId("plan-plus").getByTestId("plan-recommended")).toBeVisible();
+  await expect(page.getByTestId("plan-starter").getByTestId("plan-recommended")).toBeVisible();
 
   await expect(page.getByTestId("plan-free")).toContainText("$0");
   await expect(page.getByTestId("plan-starter")).toContainText("$5");

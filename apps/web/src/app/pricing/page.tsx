@@ -30,14 +30,15 @@ const PLANS = [
     index: "02",
     cta: "Choose Starter",
     href: "/checkout?plan=starter",
-    featured: false,
+    // The founder's call (2026-10-15): Starter is the plan to sell, the daily-practice tier.
+    featured: true,
   },
   {
     ...PLAN_DATA.plus,
     index: "03",
     cta: "Choose Plus",
     href: "/checkout?plan=plus",
-    featured: true,
+    featured: false,
   },
 ];
 
