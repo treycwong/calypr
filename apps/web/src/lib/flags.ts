@@ -9,17 +9,18 @@ const BUILD_FLAG = process.env.NEXT_PUBLIC_ROUNDTRIP_ENABLED === "1";
 /** Per-browser opt-in, so the feature can be exercised without a rebuild. */
 export const ROUNDTRIP_OPT_IN_KEY = "calypr:roundtrip";
 
-/** Plans entitled to the round-trip. Mirrors `entitlements.has_roundtrip` on the API. */
-const ROUNDTRIP_PLANS = new Set(["beta", "plus"]);
+/** Plans entitled to the round-trip. Mirrors `entitlements.has_roundtrip` on the API: Plus only
+ *  since the 2026-10-14 retier (TODO.md §3a). Starter and the beta cohort don't get it. */
+const ROUNDTRIP_PLANS = new Set(["plus"]);
 
 /**
  * Code export: editable code + "Apply to canvas".
  *
- * A **paid feature** (`plus`), kept for the existing `beta` cohort. It is not a temporary gate on
+ * A **paid feature**, Plus only (the `beta` cohort lost it in the retier). It is not a temporary gate on
  * an unfinished thing — the parser behind it (Weeks 5–7) is merged and proven; the product is
  * closed and export is what a paid plan buys. Three ways in, none on by default:
  *
- * 1. the workspace's `plan` (`beta`/`plus`) — the real, server-owned gate;
+ * 1. the workspace's `plan` (`plus`) — the real, server-owned gate;
  * 2. the build flag above (a whole deployment);
  * 3. `localStorage["calypr:roundtrip"] = "1"` in a single browser.
  *
@@ -46,8 +47,10 @@ export function roundtripEnabled(plan?: string): boolean {
   }
 }
 
-/** Plans that include the paid media blocks. Mirrors `entitlements.has_media_nodes` on the API. */
-const MEDIA_NODE_PLANS = new Set(["beta", "plus"]);
+/** Plans that include the media blocks. Mirrors `entitlements.has_media_nodes` on the API: every
+ *  plan since the 2026-10-14 retier, paid in credits. Kept as a set so withholding them again is
+ *  one edit here and one in `entitlements.LIMITS`. */
+const MEDIA_NODE_PLANS = new Set(["free", "beta", "starter", "plus"]);
 
 /**
  * The paid generative-media blocks (3D today, video next).

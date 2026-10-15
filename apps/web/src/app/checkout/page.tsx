@@ -6,10 +6,11 @@ import { SITE_HEADER_CTA } from "@/components/site/nav";
 import { LandingHeader } from "@/components/landing/LandingHeader";
 import { GridLines } from "@/components/spectra/GridLines";
 import { getSession } from "@/lib/auth";
+import { isSellablePlan } from "@/lib/plans";
 
 export const metadata: Metadata = {
   title: "Checkout — Calypr",
-  description: "Upgrade to Calypr Plus.",
+  description: "Upgrade your Calypr plan.",
   // Nothing here should be indexed: it's a transactional step, not a landing page.
   robots: { index: false, follow: false },
 };
@@ -35,8 +36,19 @@ async function billingEnabled(): Promise<boolean> {
   }
 }
 
-export default async function CheckoutPage() {
-  const [session, enabled] = await Promise.all([getSession(), billingEnabled()]);
+export default async function CheckoutPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan?: string }>;
+}) {
+  const [session, enabled, params] = await Promise.all([
+    getSession(),
+    billingEnabled(),
+    searchParams,
+  ]);
+  // Every link that predates the retier is `?plan=plus` or bare, so anything we don't sell
+  // reads as Plus rather than an error page.
+  const plan = isSellablePlan(params.plan) ? params.plan : "plus";
   return (
     // Same surface as /pricing, which is the page every visitor arrives from: crossing into a
     // neutral-grey checkout at the moment someone is deciding to pay reads as a different site.
@@ -50,7 +62,7 @@ export default async function CheckoutPage() {
             which reads as the background showing through a panel that is meant to be solid.
             Scoped here it stops exactly where the content does. */}
         <GridLines />
-        <CheckoutView email={session?.email ?? ""} enabled={enabled} />
+        <CheckoutView email={session?.email ?? ""} enabled={enabled} plan={plan} />
       </main>
       <SiteFooter />
     </div>

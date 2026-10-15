@@ -332,19 +332,47 @@ def _mesh_graph():
     return image_to_3d()
 
 
+@pytest.fixture
+def media_withheld(monkeypatch):
+    """Free with the media blocks withheld again. No plan withholds them since 2026-10-14, but the
+    gate is kept so that doing it again is one field, and these tests keep it honest."""
+    import dataclasses
+
+    withheld = dataclasses.replace(entitlements.LIMITS[entitlements.FREE], media_nodes=False)
+    monkeypatch.setitem(entitlements.LIMITS, entitlements.FREE, withheld)
+
+
 @requires_db
-def test_free_is_refused_a_3d_block(monkeypatch, ws_factory) -> None:
+def test_free_may_run_a_3d_block(monkeypatch, ws_factory) -> None:
+    """3D is on every plan, paid in credits (TODO.md §3a)."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE)
+    assert run_access.check_run_gates(wid, _mesh_graph()) is None
+
+
+@requires_db
+def test_an_exhausted_free_account_is_refused_3d_for_credits(monkeypatch, ws_factory) -> None:
+    """With the plan gate open, credits are the limit, and the refusal says so."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE, exhausted=True)
+    gate = run_access.check_run_gates(wid, _mesh_graph())
+    assert gate is not None
+    assert gate[0] == credits.INSUFFICIENT_CREDITS
+
+
+@requires_db
+def test_a_withheld_block_is_refused_by_plan(monkeypatch, ws_factory, media_withheld) -> None:
     monkeypatch.setattr(settings, "internal_key", "prod-key")
     wid = ws_factory(entitlements.FREE)  # grant intact — this is not about credits
     gate = run_access.check_run_gates(wid, _mesh_graph())
     assert gate is not None
     assert gate[0] == "plan_required"
     # The copy names the palette label, not the internal node type.
-    assert "3D" in gate[1] and "Plus" in gate[1]
+    assert "3D" in gate[1]
 
 
 @requires_db
-def test_a_byo_key_does_not_open_a_paid_block(monkeypatch, ws_factory) -> None:
+def test_a_byo_key_does_not_open_a_paid_block(monkeypatch, ws_factory, media_withheld) -> None:
     """The distinguishing case. Bringing your own key answers the *credit* question and is
     always enough there — it is deliberately not enough here, or the paywall would be one
     Settings page away from bypassed."""
@@ -363,7 +391,7 @@ def test_plus_may_run_a_3d_block(monkeypatch, ws_factory) -> None:
 
 
 @requires_db
-def test_the_block_gate_outranks_the_credit_gate(monkeypatch, ws_factory) -> None:
+def test_the_block_gate_outranks_the_credit_gate(monkeypatch, ws_factory, media_withheld) -> None:
     """An exhausted Free workspace running a 3D block has two problems, and only one of them is
     fixable by waiting for the monthly reset. Saying "out of credits" would send them to wait for
     something that will never help."""
@@ -382,7 +410,15 @@ def _video_graph():
 
 
 @requires_db
-def test_free_is_refused_a_video_block(monkeypatch, ws_factory) -> None:
+def test_free_may_run_a_video_block(monkeypatch, ws_factory) -> None:
+    """Video is on every plan, paid in credits (TODO.md §3a)."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = ws_factory(entitlements.FREE)
+    assert run_access.check_run_gates(wid, _video_graph()) is None
+
+
+@requires_db
+def test_a_withheld_video_block_names_video(monkeypatch, ws_factory, media_withheld) -> None:
     monkeypatch.setattr(settings, "internal_key", "prod-key")
     wid = ws_factory(entitlements.FREE, providers=("fal",))
     gate = run_access.check_run_gates(wid, _video_graph())

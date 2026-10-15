@@ -22,13 +22,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from calypr_api import accounts, billing, credits
+from calypr_api import accounts, billing, credits, entitlements
 from calypr_api.db.models import Account, StripeEvent
 from calypr_api.db.session import SessionLocal
 from calypr_api.deps import Tenant, tenant
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import (
     BillingStatus,
+    CheckoutRequest,
     CheckoutSession,
     PortalSession,
     SubscriptionInfo,
@@ -61,17 +62,36 @@ def billing_status() -> BillingStatus:
 
 
 @router.post("/checkout", response_model=CheckoutSession)
-def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSession:
-    """Start a Stripe Checkout Session for Plus and hand back its URL.
+def create_checkout(
+    request: Request,
+    body: CheckoutRequest | None = None,
+    t: Tenant = Depends(tenant),
+) -> CheckoutSession:
+    """Start a Stripe Checkout Session for Starter or Plus and hand back its URL.
 
     `client_reference_id` carries the **account** id through Stripe and back on the completed
-    event — it is how the payment is attributed without trusting anything the browser says."""
-    if not billing.is_configured() or not billing.plus_price_id():
+    event — it is how the payment is attributed without trusting anything the browser says. The
+    plan the browser asked for only picks the price; the webhook reads the plan back off the
+    subscription's price, so a tampered request can only buy what it pays for."""
+    plan = (body or CheckoutRequest()).plan
+    if plan not in entitlements.PAID_PLANS:
+        raise HTTPException(
+            status_code=422, detail=f"plan must be one of {list(entitlements.PAID_PLANS)}"
+        )
+    price_id = billing.price_id_for(plan)
+    if not billing.is_configured() or not price_id:
         raise HTTPException(status_code=503, detail="billing is not configured")
 
     account = accounts.account_for_workspace(t.session, t.workspace_id)
     if account is None:
         raise HTTPException(status_code=404, detail="workspace not found")
+    if account.stripe_subscription_id and account.plan in entitlements.PAID_PLANS:
+        # A second Checkout would start a second subscription and bill twice. Switching between
+        # Starter and Plus happens on the existing subscription, in the customer portal.
+        raise HTTPException(
+            status_code=409,
+            detail="You already have a subscription. Change your plan from Billing.",
+        )
 
     origin = request.headers.get("origin") or str(request.base_url).rstrip("/")
 
@@ -79,7 +99,7 @@ def create_checkout(request: Request, t: Tenant = Depends(tenant)) -> CheckoutSe
         return stripe.checkout.Session.create(
             api_key=billing.secret_key(),
             mode="subscription",
-            line_items=[{"price": billing.plus_price_id(), "quantity": 1}],
+            line_items=[{"price": price_id, "quantity": 1}],
             # Carries the account through Stripe and back on the completed event — how the
             # payment is attributed without trusting anything the browser said. The *account*,
             # not the workspace: one subscription covers every workspace the account owns.
@@ -260,6 +280,24 @@ def _forget_customer(account: Account) -> None:
     account.cancel_at_period_end = False
 
 
+def _invoice_plan(account: Account) -> str:
+    """The plan an `invoice.paid` is paying for, read off the account's subscription.
+
+    Invoices moved their subscription and price fields around between Stripe API versions, so
+    this asks for the subscription itself rather than parsing the invoice. A Stripe error is
+    raised so the webhook returns 5xx and Stripe retries. Granting against a guess would anchor
+    the month at the wrong amount."""
+    sub_id = account.stripe_subscription_id
+    if sub_id:
+        sub = stripe.Subscription.retrieve(sub_id, api_key=billing.secret_key())
+    else:
+        subs = stripe.Subscription.list(
+            customer=account.stripe_customer_id, status="all", limit=1, api_key=billing.secret_key()
+        ).data
+        sub = subs[0] if subs else None
+    return (billing.plan_for_subscription(sub) if sub is not None else None) or entitlements.PLUS
+
+
 def _apply(session: Session, event: stripe.Event) -> None:
     """Act on one verified event. Raises only on failures worth a retry."""
     data = event.data.object  # type: ignore[union-attr]
@@ -283,19 +321,22 @@ def _apply(session: Session, event: stripe.Event) -> None:
             return
         if customer_id:
             account.stripe_customer_id = customer_id
-        billing.set_plan(account, "plus")
         # Populate the cycle fields at the authoritative "this account is now subscribed"
         # moment. Stripe doesn't guarantee event ordering, so `customer.subscription.created`
         # commonly arrives *before* this event maps the customer — and is then dropped as
         # "unmapped", leaving the cycle blank forever (Stripe never redelivers it). Retrieving
-        # the subscription here closes that race. Best-effort: the plan + credits below matter
-        # more, and the cycle self-heals on the next `subscription.updated`.
+        # the subscription here closes that race, and its price is what says which plan was
+        # bought. If it can't be read, Plus: the cycle self-heals on the next
+        # `subscription.updated`, which also corrects the plan.
+        plan = entitlements.PLUS
         if sub_id := _field(data, "subscription"):
             try:
                 sub = stripe.Subscription.retrieve(sub_id, api_key=billing.secret_key())
                 _mirror_cycle(account, sub)
+                plan = billing.plan_for_subscription(sub) or plan
             except stripe.StripeError:
                 log.warning("could not retrieve subscription %s for cycle mirror", sub_id)
+        billing.set_plan(account, plan)
         # Grant immediately: `invoice.paid` usually accompanies the first payment, but relying
         # on ordering would leave a new subscriber with a Plus plan and no credits if it lands
         # first or is delayed. `grant_monthly` is idempotent per cycle, so a double is a no-op.
@@ -304,9 +345,9 @@ def _apply(session: Session, event: stripe.Event) -> None:
         posthog_client.capture(
             "subscription_activated",
             distinct_id=str(account.id),
-            properties={"account_id": str(account.id)},
+            properties={"account_id": str(account.id), "plan": plan},
         )
-        log.info("account %s upgraded to plus", account.id)
+        log.info("account %s upgraded to %s", account.id, plan)
         return
 
     if kind.startswith("customer.subscription."):
@@ -319,8 +360,13 @@ def _apply(session: Session, event: stripe.Event) -> None:
             return
         deleted = kind.endswith(".deleted")
         status = "canceled" if deleted else (_field(data, "status") or "")
-        plan = billing.plan_for_status(status)
+        plan = billing.plan_for_status(status, billing.plan_for_subscription(data))
+        upgrade = bool(plan) and entitlements.is_upgrade(account.plan, plan)
         changed = bool(plan) and billing.set_plan(account, plan)
+        if changed and upgrade:
+            # Starter → Plus in the portal. `set_plan` freed this month's grant, so the bigger
+            # allowance lands now. Keyed on the event so a redelivery can't grant twice.
+            credits.grant_monthly(session, account, ref_id=f"upgrade:{event.id}")
         # Mirror the cycle fields the Billing tab reads. On `.deleted` the subscription is over,
         # so clear them; otherwise reflect the current period end and whether a cancel is pending
         # for the end of it (both set from the portal). Always persisted — a `cancel_at_period_end`
@@ -361,7 +407,10 @@ def _apply(session: Session, event: stripe.Event) -> None:
         account = billing.account_for_customer(session, _field(data, "customer"))
         if account is None:
             return
-        changed = billing.set_plan(account, "plus")
+        # Which plan this invoice pays for comes from the subscription's price. It must be known
+        # *before* granting: this event can land ahead of `checkout.session.completed`, and a
+        # grant issued against the wrong plan anchors the month at the wrong amount.
+        changed = billing.set_plan(account, _invoice_plan(account))
         # The invoice id is the grant's idempotency key: Stripe delivers at-least-once, and a
         # redelivery that granted again would be free credits every month, forever.
         granted = credits.grant_monthly(

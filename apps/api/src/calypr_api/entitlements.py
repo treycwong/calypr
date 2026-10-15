@@ -31,9 +31,12 @@ from calypr_api.db.models import Account, Waitlist
 
 FREE = "free"
 BETA = "beta"
+STARTER = "starter"
 PLUS = "plus"
 
-PLANS = (FREE, BETA, PLUS)
+PLANS = (FREE, BETA, STARTER, PLUS)
+#: Plans a Stripe subscription can buy, cheapest first. `beta` is granted by hand, never sold.
+PAID_PLANS = (STARTER, PLUS)
 
 
 @dataclass(frozen=True)
@@ -64,41 +67,59 @@ class Limits:
     checkpoint_ttl_days: int
     #: Code export — the Code tab's editable mode and "Apply to canvas".
     roundtrip: bool
-    #: The paid media blocks (3D today, video next). See `PLUS_NODE_TYPES`.
+    #: The media blocks priced per output (3D, Video). See `PLUS_NODE_TYPES`.
     media_nodes: bool
 
 
-#: `beta` matches `plus` on capacity: the cohort was invited to use the product properly, and
-#: metering them onto a smaller pool would make their feedback about the wrong product.
+#: The retier of 2026-10-14 (TODO.md §3a): Free, $5 Starter, $10 Plus.
+#:
+#: - **3D and Video are on every plan**, paid in credits. The credit gate bounds the spend, and
+#:   since #103 it covers media-only graphs. An Image → Video run is ~56 credits, so Free's 100
+#:   buys about one.
+#: - **Code export is Plus-only.** It is what $10 buys over $5.
+#: - **`beta` mirrors Starter.** The founder's call is Starter free for 3 months for the beta
+#:   cohort. Until that is moved onto real `starter` rows with an expiry, `beta` behaves as
+#:   Starter, which takes code export away from them by decision.
+_STARTER = Limits(
+    projects=10,
+    workspaces=1,
+    monthly_credits=500,
+    storage_bytes=2 * 1024**3,  # 2 GB
+    checkpoint_ttl_days=30,
+    roundtrip=False,
+    media_nodes=True,
+)
 LIMITS: dict[str, Limits] = {
     FREE: Limits(
         projects=3,
         workspaces=1,
-        monthly_credits=100,  # assistant only
+        monthly_credits=100,
         storage_bytes=500 * 1024**2,  # 500 MB
         checkpoint_ttl_days=7,
         roundtrip=False,
-        media_nodes=False,
-    ),
-    BETA: Limits(
-        projects=20,
-        workspaces=3,
-        monthly_credits=2_000,
-        storage_bytes=5 * 1024**3,  # 5 GB
-        checkpoint_ttl_days=30,
-        roundtrip=True,
         media_nodes=True,
     ),
+    BETA: _STARTER,
+    STARTER: _STARTER,
     PLUS: Limits(
         projects=20,
         workspaces=3,
-        monthly_credits=2_000,
+        monthly_credits=1_000,
         storage_bytes=5 * 1024**3,  # 5 GB
         checkpoint_ttl_days=30,
         roundtrip=True,
         media_nodes=True,
     ),
 }
+
+
+def is_upgrade(old: str | None, new: str | None) -> bool:
+    """Whether moving `old` → `new` raises the monthly credit allowance.
+
+    The grant is anchored once per calendar month, so a mid-month upgrade would otherwise wait
+    until next month for its bigger allowance. `billing.set_plan` clears the anchor when this is
+    true, and the grant tops up (never down) to the new plan's figure."""
+    return limits(new).monthly_credits > limits(old).monthly_credits
 
 
 #: How long after a plan change the *previous*, more generous checkpoint retention stays in
@@ -146,23 +167,19 @@ def is_valid_plan(plan: str) -> bool:
 def has_roundtrip(plan: str | None) -> bool:
     """Whether code export — the Code tab's editable mode and "Apply to canvas" — is available.
 
-    A **paid entitlement**, not a temporary gate: `plus` buys it, and `beta` keeps it for the
-    cohort already using it (we don't take a shipped feature back off them). It does not graduate
-    to `return True`; see the module docstring for the decision that reversed."""
+    **Plus only** (2026-10-14). `beta` used to keep it; the founder moved the cohort to Starter,
+    which does not include it. It does not graduate to `return True`; see the module docstring for
+    the decision that reversed."""
     return limits(plan).roundtrip
 
 
-#: Node types only a paid plan may run. The expensive generative media blocks: a 3D mesh costs
-#: real money per generation and a video costs it per *second*, unlike every other block whose
-#: cost is bounded by tokens.
+#: Node types a plan can withhold: the media blocks priced per output (a 3D mesh per generation,
+#: a video per *second*) rather than per token.
 #:
-#: The plan is the *only* gate on these. They run on the platform's fal key and are paid for in
-#: credits, and there is no bring-your-own-key path to also satisfy — the credit grant is what
-#: bounds our fal spend, and it binds tighter than the kill-switch the old BYO-key rule protected:
-#: 2,000 credits at a 5× margin is about $4 of real cost against $20 of revenue.
-#:
-#: Free users still *see* these in the palette — locked, with an upgrade prompt. A block nobody
-#: can discover sells nothing, and hiding it would make the canvas silently different per plan.
+#: **Since 2026-10-14 no plan withholds them.** Every row in `LIMITS` sets `media_nodes=True`, and
+#: the credit grant is what bounds our fal spend: the run gate checks the balance for these blocks
+#: (`model_access.CREDIT_ONLY_NODE_TYPES`). The gate is kept rather than deleted so that
+#: withholding them again is a one-field change, not a feature.
 PLUS_NODE_TYPES = frozenset({"mesh", "video"})
 
 
