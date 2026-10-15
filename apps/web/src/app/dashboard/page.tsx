@@ -35,7 +35,7 @@ import { LockedBanner } from "@/components/dashboard/locked-banner";
 import { UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
 import { PageHeader } from "@/components/dashboard/PageHeader";
 import { track } from "@/lib/analytics";
-import { PLAN_LIMITS } from "@/lib/plans";
+import { planLimits } from "@/lib/plans";
 
 import { relativeTime } from "@/lib/time";
 
@@ -133,7 +133,7 @@ export default function ProjectsPage() {
         onOpenChange={setCapped}
         // Display copy only — `PLAN_LIMITS` is the promise made on /pricing, and the decision to
         // show this at all came from the API above.
-        detail={{ limit: PLAN_LIMITS[ws?.plan === "free" ? "free" : "plus"].projects }}
+        detail={{ limit: planLimits(ws?.plan).projects }}
       />
       <LockedBanner
           workspaces={(ws?.workspaces ?? []).filter((w) => w.locked).length}

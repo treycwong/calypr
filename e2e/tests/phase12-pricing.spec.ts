@@ -1,42 +1,65 @@
 import { expect, test } from "@playwright/test";
 
-// The pricing surface: two plans, Plus recommended, and a checkout step that Stripe will take
-// over in Week 9. Until it does, the page must not imply it can take a card.
+// The pricing surface after the 2026-10-14 retier: Free / $5 Starter / $10 Plus, Plus
+// recommended, and a checkout step per paid plan. Prices and features come from `lib/plans.ts`.
 
-test("both plans are shown, with Plus recommended", async ({ page }) => {
+test("all three plans are shown, with Plus recommended", async ({ page }) => {
   await page.goto("/pricing");
 
-  await expect(page.getByTestId("plan-free")).toBeVisible();
-  await expect(page.getByTestId("plan-plus")).toBeVisible();
-  await expect(page.getByTestId("plan-recommended")).toBeVisible();
+  for (const id of ["free", "starter", "plus"]) {
+    await expect(page.getByTestId(`plan-${id}`)).toBeVisible();
+  }
   // The badge belongs to Plus, not just anywhere on the page.
+  await expect(page.getByTestId("plan-recommended")).toHaveCount(1);
   await expect(page.getByTestId("plan-plus").getByTestId("plan-recommended")).toBeVisible();
 
   await expect(page.getByTestId("plan-free")).toContainText("$0");
-  await expect(page.getByTestId("plan-plus")).toContainText("$20");
+  await expect(page.getByTestId("plan-starter")).toContainText("$5");
+  await expect(page.getByTestId("plan-plus")).toContainText("$10");
 });
 
 test("the plans match the spec on what actually separates them", async ({ page }) => {
   await page.goto("/pricing");
 
-  // Code export is the one non-capacity difference, and the reason Plus exists at all.
+  // Code export is what $10 buys over $5.
   await expect(page.getByTestId("plan-plus")).toContainText("Code export");
+  await expect(page.getByTestId("plan-starter")).not.toContainText("Code export");
   await expect(page.getByTestId("plan-free")).not.toContainText("Code export");
 
+  // Video and 3D are on every plan, so Free says so rather than implying an upsell.
+  await expect(page.getByTestId("plan-free")).toContainText("Video");
+
+  await expect(page.getByTestId("plan-free")).toContainText("100 credits");
+  await expect(page.getByTestId("plan-starter")).toContainText("500 credits");
+  await expect(page.getByTestId("plan-plus")).toContainText("1,000 credits");
   await expect(page.getByTestId("plan-free")).toContainText("3 projects");
+  await expect(page.getByTestId("plan-starter")).toContainText("10 projects");
   await expect(page.getByTestId("plan-plus")).toContainText("20 projects");
-  await expect(page.getByTestId("plan-plus")).toContainText("2,000 credits");
+
+  // "500 credits" means nothing until it is a number of things.
+  await expect(page.getByTestId("credit-guide")).toContainText("5-second video");
 });
 
-test("Select plan leads to checkout, and Free leads to the canvas", async ({ page }) => {
+test("each plan's button leads to its own checkout, and Free to the canvas", async ({ page }) => {
   await page.goto("/pricing");
-
   await expect(page.getByTestId("plan-free-cta")).toHaveAttribute("href", "/canvas");
 
+  await page.getByTestId("plan-starter-cta").click();
+  await expect(page).toHaveURL(/\/checkout\?plan=starter/);
+  await expect(page.getByRole("heading", { name: "Upgrade to Starter" })).toBeVisible();
+  await expect(page.getByTestId("checkout-price")).toHaveText("$5");
+
+  await page.goto("/pricing");
   await page.getByTestId("plan-plus-cta").click();
-  await expect(page).toHaveURL(/\/checkout/);
+  await expect(page).toHaveURL(/\/checkout\?plan=plus/);
   await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
-  await expect(page.getByText("$20")).toBeVisible();
+  await expect(page.getByTestId("checkout-price")).toHaveText("$10");
+});
+
+test("an unknown plan in the checkout link reads as Plus, not an error", async ({ page }) => {
+  // Every link minted before the retier is bare or `?plan=plus`.
+  await page.goto("/checkout?plan=enterprise");
+  await expect(page.getByRole("heading", { name: "Upgrade to Plus" })).toBeVisible();
 });
 
 test("checkout is honest when billing is not configured", async ({ page }) => {
