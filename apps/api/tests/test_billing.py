@@ -506,3 +506,192 @@ def test_portal_forgets_a_stale_customer_and_asks_to_resubscribe(configured, mon
         with SessionLocal() as s:
             s.get(Account, acct_id).stripe_customer_id = saved
             s.commit()
+
+
+# --- the Starter tier: price → plan, in both directions (2026-10-14 retier) ----------------------
+
+
+@pytest.fixture
+def two_tiers(configured, monkeypatch):
+    """Both sellable prices configured, the way Railway will hold them."""
+    monkeypatch.setenv(billing.STARTER_PRICE_ID_ENV, "price_test_starter")
+
+
+def _sub_on(price: dict, **extra) -> object:
+    """A Subscription whose single item is on `price`, shaped like Stripe sends it."""
+    return stripe.Subscription.construct_from(
+        {"id": "sub_t", "items": {"object": "list", "data": [{"price": price}]}, **extra},
+        "sk_test",
+    )
+
+
+def test_each_configured_price_maps_to_its_plan(two_tiers):
+    assert billing.plan_for_price("price_test_starter") == entitlements.STARTER
+    assert billing.plan_for_price("price_test_plus") == entitlements.PLUS
+    assert billing.price_id_for(entitlements.STARTER) == "price_test_starter"
+    assert billing.price_id_for(entitlements.PLUS) == "price_test_plus"
+
+
+def test_a_price_rotated_out_of_the_env_is_placed_by_its_metadata(two_tiers):
+    """A subscriber on an old price must not lose their plan when the env moves on."""
+    old = stripe.Price.construct_from({"id": "price_old", "metadata": {"plan": "starter"}}, "k")
+    assert billing.plan_for_price(old) == entitlements.STARTER
+
+
+def test_a_foreign_price_is_not_ours(two_tiers):
+    stray = stripe.Price.construct_from({"id": "price_other", "metadata": {}}, "k")
+    assert billing.plan_for_price(stray) is None
+    assert billing.plan_for_price("price_other") is None
+    # Metadata can only name a plan we sell. `beta` is granted by hand, never bought.
+    beta = stripe.Price.construct_from({"id": "p", "metadata": {"plan": "beta"}}, "k")
+    assert billing.plan_for_price(beta) is None
+
+
+def test_a_subscription_is_read_as_the_plan_its_price_buys(two_tiers):
+    assert billing.plan_for_subscription(_sub_on({"id": "price_test_starter"})) == "starter"
+    assert billing.plan_for_subscription(_sub_on({"id": "price_test_plus"})) == "plus"
+
+
+def test_a_subscription_on_an_unknown_price_stays_plus(two_tiers):
+    """Every subscription sold before the retier was Plus at $20, on a price with no tag. Leaving
+    the plan alone there would cut off someone who is paying."""
+    legacy = _sub_on({"id": "price_legacy_20", "metadata": {}})
+    assert billing.plan_for_subscription(legacy) == entitlements.PLUS
+
+
+def test_a_subscription_with_no_items_names_no_plan():
+    bare = stripe.Subscription.construct_from({"id": "sub_bare"}, "sk_test")
+    assert billing.plan_for_subscription(bare) is None
+
+
+def test_a_paying_status_grants_the_plan_the_price_buys():
+    assert billing.plan_for_status("active", entitlements.STARTER) == entitlements.STARTER
+    assert billing.plan_for_status("canceled", entitlements.STARTER) == entitlements.FREE
+
+
+def test_an_upgrade_frees_this_months_grant():
+    """Starter → Plus mid-month: the anchor clears so Plus's bigger allowance arrives now."""
+    from datetime import date
+
+    acct = Account(plan=entitlements.STARTER, grant_cycle_anchor=date.today())
+    assert billing.set_plan(acct, entitlements.PLUS) is True
+    assert acct.grant_cycle_anchor is None
+
+
+def test_a_downgrade_keeps_this_months_grant_anchored():
+    """Plus → Starter must not re-run the grant. It only tops up, so it would do nothing now, but
+    clearing the anchor on a downgrade invites a re-grant nobody paid for."""
+    from datetime import date
+
+    today = date.today()
+    acct = Account(plan=entitlements.PLUS, grant_cycle_anchor=today)
+    assert billing.set_plan(acct, entitlements.STARTER) is True
+    assert acct.grant_cycle_anchor == today
+
+
+def test_checkout_refuses_a_plan_it_does_not_sell(two_tiers):
+    for plan in ("beta", "free", "enterprise"):
+        assert client.post("/billing/checkout", json={"plan": plan}).status_code == 422
+
+
+@requires_db
+def test_checkout_charges_the_price_of_the_plan_asked_for(two_tiers, monkeypatch):
+    seen: list[str] = []
+
+    def fake_create(**kwargs):
+        seen.append(kwargs["line_items"][0]["price"])
+        return SimpleNamespace(url="https://checkout.example/s")
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+    with SessionLocal() as s:
+        if accounts.account_for_workspace(s, uuid.UUID(DEV_WORKSPACE_ID)) is None:
+            pytest.skip("no dev workspace")
+    assert client.post("/billing/checkout", json={"plan": "starter"}).status_code == 200
+    assert client.post("/billing/checkout").status_code == 200  # no body: Plus, as before
+    assert seen == ["price_test_starter", "price_test_plus"]
+
+
+@requires_db
+def test_checkout_refuses_a_second_subscription(two_tiers, monkeypatch):
+    """A second Checkout would bill twice. Plan changes happen on the existing subscription."""
+    monkeypatch.setattr(
+        stripe.checkout.Session,
+        "create",
+        lambda **_: pytest.fail("must not reach Stripe"),
+    )
+    with SessionLocal() as s:
+        acct = accounts.account_for_workspace(s, uuid.UUID(DEV_WORKSPACE_ID))
+        if acct is None:
+            pytest.skip("no dev workspace")
+        acct_id, saved = acct.id, (acct.plan, acct.stripe_subscription_id)
+        acct.plan, acct.stripe_subscription_id = entitlements.STARTER, "sub_existing"
+        s.commit()
+    try:
+        r = client.post("/billing/checkout", json={"plan": "plus"})
+        assert r.status_code == 409
+        assert "Billing" in r.json()["detail"]
+    finally:
+        with SessionLocal() as s:
+            acct = s.get(Account, acct_id)
+            acct.plan, acct.stripe_subscription_id = saved
+            s.commit()
+
+
+@requires_db
+def test_a_starter_checkout_grants_starter(two_tiers, monkeypatch, tenant_factory):
+    """The bug the retier brief warned about: the webhook used to set `plus` for any payment."""
+    from calypr_api import credits
+
+    monkeypatch.setattr(
+        stripe.Subscription,
+        "retrieve",
+        lambda *a, **k: _sub_on({"id": "price_test_starter"}, status="active"),
+    )
+    tenant = tenant_factory(entitlements.FREE)
+    body, headers = _signed(
+        _event(
+            "checkout.session.completed",
+            {
+                "client_reference_id": str(tenant.account_id),
+                "customer": f"cus_{uuid.uuid4().hex[:12]}",
+                "subscription": "sub_t",
+            },
+        )
+    )
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+    with SessionLocal() as s:
+        assert s.get(Account, tenant.account_id).plan == entitlements.STARTER
+        assert credits.balance_micro(s, tenant.account_id) == 500 * credits.MICRO
+
+
+@requires_db
+def test_an_upgrade_to_plus_tops_up_the_same_month(two_tiers, tenant_factory):
+    """Starter → Plus in the portal arrives as `customer.subscription.updated` on the Plus price.
+    The bigger allowance lands now, not next month."""
+    from calypr_api import credits
+
+    customer = f"cus_{uuid.uuid4().hex[:12]}"
+    tenant = tenant_factory(entitlements.STARTER)
+    with SessionLocal() as s:
+        acct = s.get(Account, tenant.account_id)
+        acct.stripe_customer_id = customer
+        credits.grant_monthly(s, acct, ref_id="starter-cycle")
+        credits.debit_run(s, acct.id, 100, source="run")
+        s.commit()
+        assert credits.balance_micro(s, acct.id) == 400 * credits.MICRO
+
+    sub = {
+        "id": "sub_up",
+        "customer": customer,
+        "status": "active",
+        "items": {"object": "list", "data": [{"price": {"id": "price_test_plus"}}]},
+    }
+    event = _event("customer.subscription.updated", sub)
+    body, headers = _signed(event)
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+    # A redelivery is a no-op.
+    assert client.post("/billing/webhook", content=body, headers=headers).status_code == 200
+
+    with SessionLocal() as s:
+        assert s.get(Account, tenant.account_id).plan == entitlements.PLUS
+        assert credits.balance_micro(s, tenant.account_id) == 1_000 * credits.MICRO

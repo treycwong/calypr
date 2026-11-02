@@ -509,8 +509,12 @@ export async function setDefaultModel(model: string): Promise<WorkspaceInfo> {
  * `null` means billing isn't switched on yet (the API 503s without Stripe keys) — the caller
  * falls back to capturing intent rather than showing an error, because "we can't take your
  * money yet" is not the user's failure. */
-export async function startCheckout(): Promise<string | null> {
-  const res = await fetch("/api/billing/checkout", { method: "POST" });
+export async function startCheckout(plan: "starter" | "plus" = "plus"): Promise<string | null> {
+  const res = await fetch("/api/billing/checkout", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ plan }),
+  });
   if (res.status === 503) return null;
   if (!res.ok) throw new Error(`checkout failed (${res.status})`);
   return (await res.json()).url as string;

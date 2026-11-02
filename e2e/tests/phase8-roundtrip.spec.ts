@@ -170,13 +170,13 @@ test("a locked Code tab says so, and names the account", async ({ browser }) => 
   }
 });
 
-test("a beta workspace gets the round-trip with no local opt-in", async ({
+test("a plus workspace gets the round-trip with no local opt-in", async ({
   browser,
   request,
 }) => {
-  // The real cohort gate, end to end: promote the workspace through the operator endpoint and
-  // the Code tab becomes editable for a browser that has set nothing at all. This is what a
-  // beta design partner will actually experience.
+  // The real plan gate, end to end: promote the workspace through the operator endpoint and the
+  // Code tab becomes editable for a browser that has set nothing at all. Code export is Plus-only
+  // since the 2026-10-14 retier; Starter and the beta cohort don't get it.
   const ws = await (await request.get(`${API_URL}/workspaces/current`)).json();
   const promote = (plan: string) =>
     request.post(`${API_URL}/admin/workspaces/${ws.id}/plan`, {
@@ -184,7 +184,7 @@ test("a beta workspace gets the round-trip with no local opt-in", async ({
       headers: { "x-admin-token": "e2e-admin-token" },
     });
 
-  expect((await promote("beta")).ok()).toBeTruthy();
+  expect((await promote("plus")).ok()).toBeTruthy();
   const context = await browser.newContext(); // no localStorage opt-in
   try {
     const page = await context.newPage();

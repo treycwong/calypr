@@ -11,6 +11,11 @@ const API_URL = process.env.CALYPR_API_URL ?? "http://localhost:8000";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
+  // Which plan to buy, and nothing else from the browser. This proxy used to forward no body at
+  // all, so a Starter checkout silently became a Plus one. The API reads the plan back off the
+  // price actually paid, so this choice can only ever buy what it charges for.
+  const body = (await req.json().catch(() => ({}))) as { plan?: unknown };
+  const plan = typeof body.plan === "string" ? body.plan : undefined;
   const r = await fetch(`${API_URL}/billing/checkout`, {
     method: "POST",
     headers: {
@@ -19,6 +24,7 @@ export async function POST(req: Request) {
       origin: new URL(req.url).origin,
       ...(await internalHeaders()),
     },
+    body: JSON.stringify(plan ? { plan } : {}),
   });
   return new Response(await r.text(), {
     status: r.status,

@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { type AnalyticsEvent, track } from "@/lib/analytics";
-import { PLAN_LIMITS } from "@/lib/plans";
+import { PLAN_LIMITS, PLANS } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 /** What the account ran out of. `message` is the server's own sentence, sent with the 402 — it
@@ -38,7 +38,6 @@ const ROWS: { label: string; free: string; plus: string }[] = [
     plus: PLAN_LIMITS.plus.credits.toLocaleString(),
   },
   { label: "Code export", free: "—", plus: "Included" },
-  { label: "3D blocks", free: "—", plus: "Included" },
 ];
 
 /** The paywall a free account meets when a plan refuses something.
@@ -97,7 +96,7 @@ export function UpgradeDialog({
             </span>
             <span className="text-right text-[11px] font-medium">
               Plus
-              <span className="ml-1 font-normal text-muted-foreground">$20/mo</span>
+              <span className="ml-1 font-normal text-muted-foreground">${PLANS.plus.price}/mo</span>
             </span>
           </div>
           {ROWS.map((row) => (

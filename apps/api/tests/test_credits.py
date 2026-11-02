@@ -30,6 +30,10 @@ def _db_available() -> bool:
 
 requires_db = pytest.mark.skipif(not _db_available(), reason="no database")
 
+#: What a Plus account is granted each month. Named rather than written out, so the next change
+#: to the allowance is one edit in `entitlements.LIMITS` and one in the spec test above.
+PLUS_GRANT = credits.MONTHLY_GRANT[entitlements.PLUS]
+
 
 @pytest.fixture
 def tenant(tenant_factory):
@@ -54,7 +58,7 @@ def account(tenant_factory):
 
 def test_a_credit_is_a_thousand_micro():
     assert credits.to_micro(1.0) == 1_000
-    assert credits.to_micro(2_000) == 2_000_000
+    assert credits.to_micro(2_000) == 2_000_000  # pure arithmetic, not a grant
 
 
 def test_fractional_credits_round_up_not_down():
@@ -80,11 +84,12 @@ def test_zero_is_zero():
 
 
 def test_the_plan_grants_match_the_pricing_spec():
-    assert credits.MONTHLY_GRANT[entitlements.PLUS] == 2_000
+    """The retier of 2026-10-14 (TODO.md §3a): Free / $5 Starter / $10 Plus."""
     assert credits.MONTHLY_GRANT[entitlements.FREE] == 100
-    # Beta is a full-product cohort — metering them onto a smaller pool would make their
-    # feedback about a product nobody is buying.
-    assert credits.MONTHLY_GRANT[entitlements.BETA] == 2_000
+    assert credits.MONTHLY_GRANT[entitlements.STARTER] == 500
+    assert credits.MONTHLY_GRANT[entitlements.PLUS] == 1_000
+    # The beta cohort is moving to Starter (free for 3 months), so it is granted like Starter.
+    assert credits.MONTHLY_GRANT[entitlements.BETA] == 500
 
 
 # --- granting ----------------------------------------------------------------------------------
@@ -96,7 +101,7 @@ def test_a_grant_credits_the_plan_amount(account):
         acct = s.get(Account, account)
         assert credits.grant_monthly(s, acct, ref_id="in_1") is True
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -109,7 +114,7 @@ def test_a_redelivered_invoice_does_not_grant_twice(account):
         s.commit()
         assert credits.grant_monthly(s, acct, ref_id="in_same") is False
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -122,7 +127,7 @@ def test_a_second_grant_in_the_same_month_is_refused(account):
         s.commit()
         assert credits.grant_monthly(s, acct, ref_id="in_2", cycle=date(2026, 7, 20)) is False
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -133,24 +138,24 @@ def test_next_month_grants_again(account):
         s.commit()
         assert credits.grant_monthly(s, acct, ref_id="in_aug", cycle=date(2026, 8, 1)) is True
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
 def test_a_grant_tops_up_to_the_allowance_rather_than_stacking(account):
-    """"2,000 a month", not "2,000 that pile up". Rollover is explicitly out of v1
+    """"1,000 a month", not "1,000 that pile up". Rollover is explicitly out of v1
     (PRICING-SPEC §1), so an unused balance doesn't compound into a bill we didn't price."""
     with SessionLocal() as s:
         acct = s.get(Account, account)
         credits.grant_monthly(s, acct, ref_id="in_july", cycle=date(2026, 7, 1))
         credits.debit_run(s, account, 500, source="run")
         s.commit()
-        assert credits.balance_micro(s, account) == 1_500 * credits.MICRO
+        assert credits.balance_micro(s, account) == (PLUS_GRANT - 500) * credits.MICRO
 
         acct = s.get(Account, account)
         credits.grant_monthly(s, acct, ref_id="in_aug", cycle=date(2026, 8, 1))
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -173,7 +178,7 @@ def test_a_debit_reduces_the_balance_and_leaves_a_trail(account):
         credits.grant_monthly(s, acct, ref_id="in_1")
         credits.debit_run(s, account, 16.0, source="run", ref_id="run_1", model="gpt-image-2")
         s.commit()
-        assert credits.balance_micro(s, account) == (2_000 - 16) * credits.MICRO
+        assert credits.balance_micro(s, account) == (PLUS_GRANT - 16) * credits.MICRO
         rows = s.query(CreditLedger).filter(CreditLedger.account_id == account).all()
         # The history is what makes "why is my balance this?" answerable when someone disputes it.
         assert {r.kind for r in rows} == {"grant", "debit"}
@@ -228,14 +233,14 @@ def test_a_debit_from_a_stale_read_does_not_lose_the_other_one(account):
         other.commit()
 
     # `stale` still believes the pre-debit balance...
-    assert stale_balance == 2_000 * credits.MICRO
+    assert stale_balance == PLUS_GRANT * credits.MICRO
     credits.debit_run(stale, account, 10, source="run")
     stale.commit()
     stale.close()
 
     # ...and both debits survive, because neither wrote an absolute figure.
     with SessionLocal() as s:
-        assert credits.balance_micro(s, account) == (2_000 - 20) * credits.MICRO
+        assert credits.balance_micro(s, account) == (PLUS_GRANT - 20) * credits.MICRO
 
 
 # --- the cache is only a cache -----------------------------------------------------------------
@@ -254,9 +259,9 @@ def test_the_ledger_wins_when_the_cache_drifts(account):
         s.commit()
         assert credits.balance_micro(s, account) == 42
 
-        assert credits.recompute_balance(s, account) == 2_000 * credits.MICRO
+        assert credits.recompute_balance(s, account) == PLUS_GRANT * credits.MICRO
         s.commit()
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -269,16 +274,16 @@ def test_the_usage_summary_grant_is_committed(account):
         credits.grant_monthly(s, acct, ref_id="in_1", cycle=date(2000, 1, 1))  # an old cycle
         credits.debit_run(s, account, 400, source="run")
         s.commit()
-        assert credits.balance_micro(s, account) == 1_600 * credits.MICRO
+        assert credits.balance_micro(s, account) == (PLUS_GRANT - 400) * credits.MICRO
 
     with SessionLocal() as s:
         summary = credits.usage_summary(s, s.get(Account, account))
         s.rollback()  # what the request's session does: it never commits
-    assert summary["remaining"] == 2_000
+    assert summary["remaining"] == PLUS_GRANT
 
     # The grant outlived the request, so what was shown is what is stored.
     with SessionLocal() as s:
-        assert credits.balance_micro(s, account) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, account) == PLUS_GRANT * credits.MICRO
         assert s.get(Account, account).grant_cycle_anchor.month == date.today().month
 
 
@@ -304,7 +309,7 @@ def test_drift_is_reported_and_not_repaired(account):
         assert _drift_for(s, account) == {
             "account_id": str(account),
             "cached_micro": 42,
-            "ledger_micro": 2_000 * credits.MICRO,
+            "ledger_micro": PLUS_GRANT * credits.MICRO,
         }
         assert credits.balance_micro(s, account) == 42  # reported, not repaired
 
@@ -329,7 +334,7 @@ def test_has_credits_is_false_at_exactly_zero(account):
     with SessionLocal() as s:
         acct = s.get(Account, account)
         credits.grant_monthly(s, acct, ref_id="in_1")
-        credits.debit_run(s, account, 2_000, source="run")
+        credits.debit_run(s, account, PLUS_GRANT, source="run")
         s.commit()
         assert credits.balance_micro(s, account) == 0
         assert credits.has_credits(s, account) is False
@@ -389,7 +394,7 @@ def test_an_account_that_was_never_granted_gets_its_allowance_on_first_use(
     assert credits.check_can_run(tenant.workspace_id) is None  # granted, then allowed
 
     with SessionLocal() as s:
-        assert credits.balance_micro(s, tenant.account_id) == 2_000 * credits.MICRO
+        assert credits.balance_micro(s, tenant.account_id) == PLUS_GRANT * credits.MICRO
 
 
 @requires_db
@@ -398,7 +403,7 @@ def test_an_exhausted_account_is_refused_with_actionable_copy(monkeypatch, tenan
     with SessionLocal() as s:
         acct = s.get(Account, tenant.account_id)
         credits.grant_monthly(s, acct, ref_id="in_1")
-        credits.debit_run(s, tenant.account_id, 2_000, source="run")
+        credits.debit_run(s, tenant.account_id, PLUS_GRANT, source="run")
         s.commit()
 
     message = credits.check_can_run(tenant.workspace_id)

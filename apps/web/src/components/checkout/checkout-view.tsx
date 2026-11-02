@@ -7,16 +7,20 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { joinWaitlist, startCheckout } from "@/lib/api";
-import { CHECKOUT_INCLUDED as INCLUDED } from "@/lib/plans";
+import { PLANS, type SellablePlan } from "@/lib/plans";
 
 export function CheckoutView({
   email: initialEmail,
   enabled,
+  plan: planId,
 }: {
   email: string;
   /** Whether the API can take a payment right now (Stripe keys present). */
   enabled: boolean;
+  /** Which plan this checkout buys. The server reads the real plan back off the price paid. */
+  plan: SellablePlan;
 }) {
+  const plan = PLANS[planId];
   const [email, setEmail] = useState(initialEmail);
   const [state, setState] = useState<"idle" | "saving" | "done" | "error">("idle");
   // Seeded from the server so the page is honest on first paint; a 503 from checkout can still
@@ -28,7 +32,7 @@ export function CheckoutView({
     setPayError("");
     setState("saving");
     try {
-      const url = await startCheckout();
+      const url = await startCheckout(planId);
       if (url) {
         window.location.href = url; // Stripe hosts the form; no card data touches us.
         return;
@@ -55,22 +59,26 @@ export function CheckoutView({
 
   return (
     <>
-      <h1 className="text-2xl font-semibold tracking-tight">Upgrade to Plus</h1>
+      <h1 className="text-2xl font-semibold tracking-tight">Upgrade to {plan.name}</h1>
 
       <div className="mt-8 rounded-xl border border-border bg-card/40 p-6">
         <div className="flex items-baseline justify-between gap-4">
           <div>
-            <div className="font-medium">Calypr Plus</div>
+            <div className="font-medium" data-testid="checkout-plan">
+              Calypr {plan.name}
+            </div>
             <div className="text-xs text-muted-foreground">Monthly, cancel any time</div>
           </div>
           <div className="text-right">
-            <span className="text-2xl font-semibold tracking-tight">$20</span>
+            <span className="text-2xl font-semibold tracking-tight" data-testid="checkout-price">
+              ${plan.price}
+            </span>
             <span className="text-sm text-muted-foreground">/month</span>
           </div>
         </div>
 
         <ul className="mt-6 space-y-2.5 border-t border-border pt-6">
-          {INCLUDED.map((item) => (
+          {plan.included.map((item) => (
             <li key={item} className="flex gap-2.5 text-sm leading-relaxed">
               <Check className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
               <span>{item}</span>
@@ -100,13 +108,13 @@ export function CheckoutView({
           Card payments open shortly
         </div>
         <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
-          We&rsquo;re finishing billing now. Leave your address and we&rsquo;ll switch Plus on
-          for your workspace the day it opens — nothing to pay until then.
+          We&rsquo;re finishing billing now. Leave your address and we&rsquo;ll switch{" "}
+          {plan.name} on for your workspace the day it opens — nothing to pay until then.
         </p>
 
         {state === "done" ? (
           <p className="mt-4 text-sm text-emerald-600 dark:text-emerald-500" data-testid="checkout-done">
-            You&rsquo;re on the list. We&rsquo;ll email {email} when Plus opens.
+            You&rsquo;re on the list. We&rsquo;ll email {email} when {plan.name} opens.
           </p>
         ) : (
           <div className="mt-4 flex flex-wrap items-center gap-2">
