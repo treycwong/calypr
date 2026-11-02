@@ -87,7 +87,9 @@ def main() -> None:
     else:
         current = default.to_dict()["features"]["subscription_update"]
         print(f"default portal configuration: {default.id}")
-        print(f"  plan switching now: enabled={current['enabled']} products={current.get('products', [])}")
+        # A disabled configuration omits `products` entirely.
+        products_now = current.get("products", [])
+        print(f"  plan switching now: enabled={current['enabled']} products={products_now}")
     print(f"  plan switching after: products={features['subscription_update']['products']}")
 
     if not args.yes:
