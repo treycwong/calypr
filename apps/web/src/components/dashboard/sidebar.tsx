@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import {
   Check,
@@ -47,6 +47,26 @@ import type { Session } from "@/lib/auth";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { cn } from "@/lib/utils";
 
+/** Below Tailwind's `md`: a phone, or a very narrow window. */
+const NARROW_QUERY = "(max-width: 767px)";
+
+function subscribeNarrow(onChange: () => void) {
+  const mq = window.matchMedia(NARROW_QUERY);
+  mq.addEventListener("change", onChange);
+  return () => mq.removeEventListener("change", onChange);
+}
+
+/** Whether the screen is too narrow for the expanded sidebar. False on the server, so a phone's
+ *  first paint can show the wide sidebar for a frame before this corrects it — the price of not
+ *  guessing the device from the request. */
+function useNarrow() {
+  return useSyncExternalStore(
+    subscribeNarrow,
+    () => window.matchMedia(NARROW_QUERY).matches,
+    () => false,
+  );
+}
+
 const NAV = [
   { href: "/dashboard", label: "Projects", icon: LayoutGrid },
   { href: "/dashboard/workflows", label: "Workflows", icon: LayoutTemplate },
@@ -77,7 +97,12 @@ export function Sidebar({
   const router = useRouter();
   const initials = (session.name || session.email || "U").slice(0, 2).toUpperCase();
 
-  const [collapsed, setCollapsed] = useState(defaultCollapsed);
+  const [collapsedPref, setCollapsedPref] = useState(defaultCollapsed);
+  // On a phone the expanded sidebar took 240px of a ~375px screen and crushed the page into a
+  // strip (walkthrough, 2026-11-03), so narrow screens always get the 60px rail. The saved
+  // preference is left alone and applies again on a wider screen.
+  const narrow = useNarrow();
+  const collapsed = collapsedPref || narrow;
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [createError, setCreateError] = useState<string | null>(null);
@@ -133,8 +158,8 @@ export function Sidebar({
   const workspaceName = current?.name ?? "Workspace";
 
   function toggleCollapsed() {
-    const next = !collapsed;
-    setCollapsed(next);
+    const next = !collapsedPref;
+    setCollapsedPref(next);
     // A year; `lax` because it only ever needs to ride along with same-site navigations.
     document.cookie = `${SIDEBAR_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
   }
@@ -146,8 +171,13 @@ export function Sidebar({
     <aside
       data-collapsed={collapsed ? "true" : "false"}
       className={cn(
-        "flex shrink-0 flex-col overflow-hidden rounded-[16px] border border-sidebar-border bg-sidebar text-sidebar-foreground transition-[width] duration-200 ease-[var(--ease-standard)]",
+        "flex shrink-0 flex-col overflow-hidden rounded-[16px] border border-sidebar-border bg-sidebar text-sidebar-foreground",
         collapsed ? "w-[60px]" : "w-60",
+        // The rail width from the very first frame on a narrow screen, before `useNarrow` has
+        // run; the labels that frame renders are clipped by `overflow-hidden`. And no width
+        // animation there, or every phone page load visibly shrinks the sidebar.
+        "max-md:w-[60px]",
+        !narrow && "transition-[width] duration-200 ease-[var(--ease-standard)]",
       )}
     >
       <TooltipPrimitive.Provider delay={200}>
@@ -226,22 +256,25 @@ export function Sidebar({
               ) : null}
             </DropdownMenuContent>
           </DropdownMenu>
-          <RailTip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} show>
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-expanded={!collapsed}
-              data-testid="sidebar-toggle"
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
-            >
-              {collapsed ? (
-                <PanelLeftOpen className="h-4 w-4" />
-              ) : (
-                <PanelLeftClose className="h-4 w-4" />
-              )}
-            </button>
-          </RailTip>
+          {/* No toggle on a narrow screen: the rail is the only state that fits there. */}
+          {narrow ? null : (
+            <RailTip label={collapsed ? "Expand sidebar" : "Collapse sidebar"} show>
+              <button
+                type="button"
+                onClick={toggleCollapsed}
+                aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+                aria-expanded={!collapsed}
+                data-testid="sidebar-toggle"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[9px] text-muted-foreground transition-colors hover:bg-white/[0.06] hover:text-foreground"
+              >
+                {collapsed ? (
+                  <PanelLeftOpen className="h-4 w-4" />
+                ) : (
+                  <PanelLeftClose className="h-4 w-4" />
+                )}
+              </button>
+            </RailTip>
+          )}
         </div>
 
         {/* The one primary action in the shell. `/dashboard/new` owns the cap check (it shows the

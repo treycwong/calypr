@@ -76,7 +76,7 @@ export function UsageView() {
 
   if (error) {
     return (
-      <div className="w-full max-w-3xl px-10 py-8">
+      <div className="w-full max-w-3xl px-4 py-6 sm:px-10 sm:py-8">
         <PageHeader title="Usage" />
         <p className="mt-4 text-sm text-muted-foreground">
           Couldn&rsquo;t load your usage just now. Try refreshing.
@@ -91,7 +91,7 @@ export function UsageView() {
   const plan = info?.plan ?? "free";
 
   return (
-    <div className="w-full max-w-3xl px-10 py-8">
+    <div className="w-full max-w-3xl px-4 py-6 sm:px-10 sm:py-8">
       <PageHeader
         title="Usage"
         subtitle="Everything here is shared across all of your workspaces."

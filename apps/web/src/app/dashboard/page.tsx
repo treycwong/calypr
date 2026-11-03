@@ -100,7 +100,7 @@ export default function ProjectsPage() {
     // Full width with matching side padding. `max-w-5xl` capped the content at 1024px, which on
     // anything wider left the grid hugging the sidebar with a growing empty gutter on the right —
     // the page looked mis-aligned rather than centred.
-    <div className="w-full px-10 py-8">
+    <div className="w-full px-4 py-6 sm:px-10 sm:py-8">
       <PageHeader
         title="Projects"
         actions={

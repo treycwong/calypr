@@ -127,7 +127,7 @@ export function WorkflowGallery() {
   }
 
   return (
-    <div className="w-full max-w-6xl px-10 py-8">
+    <div className="w-full max-w-6xl px-4 py-6 sm:px-10 sm:py-8">
       <PageHeader
         title="Workflows"
         subtitle="Ready-made agents for a job. Pick one and it opens as a new project you can edit."
