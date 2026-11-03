@@ -128,7 +128,7 @@ test("Workflows and Usage are reachable from the sidebar", async ({ page }) => {
   await expect(page.getByTestId("workflow-card").filter({ hasText: "ReAct" })).toHaveCount(0);
 
   await page.getByTestId("nav-usage").click();
-  await expect(page.getByRole("heading", { name: "Usage" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Usage", exact: true })).toBeVisible();
   // The three account-level rows that moved here from Settings.
   await expect(page.getByTestId("usage-projects")).toBeVisible();
   await expect(page.getByTestId("usage-workspaces")).toBeVisible();
