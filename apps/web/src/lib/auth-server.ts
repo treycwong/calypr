@@ -3,6 +3,8 @@ import { betterAuth } from "better-auth";
 import { nextCookies } from "better-auth/next-js";
 import { Pool } from "pg";
 
+import { captureServer } from "@/lib/analytics-server";
+
 /**
  * The Better Auth server instance — used only when Better Auth is configured
  * (`BETTER_AUTH_SECRET` + `DATABASE_URL` + GitHub OAuth creds). `secret` and `baseURL` are
@@ -64,6 +66,19 @@ export const auth = betterAuth({
     // address and matches it against the beta invite list, so a user who could change their own
     // email could type an invited one and self-grant beta — which includes code export, a paid
     // feature. Enabling this means moving entitlements off the mutable address first.
+  },
+  // The one moment we know an account is *new*: Better Auth creates the `user` row on a first
+  // social sign-in and never again. `user_signed_up` is the funnel's sign-up step, keyed by the
+  // same user id the browser identifies with (`identify` in lib/analytics), so it joins the
+  // visitor's earlier anonymous page views. No email or name: the id is enough to count.
+  databaseHooks: {
+    user: {
+      create: {
+        after: async (user) => {
+          await captureServer("user_signed_up", user.id);
+        },
+      },
+    },
   },
   // dash() connects this server to the Better Auth hosted dashboard; it reads its key from
   // BETTER_AUTH_API_KEY (set in the deployed env). nextCookies() must stay last — it lets Better

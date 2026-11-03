@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Tooltip as TooltipPrimitive } from "@base-ui/react/tooltip";
 import {
   Check,
@@ -43,6 +43,7 @@ import {
   switchWorkspace,
   type WorkspaceSummary,
 } from "@/lib/api";
+import { identify } from "@/lib/analytics";
 import type { Session } from "@/lib/auth";
 import { SIDEBAR_COOKIE } from "@/lib/sidebar";
 import { cn } from "@/lib/utils";
@@ -96,6 +97,10 @@ export function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const initials = (session.name || session.email || "U").slice(0, 2).toUpperCase();
+
+  // Every signed-in page renders this sidebar, so it is where the browser learns who it belongs
+  // to — the step that lets the funnel join a visitor's first page view to their sign-up.
+  useEffect(() => identify(session.userId), [session.userId]);
 
   const [collapsedPref, setCollapsedPref] = useState(defaultCollapsed);
   // On a phone the expanded sidebar took 240px of a ~375px screen and crushed the page into a
