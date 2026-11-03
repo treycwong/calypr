@@ -85,6 +85,7 @@ export function AuthPanel({
   error,
   children,
   footer,
+  legal,
   navAction,
 }: {
   title: string;
@@ -96,6 +97,9 @@ export function AuthPanel({
   /** Extra notices above the card — today only the account-deleted message on `/sign-in`. */
   children?: React.ReactNode;
   footer: React.ReactNode;
+  /** A line under the card — the sign-up page's agreement to the Terms. Outside the card, and
+   *  outside `auth-footer`, which specs expect to hold exactly one link. */
+  legal?: React.ReactNode;
   /** The other auth page, for the top-right nav button. */
   navAction: { label: string; href: string };
 }) {
@@ -157,6 +161,14 @@ export function AuthPanel({
             {footer}
           </p>
         </div>
+        {legal ? (
+          <p
+            className="mt-4 max-w-xs text-center text-xs leading-relaxed text-[var(--text-on-dark-faint)] [&_a]:underline [&_a]:underline-offset-4"
+            data-testid="auth-legal"
+          >
+            {legal}
+          </p>
+        ) : null}
       </div>
     </main>
   );

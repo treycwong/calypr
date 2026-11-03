@@ -7,9 +7,9 @@ import { SECTION_INNER } from "@/components/site/Section";
 // Shared site footer (marketing pages). v0-style multi-column layout: brand mark on the
 // left, link columns on the right. `mt-auto` + the flex-column page layout keep it pinned
 // to the bottom of the viewport on short pages. Links marked `external` open in a new tab
-// and show an arrow. Only links with a real destination belong here: About, Terms, Privacy,
-// Docs, GitHub and the socials were `#` placeholders and were removed (2026-11) rather than
-// left as dead ends. Add them back with their pages.
+// and show an arrow. Only links with a real destination belong here: About, Docs, GitHub and
+// the socials were `#` placeholders and were removed (2026-11) rather than left as dead ends.
+// Add them back with their pages, as Terms and Privacy were.
 type FooterLink = { label: string; href: string; external?: boolean };
 
 const COLUMNS: { title: string; links: FooterLink[] }[] = [
@@ -31,7 +31,11 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
   },
   {
     title: "Company",
-    links: [{ label: "Contact", href: "mailto:support@calypr.co" }],
+    links: [
+      { label: "Terms", href: "/terms" },
+      { label: "Privacy", href: "/privacy" },
+      { label: "Contact", href: "mailto:support@calypr.co" },
+    ],
   },
 ];
 

@@ -105,3 +105,29 @@ test("the waitlist form's input and button share the same height", async ({ page
     .evaluate((el) => el.getBoundingClientRect().height);
   expect(Math.abs(inputHeight - buttonHeight)).toBeLessThan(1);
 });
+
+test("Terms and Privacy are public, linked from the footer and from sign-up", async ({ page }) => {
+  for (const [path, title] of [
+    ["/terms", "Terms of Service"],
+    ["/privacy", "Privacy Policy"],
+  ] as const) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
+    await expect(page.locator("footer").getByRole("link", { name: path === "/terms" ? "Terms" : "Privacy" })).toHaveAttribute("href", path);
+  }
+  await page.goto("/sign-up");
+  await expect(page.getByTestId("auth-legal").getByRole("link", { name: "Terms" })).toHaveAttribute("href", "/terms");
+  await expect(page.getByTestId("auth-legal").getByRole("link", { name: "Privacy Policy" })).toHaveAttribute("href", "/privacy");
+});
+
+test("the legal pages have no unfilled placeholders", async ({ page }) => {
+  // `lib/legal.ts` shipped as a draft with bracketed blanks for the founder to fill. This keeps
+  // a page saying "[Your legal name or company]" from ever reaching production.
+  for (const path of ["/terms", "/privacy"]) {
+    await page.goto(path);
+    const text = await page.locator("article").innerText();
+    expect(text, `${path} still has a [placeholder]; fill in apps/web/src/lib/legal.ts`).not.toMatch(
+      /\[[^\]]+\]/,
+    );
+  }
+});
