@@ -1,0 +1,100 @@
+export const metadata = {
+  title: "Practise a language every day with flash cards that adapt to you",
+  description:
+    "Name a topic and Calypr drills you on it: a few cards at a time, scored as you go, harder when you're ready. Start free in one click, then make the deck your own.",
+  date: "2026-11-03",
+  category: "tutorial",
+  tags: ["language learning", "flash cards", "study", "templates"],
+};
+
+Most flash-card apps hand you somebody else's deck. That's fine until you need *your*
+vocabulary: the words from this week's class, the phrases for a trip next month, the kanji
+that keep tripping you up. Then you're back to typing cards by hand.
+
+Calypr works the other way round. You say what you want to practise, and an agent writes the
+cards, a few at a time, and keeps going for as long as you do. It notices what you miss and
+gives you harder ones when you're ready. You don't build a deck; you have a drill.
+
+This post shows the whole loop: starting in one click, how a drill works, making it yours,
+hearing the words out loud, and practising with friends.
+
+## Start in one click
+
+[Sign up for free](/sign-up) with Google or GitHub. No card, no API key. Your dashboard opens
+with a few ready-made starters, and **Language flash cards** is the first one.
+
+Click it. Calypr creates the project and opens the chat, with a few things to try:
+
+- *Spanish greetings*
+- *Japanese hiragana: the first ten*
+- *French food*
+
+Pick one, or type your own topic, and press **Send**. A few seconds later your first cards
+arrive.
+
+## How a drill works
+
+The agent sends **one to three cards at a time**, not a whole deck. Each shows the prompt
+side: a word, a character, a phrase.
+
+1. **Tap the card** to reveal the answer.
+2. Mark it **Got it** or **Missed it**. Be honest: that's what it learns from.
+3. The strip above the chat keeps score: how many you've got right, and how far through the
+   cards on screen you are (*"1 correct · 1 of 3 answered"*).
+
+Under the chat there are three shortcuts:
+
+- **Next** for another batch on the same topic;
+- **Harder** when the last batch was too easy;
+- **Explain that** when you want the grammar or the story behind an answer.
+
+You can also just type, as you would to a tutor: *"more verbs"*, *"only the ones I missed"*,
+*"mix in some past tense"*. The agent remembers the conversation, so it adjusts to what
+you've been getting wrong.
+
+## Make the deck yours
+
+The template is a starting point. Its behaviour lives in one place: the **System prompt** of
+its **Agent** block. Close the chat panel, click the Agent block on the canvas, and add a line
+or two to the end of the prompt. A few that work well:
+
+- *"Use JLPT N5 vocabulary only. Put the kanji on the front, and the reading and meaning on
+  the back."*
+- *"For Mandarin: Simplified characters on the front; pinyin with tone marks and the English
+  meaning on the back."*
+- *"I'm a beginner in Spanish. Use everyday words, and always include the article (el/la)."*
+- *"Only drill the vocabulary from this list:"* followed by your class word list.
+
+Press **Save**, open the chat again, and your next drill follows the new rules.
+
+## Hear it, too
+
+Reading a word and saying it are different skills. The **Translate & speak** template takes
+English, translates it into Mandarin, shows the transcript, and **speaks it aloud** with a
+native-sounding voice, so you can listen and repeat.
+
+It's two blocks you can change. To practise Japanese instead, edit the translator's System
+prompt to translate into Japanese, and change the Voice block's instructions to Japanese
+pronunciation. You'll find it under **Workflows** in the sidebar.
+
+## Practise with friends
+
+Click **Share** on any project to get a link. Anyone with it can run your drill in their
+browser, **with no account**, and keep their own score. It's a nice way to give a study
+group the same deck. Runs from the link use your credits, and each link is capped (25 runs by
+default) so a link that travels further than you meant can't run away with them. You can
+revoke it at any time.
+
+## What it costs
+
+A round of flash cards is a short text run, which costs **under one credit**. The Free plan
+includes 100 credits a month, enough for more than a hundred rounds. Voice clips cost about
+3 credits each.
+
+If you practise every day, **[Starter](/pricing)** is $5 a month for 500 credits. That's
+what it's for. Credits top up each month, and you can cancel any time.
+
+---
+
+*Ready to try it? [Start free](/sign-up). Language flash cards is the first thing on your
+dashboard.*
