@@ -26,6 +26,12 @@ export default async function SignUpPage({ searchParams }: Props) {
       enabled={betterAuthEnabled()}
       error={error}
       navAction={{ label: "Log in", href: "/sign-in" }}
+      legal={
+        <>
+          By continuing, you agree to our <Link href="/terms">Terms</Link> and{" "}
+          <Link href="/privacy">Privacy Policy</Link>.
+        </>
+      }
       footer={
         <>
           Already have an account?{" "}
