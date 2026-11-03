@@ -612,6 +612,24 @@ def test_checkout_charges_the_price_of_the_plan_asked_for(two_tiers, monkeypatch
 
 
 @requires_db
+def test_checkout_accepts_promotion_codes(two_tiers, monkeypatch):
+    """The beta cohort's free 3 months is a Stripe promotion code, typed in at Checkout. Without
+    this flag Checkout shows no code field and the coupon can't be redeemed at all."""
+    seen: list[dict] = []
+
+    def fake_create(**kwargs):
+        seen.append(kwargs)
+        return SimpleNamespace(url="https://checkout.example/s")
+
+    monkeypatch.setattr(stripe.checkout.Session, "create", fake_create)
+    with SessionLocal() as s:
+        if accounts.account_for_workspace(s, uuid.UUID(DEV_WORKSPACE_ID)) is None:
+            pytest.skip("no dev workspace")
+    assert client.post("/billing/checkout", json={"plan": "starter"}).status_code == 200
+    assert seen[0]["allow_promotion_codes"] is True
+
+
+@requires_db
 def test_checkout_refuses_a_second_subscription(two_tiers, monkeypatch):
     """A second Checkout would bill twice. Plan changes happen on the existing subscription."""
     monkeypatch.setattr(
