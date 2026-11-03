@@ -10,7 +10,7 @@ import {
   useAttachment,
 } from "@/components/AttachImage";
 import { ScoreStrip } from "@/components/cards/ScoreStrip";
-import { hasCards, useStudy } from "@/components/cards/useStudy";
+import { countCards, hasCards, useStudy } from "@/components/cards/useStudy";
 import { Markdown } from "@/components/Markdown";
 import { useToast } from "@/components/ui/toast";
 import { track } from "@/lib/analytics";
@@ -107,7 +107,11 @@ export function ShareChat({ token, agentName }: { token: string; agentName: stri
         </div>
       </div>
 
-      {studying ? <ScoreStrip score={study.score} variant="glass" /> : null}
+      {studying ? <ScoreStrip
+          score={study.score}
+          variant="glass"
+          shown={countCards(messages.map((m) => m.text))}
+        /> : null}
 
       {/* Messages */}
       <div ref={logRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-5" data-testid="chat-log">

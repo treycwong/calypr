@@ -1247,3 +1247,45 @@ TEMPLATE_CATEGORIES: dict[str, str] = {
     "tpl-notion-assistant": "Connected apps",
     "tpl-github-notion": "Connected apps",
 }
+
+# First messages to try — what the playground offers on an empty chat when a project was just
+# made from a template. The walkthrough of 2026-11-03 found new users opening a working template
+# and then facing "Send a message to test your agent" with no idea what this one wants: a topic?
+# a scene? a contract? Merchandising, like the categories above, so it lives here rather than on
+# GraphSpec. Clicking one *fills* the composer rather than sending it, which is what lets the
+# image-reading templates suggest a line and still have the user attach their picture first.
+TEMPLATE_STARTERS: dict[str, list[str]] = {
+    "tpl-flashcards": ["Spanish greetings", "Japanese hiragana: the first ten", "French food"],
+    "tpl-quiz-me": ["The solar system", "World War II", "Basic Python"],
+    "tpl-study-notes": ["Quiz me on these notes", "Make flashcards from the key terms"],
+    "tpl-study-notion": ["Quiz me on my Notion notes"],
+    "tpl-image-generation": [
+        "A lighthouse at dawn, in watercolour",
+        "A tabby cat on a sunny windowsill",
+    ],
+    "tpl-image-to-3d": ["A small wooden rocking horse", "A ceramic coffee mug"],
+    "tpl-text-to-video": ["A paper boat drifting down a rainy street"],
+    "tpl-image-to-video": ["Waves rolling onto a quiet beach at sunset"],
+    "tpl-street-photography": ["A noodle stall at night", "Commuters at a tram stop in the rain"],
+    "tpl-image-finder": ["A mountain lake at sunrise", "A cosy reading nook"],
+    "tpl-alt-text": ["Write alt text for this image"],
+    "tpl-label-reader": ["What are the key facts on this label?"],
+    "tpl-text-to-speech": ["Good morning! Here's your plan for today."],
+    "tpl-translate-speak": [
+        "Where is the nearest train station?",
+        "Thank you, the food was delicious.",
+    ],
+    "tpl-market-research": ["The market for plant-based snacks in Southeast Asia"],
+    "tpl-contract-review": [
+        "Review this clause: The supplier may end this agreement at any time without notice."
+    ],
+    "tpl-trip-planner": ["Three days in Kyoto in spring, mid-range budget"],
+    "tpl-customer-support": ["I was charged twice for my order", "How do I reset my password?"],
+    "tpl-routing": [
+        "Translate to French: where is the library?",
+        "Summarise: the meeting moved to Friday because the venue flooded, and the budget "
+        "review is postponed to next month.",
+    ],
+    "tpl-notion-assistant": ["What did I write about last week's meeting?"],
+    "tpl-github-notion": ["Summarise my repo's open issues in a new Notion page"],
+}

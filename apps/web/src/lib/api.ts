@@ -653,6 +653,9 @@ export type Template = {
   kind: "framework" | "template";
   /** Gallery grouping for the Workflows page. Empty for frameworks, which aren't listed there. */
   category: string;
+  /** First messages to try, offered on an empty chat right after creating a project from this
+   *  template. Empty for frameworks. */
+  starters: string[];
   graph: GraphSpec;
 };
 

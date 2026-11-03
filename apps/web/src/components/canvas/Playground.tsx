@@ -36,6 +36,7 @@ export function Playground({
   agentId,
   locked = false,
   scopeReady = true,
+  starters = [],
   onAssetGenerated,
   onNodeEvent,
   onRunReset,
@@ -51,6 +52,8 @@ export function Playground({
   /** False while the canvas is still resolving `?agent=` from the URL — History waits rather
    *  than briefly listing the wrong scope. */
   scopeReady?: boolean;
+  /** First messages to try, from the template this project was just made from. */
+  starters?: string[];
   /** A run stored a generated file. Media lives in the left rail (it is workspace-scoped, not
    *  conversation-scoped), so the panel that lists it is not ours to refresh — we just say it
    *  happened. */
@@ -268,6 +271,7 @@ export function Playground({
             locked={locked}
             scope={threadId}
             memoryExpired={loaded !== null && !loaded.hasState}
+            starters={starters}
             onSend={send}
             onStop={stop}
           />

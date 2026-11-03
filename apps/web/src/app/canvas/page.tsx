@@ -166,6 +166,10 @@ function CanvasInner() {
   } = useReactFlow();
   const flowStore = useStoreApi();
   const [showPlayground, setShowPlayground] = useState(false);
+  // The template this project was just made from (`?starter=`, set by /dashboard/new). The saved
+  // graph doesn't remember it, so this is the only way the chat can offer that template's first
+  // messages to try.
+  const [starterId, setStarterId] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState("");
   /** The graph as it was last persisted, serialized. Compared against the live canvas to tell
    *  whether Share would hand out a link to something other than what is on screen. Null until
@@ -293,10 +297,20 @@ function CanvasInner() {
   // Open an existing agent when arriving via /canvas?agent=<id> (from the dashboard), so Save
   // updates that agent rather than creating a new one.
   useEffect(() => {
-    const id = new URLSearchParams(window.location.search).get("agent");
+    const params = new URLSearchParams(window.location.search);
+    const id = params.get("agent");
     // Both paths mark the scope resolved through a callback rather than synchronously in the
     // effect body — a sync setState here is a cascading render, and the lint rule is right.
     const resolved = () => setAgentResolved(true);
+    // Fresh from a template: open the chat, since running it is the next thing to do and the
+    // walkthrough's newcomer had to go looking for the button.
+    const starter = params.get("starter");
+    if (starter) {
+      void Promise.resolve().then(() => {
+        setStarterId(starter);
+        setShowPlayground(true);
+      });
+    }
     // Nothing to fetch: a fresh canvas already knows its scope (no project).
     if (!id) {
       void Promise.resolve().then(resolved);
@@ -1447,6 +1461,7 @@ function CanvasInner() {
               agentId={agentId ?? undefined}
               locked={agentLocked}
               scopeReady={agentResolved}
+              starters={templates.find((t) => t.id === starterId)?.starters ?? []}
               onAssetGenerated={onAssetGenerated}
               onNodeEvent={onNodeEvent}
               onRunReset={onRunReset}

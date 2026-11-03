@@ -219,3 +219,20 @@ def test_every_workflow_has_a_gallery_category():
 
     empty = [c for c in CATEGORY_ORDER if c not in set(TEMPLATE_CATEGORIES.values())]
     assert not empty, f"category with nothing in it renders as an empty heading: {empty}"
+
+
+def test_every_template_offers_a_first_message():
+    """An empty chat with no idea what to type is where the 2026-11-03 walkthrough lost a new
+    user. A template without starters gets that blank chat back, so the omission fails here."""
+    from calypr_compiler.templates import TEMPLATE_STARTERS, TEMPLATES
+
+    missing = [t.id for t in TEMPLATES if not TEMPLATE_STARTERS.get(t.id)]
+    assert not missing, f"no starter messages for: {missing}"
+
+    stale = set(TEMPLATE_STARTERS) - {t.id for t in TEMPLATES}
+    assert not stale, f"starters for a template that no longer exists: {stale}"
+
+    # Chips, not paragraphs: a handful, each short enough to read at a glance in the panel.
+    for tid, starters in TEMPLATE_STARTERS.items():
+        assert len(starters) <= 3, f"{tid}: more than three starters"
+        assert all(0 < len(s) <= 140 for s in starters), f"{tid}: a starter is empty or too long"
