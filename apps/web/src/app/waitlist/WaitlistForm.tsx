@@ -57,7 +57,7 @@ export function WaitlistForm() {
           className="h-9 flex-1 rounded-md border border-border bg-card/40 px-4 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-foreground/40"
         />
         <button type="submit" className={buttonVariants({ size: "lg" })} disabled={busy}>
-          {busy ? "Joining…" : "Join Us"}
+          {busy ? "Saving…" : "Get updates"}
         </button>
       </form>
       {error ? (

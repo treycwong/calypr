@@ -87,10 +87,9 @@ test("checkout captures intent", async ({ page }) => {
 });
 
 // The two site headers had drifted into offering different *links* — same site, two answers to
-// "where can I go?". `site/nav`'s SITE_NAV fixes the links; the CTA is deliberately NOT shared
-// (see `SITE_HEADER_CTA`'s doc comment): the homepage's "Join Beta" is the still-invite-only path
-// onto the free beta cohort, while every other page's "Get Started" goes straight to sign-in.
-test("the pricing nav offers the same links as the homepage, with its own CTA", async ({
+// "where can I go?". `site/nav`'s SITE_NAV fixes the links, and since the beta ended every page
+// shares one CTA too: "Get Started", to sign-up.
+test("the pricing nav offers the same links and CTA as the homepage", async ({
   page,
 }) => {
   // **Hrefs, not rendered text.** The two headers are meant to look different — the landing
@@ -111,10 +110,9 @@ test("the pricing nav offers the same links as the homepage, with its own CTA", 
   // The stale CTA this test originally guarded against: /pricing used to offer "Open canvas"
   // where home offered the waitlist, which is how a visitor from search met a different product.
   await expect(page.locator("header").getByText("Open canvas")).toHaveCount(0);
-  // Pricing's own CTA — not "Join Beta", which stays the homepage's.
   await expect(page.locator("header").getByRole("link", { name: "Get Started" })).toHaveAttribute(
     "href",
-    "/sign-in",
+    "/sign-up",
   );
   await expect(page.locator("header").getByText("Sign in")).toHaveCount(0);
 });

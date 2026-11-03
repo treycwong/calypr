@@ -4,13 +4,12 @@
  * There used to be two headers — `LandingHeader` floating over the hero media and a `SiteHeader`
  * on every other route — and they had drifted into offering different *links* ("How it works"
  * vs "Features", "Open canvas" vs the waitlist), then into looking like two different sites.
- * There is one now: `LandingHeader`, sticky on the inner pages. This module survives it because
- * the link list still wants one home, and because the CTA genuinely does differ per surface.
+ * There is one now: `LandingHeader`, sticky on the inner pages, with this one link list and
+ * this one call to action.
  *
- * The call to action is **deliberately not shared**: the homepage nav's "Join Beta" is the
- * still-invite-only path onto the free beta cohort, while every other page's "Get Started"
- * goes straight to sign-in — billing is live, so that's the honest primary action once someone
- * has scrolled past the hero. Two different buttons on purpose, not drift.
+ * The homepage used to offer "Join Beta" here, onto an invite-only waitlist. Calypr has been
+ * open and selling since the 2026-11-02 retier, so that sent first-time visitors to a queue for
+ * something they could already use; every page now offers the same "Get Started".
  */
 export const SITE_NAV = [
   { label: "Features", href: "/#features" },
@@ -20,17 +19,8 @@ export const SITE_NAV = [
 ] as const;
 
 /**
- * `LandingHeader`'s call to action, on the homepage nav only.
- *
- * NOTE: this points at the waitlist, which predates billing going live — anyone can now buy
- * Plus from /pricing without an invite. Worth revisiting as a product decision (see TODO.md).
+ * The header's call to action, on every page. Goes to **sign-up**, not sign-in: the person
+ * clicking "Get Started" is by definition new, and /sign-in greets them with "Welcome back".
+ * Social sign-in creates the account from either page, so this is copy, not a different flow.
  */
-export const SITE_CTA = { label: "Join Beta", href: "/waitlist" } as const;
-
-/**
- * The inner pages' call to action — every page except the homepage, passed to `LandingHeader`
- * as `cta`. Goes straight to sign-in rather than the waitlist, matching the homepage's own hero
- * button: once billing is live, making a second visitor jump through the invite-only waitlist
- * just because they're on /pricing instead of / would be an inconsistency of its own.
- */
-export const SITE_HEADER_CTA = { label: "Get Started", href: "/sign-in" } as const;
+export const SITE_HEADER_CTA = { label: "Get Started", href: "/sign-up" } as const;

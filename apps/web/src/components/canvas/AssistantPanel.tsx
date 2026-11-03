@@ -405,7 +405,7 @@ export function AssistantPanel({
               className="font-medium underline underline-offset-4"
               data-testid="assistant-locked-upgrade"
             >
-              Upgrade to Plus
+              See plans
             </Link>
             <span className="text-muted-foreground">
               or delete down to the limit — free, and permanent.

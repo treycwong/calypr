@@ -12,15 +12,15 @@ import { cn } from "@/lib/utils";
 import { WaitlistForm } from "./WaitlistForm";
 
 export const metadata: Metadata = {
-  title: "Join the Beta team — Calypr",
+  title: "Build updates — Calypr",
   description:
-    "Join the Calypr beta: get access to the latest product features as we ship them, and help shape the product with your feedback.",
+    "Hear about new Calypr blocks, templates and the UI Builder as they ship. No spam, just the occasional build update.",
 };
 
 export default function WaitlistPage() {
   return (
-    // The homepage nav's CTA lands here, so it is the first page after the hero for anyone who
-    // takes it — the one inner page where a colour seam would be most visible.
+    // A build-updates list since the canvas opened to everyone (2026-11): the UI Builder teaser
+    // links here. The path stays `/waitlist` so old links and the `waitlist` table still fit.
     <div
       className="flex min-h-screen flex-col bg-background"
     >
@@ -32,14 +32,14 @@ export default function WaitlistPage() {
             which reads as the background showing through a panel that is meant to be solid.
             Scoped here it stops exactly where the content does. */}
         <GridLines />
-        <SectionLabel index="01">Early access</SectionLabel>
+        <SectionLabel index="01">Build updates</SectionLabel>
         <SectionHeading
           size="display"
-          accent="Beta team."
+          accent="as it ships."
           className="mt-6"
-          subtitle="Get access to the latest product features as we ship them, and help shape Calypr with your feedback. No spam — just the occasional build update."
+          subtitle="New blocks, new templates, and the UI Builder when it lands. No spam, just the occasional build update. Calypr itself is open now: you can start building today."
         >
-          Join the
+          Hear what&rsquo;s new
         </SectionHeading>
         <WaitlistForm />
       </main>

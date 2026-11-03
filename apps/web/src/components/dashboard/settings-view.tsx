@@ -441,7 +441,7 @@ export function SettingsView({
                   className="text-xs font-medium underline underline-offset-4"
                   data-testid="account-upgrade"
                 >
-                  Upgrade to Plus
+                  See plans
                 </Link>
               ) : null}
             </div>
@@ -501,7 +501,7 @@ export function SettingsView({
                     <span className="font-medium">
                       {formatDate(subscription.current_period_end)}
                     </span>
-                    . You&rsquo;ll keep Plus until then.
+                    . You&rsquo;ll keep {PLAN_COPY[plan]?.label ?? "your plan"} until then.
                   </>
                 ) : (
                   <>
@@ -518,24 +518,29 @@ export function SettingsView({
             <Separator className="my-4" />
 
             <div className="flex flex-wrap items-center gap-3">
-              {subscription?.portal_available ? (
-                // Everything mutating (cancel, switch plan, update card, invoices) lives in
-                // Stripe's hosted portal — we never see card data.
-                <Button
-                  size="sm"
-                  onClick={openPortal}
-                  data-testid="billing-manage"
-                >
-                  Manage billing
-                </Button>
-              ) : plan === "free" ? (
+              {/* A Free account can still have a Stripe customer — anyone who subscribed and
+                  then cancelled. Stripe's portal can manage that customer but can't start a new
+                  subscription, so the way back to a paid plan must not hide behind it. */}
+              {plan === "free" ? (
                 <Link
                   href="/pricing"
                   className={buttonVariants({ size: "sm" })}
                   data-testid="billing-upgrade"
                 >
-                  Upgrade to Plus
+                  See plans
                 </Link>
+              ) : null}
+              {subscription?.portal_available ? (
+                // Everything mutating (cancel, switch plan, update card, invoices) lives in
+                // Stripe's hosted portal — we never see card data.
+                <Button
+                  size="sm"
+                  variant={plan === "free" ? "outline" : "default"}
+                  onClick={openPortal}
+                  data-testid="billing-manage"
+                >
+                  Manage billing
+                </Button>
               ) : null}
               {portalMsg ? (
                 <span className="text-xs text-muted-foreground">{portalMsg}</span>
@@ -544,15 +549,12 @@ export function SettingsView({
 
             <p className="mt-4 text-xs text-muted-foreground">
               Manage billing opens Stripe&rsquo;s secure portal to cancel, change plan, update
-              your payment method, or download invoices. Your credit usage is under{" "}
-              <button
-                type="button"
-                className="underline underline-offset-4"
-                onClick={() => setTab("workspace")}
-              >
-                Workspace
-              </button>
-              .
+              your payment method, or download invoices. Your credits, projects and storage are
+              on the{" "}
+              <Link href="/dashboard/usage" className="underline underline-offset-4">
+                Usage
+              </Link>{" "}
+              page.
             </p>
           </div>
         </TabsContent>

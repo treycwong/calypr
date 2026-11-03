@@ -35,8 +35,8 @@ export function TemplatesShowcase() {
                 Start with a ready-made
               </SectionHeading>
               <p className="mt-5 max-w-xl text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)]">
-                Nineteen use-case templates, ten agent architectures. Load one, run it, keep
-                the code.
+                Templates for study, images, research and support, plus ten agent
+                architectures. Load one and run it.
               </p>
             </div>
             <ArrowLink href="/canvas" tone="accent" className="mb-1 hidden sm:inline-flex">

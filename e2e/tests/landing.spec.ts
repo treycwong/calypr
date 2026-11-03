@@ -7,37 +7,44 @@ import { API_URL } from "../playwright.config";
 test("the landing page renders the hero and CTAs", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Craft your next agentic app" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Get Started" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Join Beta" }).first()).toBeVisible();
+  await expect(page.getByTestId("hero-cta")).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Get Started" })).toBeVisible();
+  // The beta is over: the canvas is open, so nothing on the page should still queue people up.
+  await expect(page.getByRole("link", { name: "Join Beta" })).toHaveCount(0);
   // the agent-ladder templates are showcased further down the page
   await expect(page.getByText("Reflexion", { exact: true })).toBeVisible();
 });
 
-test("the hero CTA goes straight to sign-in — billing is live, no invite needed", async ({
+test("the hero CTA goes to sign-up, not to a log-in page that says welcome back", async ({
   page,
 }) => {
-  // Reversed from the invite-only era: Plus is self-serve from /pricing now, so the hero sends
-  // people to sign in rather than to the waitlist. "Join Beta" in the nav is the separate,
-  // still-invite-only path onto the free beta cohort.
+  // Whoever clicks "Get Started" is new. /sign-in greets them with "Welcome back", which is
+  // how this used to read to a first-time visitor.
   await page.goto("/");
-  await page.getByRole("link", { name: "Get Started" }).click();
-  await expect(page).toHaveURL(/\/sign-in/);
+  await page.getByTestId("hero-cta").click();
+  await expect(page).toHaveURL(/\/sign-up/);
   await expect(page.getByTestId("dev-sign-in")).toBeVisible();
 });
 
 test("the header nav has no separate Sign in link", async ({ page }) => {
-  // Removed once the hero CTA itself went to /sign-in — a second link to the same
-  // destination in the same header was redundant. The page's closing CTA section (a
-  // different, lower section, not the nav) keeps its own "Sign in" link independently.
+  // Removed once the hero CTA itself went to the auth pages — a second link to the same
+  // destination in the same header was redundant.
   await page.goto("/");
   await expect(page.locator("header").getByText("Sign in")).toHaveCount(0);
 });
 
-test("the nav's Join Beta CTA still leads to the waitlist", async ({ page }) => {
+test("the homepage header offers Get Started, same as every other page", async ({ page }) => {
+  // It used to offer "Join Beta" onto an invite-only waitlist, after billing went live.
   await page.goto("/");
-  await page.locator("header").getByRole("link", { name: "Join Beta" }).first().click();
-  await expect(page).toHaveURL(/\/waitlist/);
-  await expect(page.getByLabel("Email address")).toBeVisible();
+  await expect(page.locator("header").getByRole("link", { name: "Get Started" })).toHaveAttribute(
+    "href",
+    "/sign-up",
+  );
+});
+
+test("the footer has no dead links", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.locator('footer a[href="#"]')).toHaveCount(0);
 });
 
 test("an unauthenticated visit to the app still hits the auth gate", async ({ page }) => {
@@ -54,7 +61,7 @@ test("the waitlist form stores a signup", async ({ page, request }) => {
 
   await page.goto("/waitlist");
   await page.getByLabel("Email address").fill(email);
-  await page.getByRole("button", { name: "Join Us" }).click();
+  await page.getByRole("button", { name: "Get updates" }).click();
   await expect(page.getByText("You’re on the list")).toBeVisible();
 
   const rows = await (
@@ -94,7 +101,7 @@ test("the waitlist form's input and button share the same height", async ({ page
     .getByLabel("Email address")
     .evaluate((el) => el.getBoundingClientRect().height);
   const buttonHeight = await page
-    .getByRole("button", { name: "Join Us" })
+    .getByRole("button", { name: "Get updates" })
     .evaluate((el) => el.getBoundingClientRect().height);
   expect(Math.abs(inputHeight - buttonHeight)).toBeLessThan(1);
 });
