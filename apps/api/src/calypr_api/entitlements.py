@@ -78,8 +78,10 @@ class Limits:
 #:   buys about one.
 #: - **Code export is Plus-only.** It is what $10 buys over $5.
 #: - **`beta` mirrors Starter.** The founder's call is Starter free for 3 months for the beta
-#:   cohort. Until that is moved onto real `starter` rows with an expiry, `beta` behaves as
-#:   Starter, which takes code export away from them by decision.
+#:   cohort, and since 2026-11-03 that runs as a Stripe promotion code: partners buy Starter at
+#:   checkout for $0, and Stripe ends the discount and starts charging $5 by itself. So new
+#:   partners land on real `starter` rows; `beta` is left for anyone comped by hand (no expiry),
+#:   and behaves as Starter, which takes code export away from them by decision.
 _STARTER = Limits(
     projects=10,
     workspaces=1,

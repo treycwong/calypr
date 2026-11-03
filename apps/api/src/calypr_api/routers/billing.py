@@ -108,6 +108,10 @@ def create_checkout(
             # create a second customer for the same payer (the mapping is unique).
             customer=customer or None,
             customer_email=t.email if not customer and t.email else None,
+            # Beta partners get Starter free for 3 months as a Stripe promotion code (a 100%,
+            # 3-month coupon on the Starter product). Stripe owns the expiry and the switch to
+            # $5, so nothing here or in the webhook has to know a partner is one.
+            allow_promotion_codes=True,
             success_url=f"{origin}/dashboard/settings?upgraded=1",
             cancel_url=f"{origin}/pricing",
         )
