@@ -69,6 +69,13 @@ export function initAnalytics(): boolean {
   return true;
 }
 
+/** Tie this browser to the signed-in user, so the funnel can follow one person from their first
+ *  anonymous page view to a paid plan. PostHog merges the anonymous history into the user on
+ *  the first call; later calls are no-ops. The id only — no email or name is sent. */
+export function identify(userId: string): void {
+  if (initAnalytics() && posthog.get_distinct_id() !== userId) posthog.identify(userId);
+}
+
 export function track(event: AnalyticsEvent, props?: Record<string, unknown>): void {
   if (initAnalytics()) posthog.capture(event, props);
 }

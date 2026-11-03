@@ -143,7 +143,7 @@ def create_checkout(
 
     posthog_client.capture(
         "checkout_started",
-        distinct_id=str(account.id),
+        distinct_id=_person(account),
         properties={"account_id": str(account.id), "workspace_id": str(t.workspace_id)},
     )
     return CheckoutSession(url=checkout.url or "")
@@ -211,10 +211,18 @@ def create_portal(request: Request, t: Tenant = Depends(tenant)) -> PortalSessio
 
     posthog_client.capture(
         "billing_portal_opened",
-        distinct_id=str(account.id),
+        distinct_id=_person(account),
         properties={"account_id": str(account.id), "workspace_id": str(t.workspace_id)},
     )
     return PortalSession(url=portal.url or "")
+
+
+def _person(account: Account) -> str:
+    """Who a billing event is about, as PostHog knows them: the owner's user id, which is what the
+    browser identifies with (`identify` in the web's lib/analytics). Keyed by the account id these
+    events could never join the funnel's sign-up and first-run steps. Accounts created before
+    0016 may have no owner; the account id is the best we have for those."""
+    return account.owner_user_id or str(account.id)
 
 
 def _field(obj: object, name: str) -> str | None:
@@ -348,7 +356,7 @@ def _apply(session: Session, event: stripe.Event) -> None:
         session.commit()
         posthog_client.capture(
             "subscription_activated",
-            distinct_id=str(account.id),
+            distinct_id=_person(account),
             properties={"account_id": str(account.id), "plan": plan},
         )
         log.info("account %s upgraded to %s", account.id, plan)
@@ -400,7 +408,7 @@ def _apply(session: Session, event: stripe.Event) -> None:
         if account is not None:
             posthog_client.capture(
                 "invoice_payment_failed",
-                distinct_id=str(account.id),
+                distinct_id=_person(account),
                 properties={"account_id": str(account.id)},
             )
         return
