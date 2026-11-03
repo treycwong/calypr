@@ -145,8 +145,10 @@ export const PRICING_FAQ = [
   },
   {
     q: "Can I get a refund?",
-    // Policy, not code: placeholder until the founder decides the refund policy.
-    a: "You can cancel any time from Billing, and you keep your plan until the end of the period you've paid for. If something went wrong with a charge, get in touch and we'll sort it out.",
+    // Policy, not code (decided 2026-11-03). Support refunds in the Stripe dashboard with Cancel
+    // → Immediately + Refund last payment: the app doesn't act on a bare refund, so a refund
+    // without the cancel would leave the plan paid and charge again next month.
+    a: "Yes. If you ask within 7 days of a charge, we'll refund it in full and end your plan straight away. After that, you can cancel any time from Billing and keep your plan until the end of the period you've paid for. Email support@calypr.co.",
   },
   {
     q: "What is a credit?",
