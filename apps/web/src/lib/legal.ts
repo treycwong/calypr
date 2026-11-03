@@ -1,18 +1,19 @@
 // The facts the Terms and Privacy pages state about who runs Calypr. One place, because each is
 // quoted on both pages and a mismatch between them is worse than either being vague.
 //
-// DRAFT (2026-11-03): the bracketed values are blanks for the founder to fill in before these
-// pages go live. They are business and legal decisions, not things the code can know. Have the
-// finished pages read by someone qualified in your jurisdiction; these drafts describe what the
-// product actually does, which is the half a lawyer can't get from a template.
+// Filled in by the founder on 2026-11-03. These are business and legal decisions, not things the
+// code can know; an E2E guard (landing.spec) fails if any value here is a [bracketed] blank. The
+// pages describe what the product actually does — have them read by someone qualified in
+// Malaysia before relying on them.
 
 export const LEGAL = {
-  /** The legal person or company that operates Calypr and that customers contract with. */
-  operator: "[Your legal name or company]",
+  /** Who operates Calypr and whom customers contract with. Calypr Co. is a trading name, not a
+   *  separate company, so the person behind it is named. */
+  operator: "Tracey Wong, trading as Calypr Co.",
   /** Where that operator is based, as it should appear in the Terms. */
-  operatorLocation: "[Country]",
+  operatorLocation: "Malaysia",
   /** The law that governs the Terms, and where disputes are heard. */
-  governingLaw: "[Country / state]",
+  governingLaw: "Malaysia",
   /** The youngest a user may be. 16 covers the strictest common default (the EU's GDPR); paid
    *  plans may want 18. */
   minimumAge: 16,
