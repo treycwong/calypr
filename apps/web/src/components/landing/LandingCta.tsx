@@ -25,12 +25,12 @@ export function LandingCta() {
             Build
           </SectionHeading>
           <p className="mx-auto mt-5 max-w-md text-pretty text-lg leading-[1.55] text-[var(--text-on-dark-muted)]">
-            From a prompt to an agent you own. Draw it, run it, take the code with you.
+            From a prompt to a working agent. Draw it, run it, share it.
           </p>
           <div className="mt-9 flex items-center justify-center">
-            {/* "Try for Free", not "Get Started" — the hero owns that label and the landing
-                E2E matches it with a strict-mode locator. */}
-            <ButtonLink href="/sign-in" variant="white" size="lg">
+            {/* "Try for Free", not a third "Get Started" (header and hero both carry that
+                label). Sign-up, for the same reason as the hero: whoever clicks is new. */}
+            <ButtonLink href="/sign-up" variant="white" size="lg">
               Try for Free
             </ButtonLink>
           </div>

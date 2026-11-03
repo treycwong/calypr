@@ -161,8 +161,19 @@ export function UsageView() {
             ) : null}
             {credits.remaining === 0 ? (
               <p className="mt-2 text-xs text-state-warning">
-                You&rsquo;re out of credits until they reset. Add your own key in Settings to keep
-                running{plan === "free" ? ", or upgrade to Plus" : ""}.
+                {/* Upgrade first: it is the one-click way to keep going. Plus is the top tier,
+                    so it gets only the own-key route. */}
+                You&rsquo;re out of credits until they reset.{" "}
+                {plan !== "plus" ? (
+                  <>
+                    <Link href="/pricing" className="font-medium underline underline-offset-4">
+                      Upgrade for more credits
+                    </Link>
+                    , or add your own key in Settings to keep running.
+                  </>
+                ) : (
+                  "Add your own key in Settings to keep running."
+                )}
               </p>
             ) : null}
           </div>

@@ -531,7 +531,7 @@ export function Capabilities() {
         </div>
         <p className="mt-10 font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-faint)]">
           01 draw the graph <span className="text-[var(--accent-on-dark)]">·</span> 02 run &amp;
-          inspect <span className="text-[var(--accent-on-dark)]">·</span> 03 own the code
+          inspect <span className="text-[var(--accent-on-dark)]">·</span> 03 share it
         </p>
       </Reveal>
 
@@ -566,7 +566,7 @@ export function Capabilities() {
         <Tile
           chip="video"
           title="Video generation"
-          body="Seedance on fal — write a shot, or animate a still the Image node just made. Plus, billed in credits."
+          body="Seedance on fal — write a shot, or animate a still the Image node just made. On every plan, billed in credits."
           className="lg:col-span-5"
         >
           <VideoVisual />

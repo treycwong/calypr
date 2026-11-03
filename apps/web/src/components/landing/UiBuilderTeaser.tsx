@@ -57,8 +57,10 @@ export function UiBuilderTeaser() {
               Design chatbot interfaces, websites and more — wired straight to the agents you
               drew. The canvas builds the brain; the builder gives it a face.
             </p>
+            {/* The waitlist is now a build-updates list, not a queue for access: the canvas
+                is open, and only the UI Builder is still to come. */}
             <ButtonLink href="/waitlist" variant="secondary" className="mt-8">
-              Join Beta
+              Get updates
               <ArrowRight className="h-4 w-4" strokeWidth={1.75} />
             </ButtonLink>
           </Reveal>

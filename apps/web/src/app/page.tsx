@@ -140,17 +140,18 @@ export default function Home() {
                   here comes from the size gap to the headline, which is how this system is
                   meant to carry it anyway. */}
               <p className="mx-auto mt-6 max-w-[46ch] text-pretty text-lg leading-[1.55] text-[var(--text-on-dark)]">
-                Draw an agent on a canvas, run it, and take the Python with you. No ceiling.
+                Draw an agent on a canvas and run it in minutes. Free to start, no key, no card.
               </p>
 
               {/* `flex-wrap` rather than a fixed row: at 320px the two capsules do not fit
                   side by side, and wrapping is the only outcome that keeps both tappable. */}
               <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
-                {/* Billing is live (Plus is self-serve from /pricing), so the hero sends
-                    people straight to sign-in rather than the waitlist. "Join Beta" in the
-                    nav is the separate, still-invite-only path onto the free beta cohort. */}
+                {/* Sign-up, like the header's CTA: whoever clicks this is new, and /sign-in
+                    would greet them with "Welcome back". `data-testid` because the header
+                    now carries the same label, so a by-name locator would match both. */}
                 <ButtonLink
-                  href="/sign-in"
+                  href="/sign-up"
+                  data-testid="hero-cta"
                   variant="primary"
                   size="md"
                   className="sm:px-[30px] sm:py-4 sm:text-base"

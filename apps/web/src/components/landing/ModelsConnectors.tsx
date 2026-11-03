@@ -104,7 +104,7 @@ export function ModelsConnectors() {
 
       <div className={`${SECTION_INNER} mt-10`}>
         <p className="font-mono text-[11px] font-bold uppercase tracking-[0.14em] text-[var(--text-on-dark-faint)]">
-          Fake model built in — no API key needed to start.
+          Free monthly credits — no API key needed to start.
         </p>
       </div>
     </Section>

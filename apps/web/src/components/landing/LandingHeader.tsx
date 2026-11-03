@@ -5,8 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { SiteLogo } from "@/components/site/Logo";
-import { SITE_CTA, SITE_NAV } from "@/components/site/nav";
-import { StatusDot } from "@/components/spectra/StatusDot";
+import { SITE_HEADER_CTA, SITE_NAV } from "@/components/site/nav";
 import { cn } from "@/lib/utils";
 
 // The site header: transparent, a centred glass nav pill on desktop, a hamburger sheet on
@@ -24,19 +23,17 @@ import { cn } from "@/lib/utils";
 // `tone` exists because the hero is now the system's one light surface. The mark is a white
 // SVG, so on light it gets inverted back to near-black rather than swapped for a second asset.
 //
-// Links come from `site/nav`, which is also where the two CTAs live.
+// Links come from `site/nav`, which is also where the CTA lives.
 const NAV = SITE_NAV;
 
 export function LandingHeader({
   tone = "dark",
-  cta = SITE_CTA,
+  cta = SITE_HEADER_CTA,
   sticky = false,
 }: {
   tone?: "dark" | "light";
-  /** The call to action, because it is the one thing the two surfaces do *not* share. The
-   *  homepage offers "Join Beta" (the still-invite-only free cohort); every other page offers
-   *  "Get Started", straight to sign-in. See `SITE_HEADER_CTA`'s doc comment — that difference
-   *  is deliberate, and folding the pages onto one header must not quietly erase it. */
+  /** The call to action. Every page uses `SITE_HEADER_CTA` today; it stays a prop so a page
+   *  with a genuinely different primary action can say so. */
   cta?: { label: string; href: string };
   /** Inner pages scroll past their header and want it to follow; the homepage's floats over a
    *  one-viewport hero and must not. */
@@ -44,10 +41,6 @@ export function LandingHeader({
 }) {
   const [open, setOpen] = useState(false);
   const light = tone === "light";
-  // The pulsing dot means "the beta cohort is open", so it belongs to that CTA and not to
-  // whatever else is passed in. On "Get Started" it would be a live-status indicator for
-  // nothing.
-  const beta = cta.href === SITE_CTA.href;
 
   // Glass, not a fill: the capsules sit over the hero surface, and blur is the only way this
   // system is allowed to separate an element from what's behind it.
@@ -114,7 +107,6 @@ export function LandingHeader({
                 : "text-[var(--text-on-dark)] hover:bg-white/[0.08]",
             )}
           >
-            {beta ? <StatusDot pulse /> : null}
             {cta.label}
           </Link>
         </div>
@@ -165,7 +157,6 @@ export function LandingHeader({
               onClick={() => setOpen(false)}
               className="mt-1 inline-flex items-center gap-2 rounded-xl bg-[image:var(--grad-accent)] px-4 py-3 font-mono text-[11px] uppercase tracking-[0.14em] font-bold text-[var(--ink-950)]"
             >
-              {beta ? <StatusDot className="bg-[var(--ink-950)] shadow-none" /> : null}
               {cta.label}
             </Link>
           </nav>

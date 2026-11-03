@@ -7,7 +7,9 @@ import { SECTION_INNER } from "@/components/site/Section";
 // Shared site footer (marketing pages). v0-style multi-column layout: brand mark on the
 // left, link columns on the right. `mt-auto` + the flex-column page layout keep it pinned
 // to the bottom of the viewport on short pages. Links marked `external` open in a new tab
-// and show an arrow; the rest are placeholders (#) until their destinations exist.
+// and show an arrow. Only links with a real destination belong here: About, Terms, Privacy,
+// Docs, GitHub and the socials were `#` placeholders and were removed (2026-11) rather than
+// left as dead ends. Add them back with their pages.
 type FooterLink = { label: string; href: string; external?: boolean };
 
 const COLUMNS: { title: string; links: FooterLink[] }[] = [
@@ -21,28 +23,15 @@ const COLUMNS: { title: string; links: FooterLink[] }[] = [
     ],
   },
   {
-    title: "Company",
-    links: [
-      { label: "About", href: "#" },
-      { label: "Terms", href: "#" },
-      { label: "Privacy", href: "#" },
-    ],
-  },
-  {
     title: "Resources",
     links: [
-      { label: "Docs", href: "#" },
       { label: "Blog", href: "/blog" },
       { label: "FAQs", href: "/pricing#faq" },
-      { label: "GitHub", href: "#", external: true },
     ],
   },
   {
-    title: "Social",
-    links: [
-      { label: "Twitter", href: "#", external: true },
-      { label: "LinkedIn", href: "#", external: true },
-    ],
+    title: "Company",
+    links: [{ label: "Contact", href: "mailto:support@calypr.co" }],
   },
 ];
 
@@ -58,7 +47,14 @@ function FooterColumn({ index, title, links }: { index: string; title: string; l
       <ul className="mt-4 space-y-3">
         {links.map(({ label, href, external }) => (
           <li key={label}>
-            {external ? (
+            {href.startsWith("mailto:") ? (
+              <a
+                href={href}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {label}
+              </a>
+            ) : external ? (
               <a
                 href={href}
                 target="_blank"
@@ -100,7 +96,7 @@ export function SiteFooter() {
               Design AI Agents on Canvas.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-10 sm:grid-cols-4 md:gap-16">
+          <div className="grid grid-cols-2 gap-10 sm:grid-cols-3 md:gap-16">
             {COLUMNS.map((col, i) => (
               <FooterColumn key={col.title} index={`0${i + 1}`} {...col} />
             ))}

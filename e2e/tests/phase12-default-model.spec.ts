@@ -121,7 +121,11 @@ test("an exhausted balance says what to do about it", async ({ page }) => {
   await signInAt(page, "/dashboard/usage");
 
   await expect(page.getByTestId("ws-credits")).toContainText("out of credits");
-  await expect(page.getByTestId("ws-credits")).toContainText("upgrade to Plus");
+  // Leads with upgrading, the one-click way to keep going, and links to the plans.
+  await expect(page.getByTestId("ws-credits").getByRole("link", { name: "Upgrade for more credits" })).toHaveAttribute(
+    "href",
+    "/pricing",
+  );
 });
 
 test("the panel is hidden when there is no allowance", async ({ page }) => {
