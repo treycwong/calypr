@@ -184,6 +184,11 @@ test("a workflow card spawns a project with its nodes ready", async ({ page }) =
   await expect(page.getByTestId("node-output")).toBeVisible();
   await expect(page.locator(".react-flow__edge")).toHaveCount(2);
 
+  // Arriving from a template opens the chat (phase30). Block settings share that side of the
+  // screen, so close it before inspecting one.
+  await expect(page.getByTestId("playground")).toBeVisible();
+  await page.getByTestId("toggle-playground").click();
+
   // And it drills: the card protocol rode along in the saved graph.
   await page.getByTestId("node-agent").click();
   await expect(page.getByTestId("cfg-prompt")).toHaveValue(/calypr-card/);

@@ -31,6 +31,7 @@ import {
   type WorkspaceList,
 } from "@/lib/api";
 import { ProjectArt } from "@/components/dashboard/ProjectArt";
+import { StarterTemplates } from "@/components/dashboard/StarterTemplates";
 import { LockedBanner } from "@/components/dashboard/locked-banner";
 import { UpgradeDialog } from "@/components/dashboard/UpgradeDialog";
 import { PageHeader } from "@/components/dashboard/PageHeader";
@@ -160,6 +161,9 @@ export default function ProjectsPage() {
             >
               <Plus className="h-4 w-4" /> New Project
             </Link>
+            {(agents ?? []).length === 0 ? (
+              <StarterTemplates onCapped={() => setCapped(true)} />
+            ) : null}
           </div>
         ) : (
           <div

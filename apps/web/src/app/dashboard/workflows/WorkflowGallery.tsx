@@ -114,7 +114,8 @@ export function WorkflowGallery() {
       // Saved first, then opened by id: the canvas loads the graph from the project, so the
       // nodes are already wired when it paints — no "apply a template" step to remember.
       const { id } = await createAgent(t.name, t.graph);
-      router.push(`/canvas?agent=${id}`);
+      // `starter` opens the chat with this template's first messages to try (see /canvas).
+      router.push(`/canvas?agent=${id}&starter=${encodeURIComponent(t.id)}`);
     } catch (err) {
       setBusy(null);
       // Out of project slots is an answer, not a failure — say what they hit and what passes it.

@@ -15,6 +15,7 @@ from calypr_compiler import (
     CATEGORY_ORDER,
     FRAMEWORKS,
     TEMPLATE_CATEGORIES,
+    TEMPLATE_STARTERS,
     TEMPLATES,
     validate_graph,
 )
@@ -164,6 +165,7 @@ def list_templates() -> list[TemplateInfo]:
             description=t.description or "",
             kind=kind,
             category=TEMPLATE_CATEGORIES.get(t.id, ""),
+            starters=TEMPLATE_STARTERS.get(t.id, []),
             graph=t,
         )
         for kind, group in (("framework", FRAMEWORKS), ("template", ordered))

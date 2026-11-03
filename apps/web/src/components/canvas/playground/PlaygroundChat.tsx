@@ -11,7 +11,7 @@ import {
   useAttachment,
 } from "@/components/AttachImage";
 import { ScoreStrip } from "@/components/cards/ScoreStrip";
-import { hasCards, useStudy } from "@/components/cards/useStudy";
+import { countCards, hasCards, useStudy } from "@/components/cards/useStudy";
 import { Markdown } from "@/components/Markdown";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +45,7 @@ export function PlaygroundChat({
   locked = false,
   scope,
   memoryExpired,
+  starters = [],
   onSend,
   onStop,
 }: {
@@ -63,6 +64,9 @@ export function PlaygroundChat({
    *  what is on screen. Surfaced rather than hidden: the alternative is the user asking a
    *  follow-up and getting a baffling answer. */
   memoryExpired: boolean;
+  /** First messages to try on an empty chat. Clicking one fills the composer rather than
+   *  sending, so a template that reads an image still lets you attach it first. */
+  starters?: string[];
   onSend: (text: string, images: string[]) => void;
   /** Abort the run in flight. The server keeps whatever streamed, marked `partial`. */
   onStop: () => void;
@@ -97,14 +101,34 @@ export function PlaygroundChat({
 
   return (
     <div className="flex h-full flex-col">
-      {studying ? <ScoreStrip score={study.score} variant="panel" /> : null}
+      {studying ? <ScoreStrip
+          score={study.score}
+          variant="panel"
+          shown={countCards(messages.map((m) => m.text))}
+        /> : null}
       <div ref={logRef} className="flex-1 space-y-3 overflow-auto p-3" data-testid="chat-log">
         {messages.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             {locked
               ? "This project is read-only — its saved chats are still here under History."
-              : "Send a message to test your agent."}
+              : starters.length > 0
+                ? "Try one of these, or type your own:"
+                : "Send a message to test your agent."}
           </p>
+        ) : null}
+        {messages.length === 0 && !locked && starters.length > 0 ? (
+          <div className="flex flex-col items-start gap-1.5" data-testid="chat-starters">
+            {starters.map((text) => (
+              <button
+                key={text}
+                type="button"
+                onClick={() => setInput(text)}
+                className="rounded-lg border border-border px-3 py-1.5 text-left text-sm transition-colors hover:border-foreground/30 hover:bg-muted"
+              >
+                {text}
+              </button>
+            ))}
+          </div>
         ) : null}
         {messages.map((m) => {
           // A turn carrying a card breaks out of the bubble and spans the panel. That single

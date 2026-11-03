@@ -7,6 +7,7 @@ from calypr_compiler.templates import (
     FRAMEWORKS,
     STARTERS,
     TEMPLATE_CATEGORIES,
+    TEMPLATE_STARTERS,
     TEMPLATES,
 )
 from calypr_compiler.validate import Issue, validate_graph
@@ -20,6 +21,7 @@ __all__ = [
     "CATEGORY_ORDER",
     "FRAMEWORKS",
     "TEMPLATE_CATEGORIES",
+    "TEMPLATE_STARTERS",
     "TEMPLATES",
     "STARTERS",
 ]

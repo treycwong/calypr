@@ -20,6 +20,12 @@ export function hasCards(texts: string[]): boolean {
   return texts.some((t) => t.includes(FENCE));
 }
 
+/** How many cards a transcript has shown so far — one per fence. The score strip measures
+ *  progress against this; without it, answering the first of three cards read as "1 / 1, 100%". */
+export function countCards(texts: string[]): number {
+  return texts.reduce((n, t) => n + t.split(FENCE).length - 1, 0);
+}
+
 /** Scoring plus the card renderer for one surface. `scope` identifies the conversation, so two
  *  sessions on the same share link keep separate tallies. */
 export function useStudy(scope: string, variant: CardVariant) {

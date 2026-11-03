@@ -48,7 +48,9 @@ function blankGraph(): GraphSpec {
 
 export default function NewProjectPage() {
   const router = useRouter();
-  const [name, setName] = useState("Untitled Agent");
+  // Empty, with "Untitled Agent" only as the placeholder: a pre-filled name always won over the
+  // template's own, so every project made from a template was called "Untitled Agent".
+  const [name, setName] = useState("");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [busy, setBusy] = useState(false);
   const [capped, setCapped] = useState<CapDetail | null>(null);
@@ -59,12 +61,15 @@ export default function NewProjectPage() {
       .catch(() => setTemplates([]));
   }, []);
 
-  async function start(graph: GraphSpec, fallbackName: string) {
+  async function start(graph: GraphSpec, fallbackName: string, starter?: string) {
     if (busy) return;
     setBusy(true);
     try {
       const { id } = await createAgent(name.trim() || fallbackName, graph);
-      router.push(`/canvas?agent=${id}`);
+      // `starter` tells the canvas which template this came from — the saved graph forgets
+      // (its id becomes `canvas-agent`) — so it can open the chat with that template's first
+      // messages to try instead of a blank "send a message".
+      router.push(`/canvas?agent=${id}${starter ? `&starter=${encodeURIComponent(starter)}` : ""}`);
     } catch (err) {
       setBusy(false);
       if (err instanceof CapReachedError) {
@@ -74,9 +79,12 @@ export default function NewProjectPage() {
     }
   }
 
+  // Templates first: they are jobs a newcomer recognises ("Language flash cards"). Frameworks are
+  // agent architectures in textbook terms ("Model-based reflex") and read as homework when they
+  // are the first thing on the page.
   const groups: [string, Template[]][] = [
-    ["Frameworks", templates.filter((t) => t.kind === "framework")],
     ["Templates", templates.filter((t) => t.kind === "template")],
+    ["Frameworks", templates.filter((t) => t.kind === "framework")],
   ];
 
   return (
@@ -90,7 +98,7 @@ export default function NewProjectPage() {
       <PageHeader
         className="mt-4"
         title="Start a new project"
-        subtitle="Name it, then start from a blank canvas or a template."
+        subtitle="Pick a template to run in one click, or start from a blank canvas. The name is optional."
       />
 
       <div className="mt-6 max-w-sm">
@@ -102,6 +110,7 @@ export default function NewProjectPage() {
           className="mt-1.5"
           value={name}
           onChange={(e) => setName(e.target.value)}
+          placeholder="Untitled Agent"
           data-testid="new-name"
         />
       </div>
@@ -136,7 +145,7 @@ export default function NewProjectPage() {
                 <button
                   type="button"
                   key={t.id}
-                  onClick={() => start(t.graph, t.name)}
+                  onClick={() => start(t.graph, t.name, t.id)}
                   disabled={busy}
                   className="rounded-lg border border-border bg-card p-4 text-left transition hover:border-foreground/20 disabled:opacity-50"
                 >

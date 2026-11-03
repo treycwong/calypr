@@ -24,6 +24,9 @@ export type AnalyticsEvent =
   // the project cap — kept distinct from `code_upgrade_clicked` because the two paywalls sell
   // different things and folding them together would hide which one converts.
   | "project_cap_hit"
+  // First-run funnel: a project started from a one-click starter on the empty dashboard. Its
+  // `template` prop says which, so we can see which first runs newcomers actually reach for.
+  | "starter_template_used"
   | "project_cap_upgrade_clicked"
   // The third paywall: a free user reached for a paid block in the palette. Distinct again —
   // this one sells a capability rather than more room, so folding it into the project cap would

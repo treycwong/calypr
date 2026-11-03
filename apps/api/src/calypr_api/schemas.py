@@ -363,6 +363,9 @@ class TemplateInfo(BaseModel):
     #: Gallery grouping for the Workflows page. Empty for frameworks, which are chosen while
     #: building on the canvas rather than browsed as jobs to do.
     category: str = ""
+    #: First messages to try, offered on an empty chat when a project was just made from this
+    #: template. Empty for frameworks.
+    starters: list[str] = []
     graph: GraphSpec
 
 
