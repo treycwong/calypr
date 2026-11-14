@@ -13,6 +13,7 @@ here because they're what makes the providers safe to ship:
 from __future__ import annotations
 
 import os
+import re
 
 import httpx
 import pytest
@@ -70,7 +71,7 @@ def test_unsplash_with_key_formats_photos(monkeypatch):
 
 @pytest.mark.parametrize(
     ("status", "expected"),
-    [(401, "rejected the API key"), (403, "Rate-limited"), (500, "HTTP 500")],
+    [(401, "rejected the API key"), (500, "HTTP 500")],
 )
 def test_unsplash_errors_are_explained_not_raised(monkeypatch, status: int, expected: str):
     monkeypatch.setattr(
@@ -80,6 +81,32 @@ def test_unsplash_errors_are_explained_not_raised(monkeypatch, status: int, expe
     )
     out = _invoke(tool_spec("images_unsplash", api_key="k"), query="x")
     assert expected in out
+
+
+def test_unsplash_stub_photos_are_real_urls():
+    """The stub's photos must be real `images.unsplash.com/photo-…` urls with a photographer
+    credit. They were `…/demo-1` placeholders that 404, so every keyless Image Finder run in
+    production rendered a broken image (CAL-16)."""
+    out = _invoke(tool_spec("images_unsplash"), query="a mountain lake")
+    urls = re.findall(r"https://images\.unsplash\.com/\S+", out)
+    assert len(urls) == 3
+    assert all(re.match(r"https://images\.unsplash\.com/photo-\d+-[0-9a-f]+\?", u) for u in urls)
+    assert "demo-" not in out
+    assert out.count("(by ") == 3
+
+
+def test_unsplash_rate_limit_falls_back_to_the_demo_photos(monkeypatch):
+    """A 403 is Unsplash's hourly limit. On the shared platform key that hits every newcomer at
+    once, so it serves the demo photos as a successful search rather than "try again later"."""
+    monkeypatch.setattr(
+        httpx,
+        "get",
+        lambda url, **kw: httpx.Response(403, request=httpx.Request("GET", url)),
+    )
+    out = _invoke(tool_spec("images_unsplash", api_key="k"), query="x")
+    assert out.startswith("Search succeeded")
+    assert "hourly limit" in out
+    assert "images.unsplash.com/photo-" in out
 
 
 def test_unsplash_network_failure_is_explained_not_raised(monkeypatch):

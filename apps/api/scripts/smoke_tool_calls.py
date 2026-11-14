@@ -13,8 +13,9 @@ What counts as proof is the stream's own `{"type": "node", "node_id": "tools", "
 events: a `start` *and* an `end` for the Tool node. The answer text is never trusted on its own —
 a model can describe search results it never fetched. On top of that:
 
-- **Image Finder** must show a real Unsplash photo url. The keyless stub's `…/demo-N` urls mean
-  the tool ran on placeholders (no Unsplash key in the workspace) — reported as STUB, not PASS.
+- **Image Finder** must show a real Unsplash photo url *from a live search*. The fallback serves
+  three fixed demo photos (no key on file, or the key is rate-limited); one of those in the answer
+  is reported as STUB, not PASS. The query is chosen so none of the demo photos would match it.
 - **Notion** uses the workspace's first Notion connector; the run is SKIP if there isn't one.
 - **MCP ReAct** points at `--mcp-url` (a public, no-auth server by default), since the template
   ships with an empty one.
@@ -43,7 +44,10 @@ DEFAULT_API = "https://calypr-api-production.up.railway.app"
 #: Public, unauthenticated streamable-HTTP MCP server (repository Q&A). Any server works.
 DEFAULT_MCP_URL = "https://mcp.deepwiki.com/mcp"
 
-STUB_URL = re.compile(r"images\.unsplash\.com/demo-\d")
+#: The fallback's demo photos (`tools_catalog._UNSPLASH_DEMO_PHOTOS`).
+STUB_URL = re.compile(
+    r"photo-(1603979649806-5299879db16b|1533073526757-2c8ca1df9f1c|1517842645767-c639042777db)"
+)
 REAL_PHOTO = re.compile(r"images\.unsplash\.com/photo-")
 
 
@@ -117,7 +121,8 @@ def _judge(result: Result, *, images: bool = False) -> None:
         result.reason = "the Tool node never ran — answered from the model alone"
         return
     if images and STUB_URL.search(result.answer):
-        result.verdict, result.reason = "STUB", "tool ran on placeholder photos (no Unsplash key)"
+        result.verdict = "STUB"
+        result.reason = "tool served the demo photos (no Unsplash key, or rate-limited)"
         return
     if images and not REAL_PHOTO.search(result.answer):
         result.reason = "tool ran, but the answer shows no Unsplash photo url"
@@ -147,7 +152,9 @@ def main() -> None:
     with httpx.Client(base_url=args.api, headers=headers) as client:
         # 1. Image Finder — the Unsplash key comes from the workspace vault, server-side.
         r = Result("tpl-image-finder")
-        _run(client, _template(r.template), "A mountain lake at sunrise", r)
+        # Not a starter chip: the demo photos include a mountain lake, and a live search for one
+        # can legitimately return that very photo.
+        _run(client, _template(r.template), "A red bicycle leaning on a brick wall", r)
         _judge(r, images=True)
         results.append(r)
 

@@ -97,8 +97,34 @@ def test_resolve_tool_keys_no_ops_without_a_key(monkeypatch):
     assertion starts failing the moment an actual Unsplash key is saved — the same trap
     `test_set_list_resolve_delete_never_leaks_the_key` documents below."""
     monkeypatch.setattr("calypr_api.provider_keys.resolve_model_keys", lambda _ws: {})
+    # Pinned: a developer's .env may carry a platform key, which would (correctly) fill the gap.
+    monkeypatch.setattr("calypr_api.provider_keys.settings.unsplash_access_key", "")
     graph = _unsplash_graph()
     out = resolve_tool_keys(graph, uuid.UUID(DEV_WORKSPACE_ID))
+    assert out.nodes[0].config.get("api_key", "") == ""
+
+
+def test_the_platform_key_fills_in_when_the_workspace_has_none(monkeypatch):
+    """CAL-16: without this every newcomer's Image Finder ran on the keyless stub."""
+    monkeypatch.setattr("calypr_api.provider_keys.resolve_model_keys", lambda _ws: {})
+    monkeypatch.setattr("calypr_api.provider_keys.settings.unsplash_access_key", "platform-k")
+    out = resolve_tool_keys(_unsplash_graph(), uuid.UUID(DEV_WORKSPACE_ID))
+    assert out.nodes[0].config["api_key"] == "platform-k"
+
+
+def test_a_workspace_key_beats_the_platform_key(monkeypatch):
+    monkeypatch.setattr(
+        "calypr_api.provider_keys.resolve_model_keys", lambda _ws: {"unsplash": "own-k"}
+    )
+    monkeypatch.setattr("calypr_api.provider_keys.settings.unsplash_access_key", "platform-k")
+    out = resolve_tool_keys(_unsplash_graph(), uuid.UUID(DEV_WORKSPACE_ID))
+    assert out.nodes[0].config["api_key"] == "own-k"
+
+
+def test_the_platform_unsplash_key_never_reaches_other_tools(monkeypatch):
+    monkeypatch.setattr("calypr_api.provider_keys.resolve_model_keys", lambda _ws: {})
+    monkeypatch.setattr("calypr_api.provider_keys.settings.unsplash_access_key", "platform-k")
+    out = resolve_tool_keys(_unsplash_graph("tavily"), uuid.UUID(DEV_WORKSPACE_ID))
     assert out.nodes[0].config.get("api_key", "") == ""
 
 

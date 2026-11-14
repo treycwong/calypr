@@ -67,13 +67,36 @@ def _format_unsplash(payload: dict) -> str:
 # Phrased as a *successful* search whose results happen to be placeholders. An earlier wording
 # ("no Unsplash key on file") read to the model as a failure, and it apologised and refused to
 # show anything — which breaks the keyless first-run demo the stub exists to protect.
+#
+# The photos are real and stable `images.unsplash.com` urls, credited to their photographers.
+# They used to be `…/demo-1`-style placeholders that 404, so a keyless run — which in production
+# was every newcomer's Image Finder — rendered a broken image (CAL-16). Production now has a
+# platform key and only falls back here when it is rate-limited; CI and local dev still run on
+# this. Keep the urls real: `test_unsplash_stub_photos_are_real_urls` guards the shape.
+_UNSPLASH_DEMO_PHOTOS = (
+    "a mountain lake at sunrise — "
+    "https://images.unsplash.com/photo-1603979649806-5299879db16b?w=1080&q=80&fm=jpg&fit=max "
+    "(by Ansgar Scheffold)\n"
+    "a road sign silhouetted at golden hour — "
+    "https://images.unsplash.com/photo-1533073526757-2c8ca1df9f1c?w=1080&q=80&fm=jpg&fit=max "
+    "(by Javier Allegue Barros)\n"
+    "a fountain pen resting on an open notebook — "
+    "https://images.unsplash.com/photo-1517842645767-c639042777db?w=1080&q=80&fm=jpg&fit=max "
+    "(by David Travis)"
+)
 _UNSPLASH_STUB = (
-    "Search succeeded. These are demo placeholder photos (Calypr has no Unsplash key on file "
-    "yet). Present them exactly as you would real results, then add one short line telling the "
-    "user to add an Unsplash key in Settings → API Keys for live photos.\n"
-    "a foggy pine forest at dawn — https://images.unsplash.com/demo-1 (by Demo Photographer)\n"
-    "sunlight through tall trees — https://images.unsplash.com/demo-2 (by Demo Photographer)\n"
-    "a quiet woodland path — https://images.unsplash.com/demo-3 (by Demo Photographer)"
+    "Search succeeded. These are demo photos, not a live search (Calypr has no Unsplash key on "
+    "file yet), so pick whichever fits the request best. Present it exactly as you would a real "
+    "result, then add one short line telling the user to add an Unsplash key in Settings → API "
+    "Keys for live search.\n" + _UNSPLASH_DEMO_PHOTOS
+)
+# Same photos when a key is on file but Unsplash is rate-limiting it (demo apps get 50 requests
+# an hour, shared by every workspace on the platform key). A bare "try again later" left the
+# newcomer with nothing to look at.
+_UNSPLASH_RATE_LIMITED = (
+    "Search succeeded, but Unsplash's hourly limit was reached, so these are demo photos rather "
+    "than live results. Pick whichever fits the request best and present it as usual, then add "
+    "one short line saying live search will be back within the hour.\n" + _UNSPLASH_DEMO_PHOTOS
 )
 
 
@@ -99,7 +122,7 @@ def _unsplash_tool(api_key: str, max_results: int) -> BaseTool:
         if r.status_code == 401:
             return "Unsplash rejected the API key — check it in Settings → API Keys."
         if r.status_code == 403:
-            return "Rate-limited by Unsplash (free tier is 50 requests/hour) — try again later."
+            return _UNSPLASH_RATE_LIMITED
         if r.status_code >= 400:
             return f"Unsplash returned an error (HTTP {r.status_code})."
         try:

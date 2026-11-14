@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # PostHog analytics. Token is empty in dev/CI (no-ops silently when unset).
     posthog_project_token: str = ""
     posthog_host: str = "https://us.i.posthog.com"
+    # Platform Unsplash key: the fallback for Image Finder when a workspace has no key of its
+    # own, so a newcomer's first search returns real photos (CAL-16). A workspace key always
+    # wins. Unset (dev/CI) → the tool's deterministic stub. Unsplash is free, so nothing meters.
+    unsplash_access_key: str = ""
     # Platform-wide loss firewall (PRICING-SPEC §9): if the sum of this month's `run.cost_usd`
     # reaches this many USD, new runs/assists are refused with an SSE error. 0/unset ⇒ disabled.
     platform_spend_cap_usd: float = 0.0

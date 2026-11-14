@@ -13,6 +13,7 @@ import uuid
 from calypr_dsl import GraphSpec
 from sqlalchemy import select
 
+from calypr_api.config import settings
 from calypr_api.db.models import ProviderKey
 from calypr_api.db.session import SessionLocal, set_tenant
 from calypr_api.vault import decrypt
@@ -72,6 +73,13 @@ def resolve_model_keys(workspace_id: uuid.UUID) -> dict[str, str]:
 _TOOL_KEY_PROVIDERS = {"images_unsplash": "unsplash", "tavily": "tavily"}
 
 
+def _platform_tool_keys() -> dict[str, str]:
+    """Keys Calypr supplies itself, by provider-key row name. Read per call so a test (or a
+    redeploy) that changes `settings` is seen. Only free-to-call tools belong here: a paid one
+    would need metering first, which is why Tavily is absent."""
+    return {"unsplash": settings.unsplash_access_key}
+
+
 def resolve_tool_keys(graph: GraphSpec, workspace_id: uuid.UUID) -> GraphSpec:
     """Return a copy of `graph` with each key-backed Tool node's `api_key` filled from the vault.
 
@@ -86,6 +94,11 @@ def resolve_tool_keys(graph: GraphSpec, workspace_id: uuid.UUID) -> GraphSpec:
     if not wanted:
         return graph
     keys = {k: v for k, v in resolve_model_keys(workspace_id).items() if k in wanted}
+    # The workspace's own key wins; a platform key fills the gap where one exists. Without this a
+    # newcomer's Image Finder ran on the keyless stub — the default experience for everyone.
+    for provider, platform_key in _platform_tool_keys().items():
+        if provider in wanted and platform_key and provider not in keys:
+            keys[provider] = platform_key
     if not keys:
         return graph
     nodes = []
