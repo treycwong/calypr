@@ -13,7 +13,10 @@ export async function captureServer(
   properties: Record<string, unknown> = {},
 ): Promise<void> {
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  if (!key) return;
+  // Production deployments only. `VERCEL_ENV` is "production" on the live deployment, "preview"
+  // on PR builds and unset locally, so a sign-up on a preview or in `next dev` never reaches the
+  // production project (CAL-36).
+  if (!key || process.env.VERCEL_ENV !== "production") return;
   try {
     await fetch(`${HOST}/capture/`, {
       method: "POST",

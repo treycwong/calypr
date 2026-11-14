@@ -1,5 +1,6 @@
-// PostHog analytics (MVP-EXECUTION-PLAN Week 1). Env-gated: without NEXT_PUBLIC_POSTHOG_KEY
-// every call is a no-op, so dev/CI/e2e stay network-free. The `code_*` events are THE ceiling
+// PostHog analytics (MVP-EXECUTION-PLAN Week 1). Gated twice: without NEXT_PUBLIC_POSTHOG_KEY, or
+// off the production hosts (`ANALYTICS_HOSTS`), every call is a no-op, so dev/CI/e2e/previews
+// stay network-free. The `code_*` events are THE ceiling
 // events — the thesis metric ("leave with the code you own") the Month gates read.
 import posthog from "posthog-js";
 
@@ -55,11 +56,20 @@ export type AnalyticsEvent =
 let initialized = false;
 
 /** Initialize PostHog once, client-side. Safe to call repeatedly; no-op without a key. */
+/** The only hosts that report. The key lives in `apps/web/.env.local` too, so without this,
+ *  `next dev`, the e2e build on localhost and Vercel preview URLs all sent page views and runs to
+ *  the production project as if they were real visitors (CAL-36). */
+export const ANALYTICS_HOSTS = ["calypr.co", "www.calypr.co"];
+
+export function analyticsAllowedOn(hostname: string): boolean {
+  return ANALYTICS_HOSTS.includes(hostname);
+}
+
 export function initAnalytics(): boolean {
   if (initialized) return true;
   if (typeof window === "undefined") return false;
   const key = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-  if (!key) return false;
+  if (!key || !analyticsAllowedOn(window.location.hostname)) return false;
   posthog.init(key, {
     api_host: process.env.NEXT_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com",
     // SPA-aware pageviews: capture on history pushState/replaceState/popstate too.
