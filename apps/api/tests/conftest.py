@@ -6,15 +6,24 @@ also set while the tests run. That is fine for most settings and actively wrong 
 
 from __future__ import annotations
 
-import asyncio
-import uuid
-from dataclasses import dataclass
+import os
 
-import pytest
-from calypr_api.config import settings
-from calypr_api.db.models import Account, Workspace
-from calypr_api.db.session import SessionLocal, engine
-from sqlalchemy import text
+# Before anything imports the app: `config.py` loads the repo-root `.env`, which holds the
+# production PostHog token, and `load_dotenv` never overrides a variable that is already set. So
+# blanking it here keeps the suite from reporting its fixtures (fake payments, `attacker-…`
+# tenants) to production as real events, on top of the production-only guard in
+# `posthog_client.analytics_enabled` (CAL-36).
+os.environ["CALYPR_POSTHOG_PROJECT_TOKEN"] = ""
+
+import asyncio  # noqa: E402
+import uuid
+from dataclasses import dataclass  # noqa: E402
+
+import pytest  # noqa: E402
+from calypr_api.config import settings  # noqa: E402
+from calypr_api.db.models import Account, Workspace  # noqa: E402
+from calypr_api.db.session import SessionLocal, engine  # noqa: E402
+from sqlalchemy import text  # noqa: E402
 
 
 @dataclass(frozen=True)
