@@ -63,6 +63,9 @@ export default defineConfig({
         // CI runs: 21 specs failed locally and passed in CI.
         CALYPR_INTERNAL_KEY: "",
         CALYPR_ADMIN_TOKEN: "e2e-admin-token",
+        // A platform Unsplash key in a developer's .env would turn the keyless stub photos the
+        // API-tools specs assert on into live (and rate-limited) searches.
+        CALYPR_UNSPLASH_ACCESS_KEY: "",
         STRIPE_SECRET_KEY: "",
         STRIPE_WEBHOOK_SECRET: "",
         STRIPE_PLUS_PRICE_ID: "",
