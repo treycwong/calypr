@@ -28,6 +28,68 @@ from calypr_nodes.registry import (
 )
 from calypr_nodes.tools_catalog import tool_spec
 
+#: The most text one MCP tool result may hand back to the model. The built-in providers cap
+#: theirs at 4,000 characters in `tools_catalog` because their output is a handful of search
+#: lines; an MCP result is often a whole document (a Notion page, a wiki), so it gets more room —
+#: ~5k tokens, which leaves a 128k-context model plenty of headroom across a multi-call loop.
+#: Without a cap a single result could overflow the window outright: DeepWiki's
+#: `read_wiki_contents` returned ~155k tokens and the run died with a provider 400 (CAL-15).
+MAX_MCP_RESULT_CHARS = 20_000
+
+
+def _truncation_note(shown: int, total: int) -> str:
+    return (
+        f"\n\n[Result truncated: showing the first {shown:,} of {total:,} characters. "
+        "If you need more, call the tool again with a narrower request.]"
+    )
+
+
+def cap_tool_content(content: Any, limit: int = MAX_MCP_RESULT_CHARS) -> Any:
+    """`content` with its text capped at `limit` characters in total, and a note appended
+    saying so when anything was cut.
+
+    A ToolMessage's content is either a string or a list of content blocks (what MCP adapters
+    return: `{"type": "text", "text": ...}` and friends). Text blocks share one budget, in
+    order; a block past the budget is dropped. Non-text blocks pass through untouched."""
+    if isinstance(content, str):
+        if len(content) <= limit:
+            return content
+        return content[:limit] + _truncation_note(limit, len(content))
+    if not isinstance(content, list):
+        return content
+    total = sum(
+        len(b.get("text", "")) for b in content if isinstance(b, dict) and b.get("type") == "text"
+    )
+    if total <= limit:
+        return content
+    out: list[Any] = []
+    budget = limit
+    for block in content:
+        if not (isinstance(block, dict) and block.get("type") == "text"):
+            out.append(block)
+            continue
+        if budget <= 0:
+            continue
+        text = block.get("text", "")
+        out.append({**block, "text": text[:budget]})
+        budget -= len(text[:budget])
+    out.append({"type": "text", "text": _truncation_note(limit, total)})
+    return out
+
+
+def _cap_results(update: dict[str, Any]) -> dict[str, Any]:
+    """Cap every ToolMessage in a ToolNode update (see `cap_tool_content`)."""
+    messages = update.get("messages") if isinstance(update, dict) else None
+    if not messages:
+        return update
+    capped = [
+        m.model_copy(update={"content": cap_tool_content(m.content)})
+        if isinstance(m, ToolMessage)
+        else m
+        for m in messages
+    ]
+    return {**update, "messages": capped}
+
 
 class ToolConfig(BaseModel):
     provider: Literal["demo_search", "tavily", "mcp", "images_unsplash", "generic_http"] = (
@@ -162,7 +224,9 @@ class ToolsNode(BaseNode):
                     scoped = cls._own_calls_only(state, owned)
                     if scoped is None:
                         return {}
-                    return await lc_node.ainvoke(scoped, config)
+                    # A remote server decides how much it returns; we decide how much of it
+                    # reaches the model. Uncapped, one large result overflows the context.
+                    return _cap_results(await lc_node.ainvoke(scoped, config))
 
                 return _run_mcp
         if spec.runtime is None:
