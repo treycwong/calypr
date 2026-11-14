@@ -188,8 +188,11 @@ function CanvasInner() {
     setActivePanel((cur) => (cur === p ? null : p));
   // Bumped whenever a run generates a file, so the Media panel refreshes without polling.
   const [mediaTick, setMediaTick] = useState(0);
-  // The persistent right panel switches between node Properties and generated Code.
-  const [rightTab, setRightTab] = useState<"properties" | "code">("properties");
+  // The right panel switches between node Properties, generated Code and — while it is open — the
+  // Chat. They share one panel as tabs: the chat used to *replace* the panel, so with the chat open
+  // a block click selected the block and showed nothing (CAL-7), and arriving from a template opens
+  // the chat, so every newcomer met that first.
+  const [rightTab, setRightTab] = useState<"chat" | "properties" | "code">("properties");
   // Closed until something is selected. A node click opens it; a click on empty canvas puts it
   // away again. The canvas-edge toggle is the way back to Code with nothing selected.
   const [rightOpen, setRightOpen] = useState(false);
@@ -309,6 +312,7 @@ function CanvasInner() {
       void Promise.resolve().then(() => {
         setStarterId(starter);
         setShowPlayground(true);
+        setRightTab("chat");
       });
     }
     // Nothing to fetch: a fresh canvas already knows its scope (no project).
@@ -409,9 +413,12 @@ function CanvasInner() {
   }, []);
   const onPaneClick = useCallback(() => {
     setSelectedId(null);
-    // Code isn't about the selection, so deselecting must not close it mid-read.
-    if (rightTab === "properties") setRightOpen(false);
-  }, [rightTab]);
+    // Code isn't about the selection, so deselecting must not close it mid-read. With the chat
+    // open, putting Properties away means going back to the conversation, not closing the panel.
+    if (rightTab !== "properties") return;
+    if (showPlayground) setRightTab("chat");
+    else setRightOpen(false);
+  }, [rightTab, showPlayground]);
   const updateConfig = useCallback(
     (config: Record<string, unknown>) => {
       record();
@@ -945,6 +952,31 @@ function CanvasInner() {
     setPreviews((prev) => ({ ...prev, [kind]: { ...prev[kind], [nodeId]: url } }));
   }, []);
 
+  // The header Chat button. Closed → open on the Chat tab. Open but showing Properties or Code →
+  // back to the Chat tab (closing the chat from there would throw away what you came back for).
+  // Open on the Chat tab → close, and hand the panel back to the selection, if there is one.
+  const toggleChat = useCallback(() => {
+    if (!showPlayground) {
+      setShowPlayground(true);
+      setRightTab("chat");
+      return;
+    }
+    if (rightTab !== "chat") {
+      setRightTab("chat");
+      return;
+    }
+    setShowPlayground(false);
+    setRunStatus({}); // closing the playground clears any lingering run glow
+    setRightTab("properties");
+    setRightOpen(selectedId !== null);
+  }, [showPlayground, rightTab, selectedId]);
+  // A block is mid-run. Marks the Chat tab while another tab is in front, so a streaming answer
+  // isn't invisible just because the user went to look at a block.
+  const chatBusy = useMemo(
+    () => Object.values(runStatus).some((s) => s === "active"),
+    [runStatus],
+  );
+
   const onRunReset = useCallback((opts?: { error?: boolean }) => {
     if (opts?.error) {
       // Freeze the run where it stopped, flagging the node that was executing.
@@ -1168,12 +1200,7 @@ function CanvasInner() {
             // playground is open. It used to be the other way round, which made Chat the loudest
             // thing in the header at exactly the moment it had nothing to do with.
             variant={showPlayground ? "default" : "outline"}
-            onClick={() =>
-              setShowPlayground((s) => {
-                if (s) setRunStatus({}); // closing the playground clears any lingering run glow
-                return !s;
-              })
-            }
+            onClick={toggleChat}
             data-testid="toggle-playground"
           >
             {/* One label in both states. It used to read "Try it" / "Stop", but "Stop" here only
@@ -1391,37 +1418,73 @@ function CanvasInner() {
           </ReactFlow>
         </div>
 
-        {/* Right panel: Properties (selected node) or generated Code — replaced by the
-            playground while it's running, rather than stacking alongside it. */}
-        {showPlayground || !rightOpen ? null : (
+        {/* Right panel: Chat (while open), Properties (selected node) and generated Code, as tabs
+            of one panel. The chat stays mounted behind the other tabs — hiding it, not
+            unmounting it — so a streaming answer keeps streaming while you look at a block. */}
+        {showPlayground || rightOpen ? (
         <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-surface-1" data-testid="right-panel">
-          <div className="flex gap-1 border-b border-border px-3 pt-2">
+          <div className="flex gap-1 border-b border-border px-3 pt-2" role="tablist">
+            {showPlayground ? (
+              <button
+                type="button"
+                role="tab"
+                aria-selected={rightTab === "chat"}
+                data-testid="tab-right-chat"
+                onClick={() => setRightTab("chat")}
+                className={rightTabClass(rightTab === "chat")}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  Chat
+                  {chatBusy && rightTab !== "chat" ? (
+                    <span
+                      className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary"
+                      data-testid="chat-busy-dot"
+                      aria-label="Running"
+                    />
+                  ) : null}
+                </span>
+              </button>
+            ) : null}
             <button
               type="button"
+              role="tab"
+              aria-selected={rightTab === "properties"}
               data-testid="tab-properties"
               onClick={() => setRightTab("properties")}
-              className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
-                rightTab === "properties"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
+              className={rightTabClass(rightTab === "properties")}
             >
               Properties
             </button>
             <button
               type="button"
+              role="tab"
+              aria-selected={rightTab === "code"}
               data-testid="toggle-code"
               onClick={() => setRightTab("code")}
-              className={`-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
-                rightTab === "code"
-                  ? "border-foreground text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
+              className={rightTabClass(rightTab === "code")}
             >
               Code
             </button>
           </div>
           <div className="min-h-0 flex-1">
+            {showPlayground ? (
+              <div
+                className={rightTab === "chat" ? "h-full" : "hidden"}
+                data-testid="playground"
+              >
+                <Playground
+                  getGraph={getGraph}
+                  agentId={agentId ?? undefined}
+                  locked={agentLocked}
+                  scopeReady={agentResolved}
+                  starters={templates.find((t) => t.id === starterId)?.starters ?? []}
+                  onAssetGenerated={onAssetGenerated}
+                  onNodeEvent={onNodeEvent}
+                  onRunReset={onRunReset}
+                  onRunFinished={refreshWorkspace}
+                />
+              </div>
+            ) : null}
             {rightTab === "properties" ? (
               selected ? (
                 <div className="h-full overflow-auto p-3" data-testid="config-panel">
@@ -1436,7 +1499,7 @@ function CanvasInner() {
                   Select a node to edit its properties.
                 </div>
               )
-            ) : (
+            ) : rightTab === "code" ? (
               <div className="h-full" data-testid="code-panel">
                 <CodeView
                   getGraph={getGraph}
@@ -1446,32 +1509,22 @@ function CanvasInner() {
                   email={signedInAs}
                 />
               </div>
-            )}
+            ) : null}
           </div>
         </aside>
-        )}
-
-        {showPlayground ? (
-          <aside
-            className="w-80 shrink-0 border-l border-border bg-surface-1"
-            data-testid="playground"
-          >
-            <Playground
-              getGraph={getGraph}
-              agentId={agentId ?? undefined}
-              locked={agentLocked}
-              scopeReady={agentResolved}
-              starters={templates.find((t) => t.id === starterId)?.starters ?? []}
-              onAssetGenerated={onAssetGenerated}
-              onNodeEvent={onNodeEvent}
-              onRunReset={onRunReset}
-              onRunFinished={refreshWorkspace}
-            />
-          </aside>
         ) : null}
       </div>
     </div>
   );
+}
+
+/** One tab in the right panel's strip. */
+function rightTabClass(active: boolean): string {
+  return `-mb-px border-b-2 px-3 py-1.5 text-sm transition ${
+    active
+      ? "border-foreground text-foreground"
+      : "border-transparent text-muted-foreground hover:text-foreground"
+  }`;
 }
 
 export default function CanvasPage() {
