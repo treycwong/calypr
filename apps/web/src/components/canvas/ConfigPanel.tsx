@@ -686,12 +686,17 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
       <SelectField
         id="cfg-use-upload"
         label="When a photo is attached"
-        value={config.use_upload ? "use" : "generate"}
+        value={
+          config.use_upload === true ? "use" : config.use_upload === false ? "generate" : "auto"
+        }
         options={[
-          { value: "generate", label: "Generate a new image anyway" },
+          { value: "auto", label: "Automatic — use it when this feeds Video or 3D" },
           { value: "use", label: "Use the attached photo instead" },
+          { value: "generate", label: "Generate a new image anyway" },
         ]}
-        onChange={(v) => set({ use_upload: v === "use" })}
+        // Automatic is stored as *no value*, which is also what every project saved before this
+        // setting existed has, so old Image → Video projects work without being re-opened.
+        onChange={(v) => set({ use_upload: v === "auto" ? undefined : v === "use" })}
       />
       <Field id="cfg-style" label="Style (applied to every prompt)">
         <Textarea

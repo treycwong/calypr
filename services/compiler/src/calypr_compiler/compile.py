@@ -10,7 +10,15 @@ import functools
 from dataclasses import replace
 
 from calypr_dsl import GraphSpec, ancestors
-from calypr_nodes import NodeContext, NodeFn, current_node_id, get_node, graph_channels, has_node
+from calypr_nodes import (
+    NodeContext,
+    NodeFn,
+    current_node_id,
+    get_node,
+    graph_channels,
+    has_node,
+    resolve_use_upload,
+)
 from langgraph.config import get_stream_writer
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -115,6 +123,9 @@ def compile_graph(
     checkpointer=None,
 ) -> CompiledStateGraph:
     """Compile a GraphSpec into an executable LangGraph graph."""
+    # Settle automatic settings that depend on the wiring before anything reads node configs or
+    # unions channels: an Image block feeding Video/3D declares `images` only once resolved.
+    spec = resolve_use_upload(spec)
     errors = [i for i in validate_graph(spec) if i.severity == "error"]
     if errors:
         raise CompileError(errors)

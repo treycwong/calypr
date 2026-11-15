@@ -86,3 +86,41 @@ async def test_a_later_text_only_turn_does_not_reuse_the_old_photo():
     await _run([], ctx, thread="same", saver=saver)
     assert image.calls == 1  # only the second turn generated
     assert video.calls[0] == PHOTO and video.calls[1] != PHOTO
+
+
+def _saved_before_the_fix():
+    """An Image to video project saved before `use_upload` existed: the key is simply absent.
+    This is the production project that still animated a generated dog over the user's photo."""
+    g = _graph()
+    for n in g.nodes:
+        if n.type == "image":
+            n.config = {k: v for k, v in n.config.items() if k != "use_upload"}
+    return g
+
+
+async def test_a_project_saved_before_the_setting_uses_the_photo_automatically():
+    video, image = _Video(), _Image()
+    ctx = NodeContext(model=FakeModelClient(reply="x"), image_model=image, video_model=video)
+    events = [
+        ev
+        async for ev in run_stream(
+            _saved_before_the_fix(),
+            ctx,
+            "Can you turn this image into an animated video",
+            images=[PHOTO],
+        )
+    ]
+    assert events
+    assert image.calls == 0
+    assert video.calls == [PHOTO]
+
+
+async def test_an_explicit_generate_is_respected_even_before_video():
+    g = _graph()
+    for n in g.nodes:
+        if n.type == "image":
+            n.config = {**n.config, "use_upload": False}
+    video, image = _Video(), _Image()
+    ctx = NodeContext(model=FakeModelClient(reply="x"), image_model=image, video_model=video)
+    _ = [ev async for ev in run_stream(g, ctx, "a dog in snow", images=[PHOTO])]
+    assert image.calls == 1
