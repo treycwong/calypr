@@ -16,6 +16,8 @@ from langchain_core.messages import (
     ToolMessage,
 )
 
+from calypr_nodes._context import current_node_id
+
 _TEMPLATE = re.compile(r"{{\s*state\.([A-Za-z_]\w*)\s*}}")
 
 
@@ -76,10 +78,23 @@ def render_template(template: str, state: dict[str, Any]) -> str:
 
 
 def safe_stream_writer() -> Callable[[Any], None]:
-    """Return LangGraph's custom stream writer, or a no-op outside a run context."""
+    """Return LangGraph's custom stream writer, or a no-op outside a run context.
+
+    Token payloads are stamped with the node that produced them (`current_node_id`, set by the
+    compiler's per-node wrapper), so the runtime can decide which node's words reach the chat
+    (CAL-39). A context variable follows each asyncio task, so it stays right for nodes running
+    in parallel, which a "current node" tracked from start/end events would not."""
     try:
         from langgraph.config import get_stream_writer
 
-        return get_stream_writer()
+        raw = get_stream_writer()
     except Exception:
         return lambda _payload: None
+
+    def write(payload: Any) -> None:
+        is_token = isinstance(payload, dict) and payload.get("type") == "token"
+        if is_token and "node_id" not in payload:
+            payload = {**payload, "node_id": current_node_id.get(None)}
+        raw(payload)
+
+    return write

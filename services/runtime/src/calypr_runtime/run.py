@@ -34,6 +34,60 @@ _LOOP_MESSAGE = (
 )
 
 
+#: Node types whose words are the run's prose. Media nodes (Image, TTS, 3D, Video) also emit
+#: tokens, but those are the deliverable itself (a picture, a player), so they are never gated.
+_TEXT_NODES = frozenset({"agent", "responder", "revisor"})
+
+
+def silent_agents(spec: GraphSpec) -> frozenset[str]:
+    """Agent nodes whose text is an intermediate step, not the answer, so it must not stream.
+
+    An Agent is silent when another text node (Agent, Responder or Revisor) comes after it on
+    the way to the Output: an orchestrator briefing its specialists, a triage step, a research
+    draft an editor rewrites. Before this, every Agent streamed, so Trip planner opened with the
+    orchestrator's brief and Market research showed all five drafts back to back (CAL-39).
+    The silent node still runs, and is still metered: only its tokens are dropped, the same
+    contract as the internal-node gate in `_llm.collect_text`.
+
+    Deliberately narrow:
+    - Only `agent` nodes are gated. A Reflexion Responder/Revisor pair keeps today's behaviour.
+    - A node reaching *itself* (the ReAct loop through a Tool node) doesn't count.
+    - If the rule would silence every text node (agents looping into each other, with no clear
+      last speaker), nothing is gated, so a run can never go quiet."""
+    by_id = {n.id: n for n in spec.nodes}
+    succ: dict[str, set[str]] = {}
+    pred: dict[str, set[str]] = {}
+    for e in spec.edges:
+        succ.setdefault(e.source, set()).add(e.target)
+        pred.setdefault(e.target, set()).add(e.source)
+
+    def walk(start: str, graph: dict[str, set[str]]) -> set[str]:
+        seen: set[str] = set()
+        stack = list(graph.get(start, ()))
+        while stack:
+            n = stack.pop()
+            if n not in seen:
+                seen.add(n)
+                stack.extend(graph.get(n, ()))
+        return seen
+
+    outputs = [n.id for n in spec.nodes if n.type == "output"]
+    feeds_output: set[str] = set(outputs)
+    for o in outputs:
+        feeds_output |= walk(o, pred)
+
+    text = {n.id for n in spec.nodes if n.type in _TEXT_NODES}
+    silent = {
+        n.id
+        for n in spec.nodes
+        if n.type == "agent"
+        and any(d != n.id and d in text and d in feeds_output for d in walk(n.id, succ))
+    }
+    if text and not (text - silent):
+        return frozenset()
+    return frozenset(silent & set(by_id))
+
+
 def _config(thread_id: str | None) -> dict:
     # recursion_limit bounds tool/reflection loops so a runaway graph stops cleanly.
     return {
@@ -76,6 +130,7 @@ async def run_stream(
 ) -> AsyncIterator[RunEvent]:
     """Compile + run, yielding token/usage events as they arrive, then a final event."""
     compiled = compile_graph(spec, ctx, checkpointer=checkpointer or InMemorySaver())
+    silent = silent_agents(spec)
     last_state: dict[str, Any] = {}
     try:
         async for mode, chunk in compiled.astream(
@@ -84,6 +139,10 @@ async def run_stream(
             if mode == "custom":
                 kind = chunk.get("type")
                 if kind == "token":
+                    # Intermediate agents' words stay out of the chat (CAL-39); their usage events
+                    # below are untouched, so metering never depends on what was shown.
+                    if chunk.get("node_id") in silent:
+                        continue
                     yield RunEvent(type="token", text=chunk.get("text", ""))
                 elif kind == "usage":
                     yield RunEvent(type="usage", state=chunk)
