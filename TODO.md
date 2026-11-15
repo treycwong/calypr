@@ -1,9 +1,36 @@
 # Calypr — TODO
 
 > **Everything currently open, in priority order.** Sections below this one are the historical
-> record — what shipped and why. Updated 2026-10-14.
+> record — what shipped and why. Updated 2026-11-04.
 
 ## ⏭️ NEXT — what's actually blocking
+
+**As of 2026-11-04: Calypr is open and selling, and the job now is getting people into it.**
+Free / $5 Starter / $10 Plus went live on 2026-11-02 and the whole money loop is proven with real
+money (a live $5 Starter checkout, then cancel-with-refund, on 2026-11-03). Production had
+**3 users and 3 runs in the 30 days before that**, so everything below is about acquisition and
+the first run, not more billing. What shipped is in "🟢 Retier live, and a stranger's first ten
+minutes" below. Open, in order:
+
+1. **Build the PostHog funnel** — the identity work is live (#113); the insight itself still has to
+   be made in PostHog: `$pageview` → `user_signed_up` → `run_started` → `run_completed` →
+   `$pageview` (`/checkout`) → `subscription_activated`. **First confirm `user_signed_up`
+   arrives** by signing up a never-used account; it only fires under real Better Auth, so it is
+   untested.
+2. **More acquisition.** One language-learning post is live (#112). The waitlist email (2 people)
+   was deliberately skipped for now. Next posts should each link to a ready-to-run template.
+3. **Canvas at narrow widths** — the dashboard fits a phone (#110), the canvas doesn't: blocks
+   panel + graph + chat don't share 375px. A product decision before it's a fix.
+4. **Chat open hides block settings** — with the playground open, clicking a block shows no
+   config. Old behaviour, but #109 now opens the chat on arrival from a template, so newcomers hit
+   it sooner. Decide how the two panels share the right side.
+5. **Ops/safety leftovers (§3):** rotate the Neon prod credential, FORCE RLS on `run`/`run_usage`,
+   durable assist cap, verify `pricing.py`. Plus: rewrite `PRICING-SPEC.md` to match what
+   shipped, close stale PR #52.
+6. **Vercel *preview* deploys fail before building on every PR** (production deploys are fine,
+   `build-test` is the real gate). Probably the Hobby quota again — check the Vercel dashboard.
+
+---
 
 **The live payment loop is now proven end-to-end (2026-08-02):** a real `free → plus` through the
 Upgrade button on the live endpoint — `checkout.session.completed` mapped the customer and
@@ -320,7 +347,22 @@ The code is merged and correct; nothing works until three values exist. See
             silent-swallow bug and it blocks onboarding anyone who might cancel.
       - [ ] Then re-tier per the plan doc, and note the founder account is back on `free` (which is
             the clean state Part B wants anyway).
-- [ ] **Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**
+- [x] **The live cancel is on record (checked 2026-10-14):** `stripe_event` holds
+      `evt_1UB5zOQ4CLwWKY6VaXk6Qkxw` (`customer.subscription.deleted`, 2026-09-02 04:41 UTC). A
+      row is written only after the signature verifies, so it was delivered and accepted.
+- [x] **Webhook audit done (2026-10-14): there is exactly one live destination**, at
+      `…railway.app/billing/webhook`, Active, 6 events. So the "stray second endpoint" theory is
+      wrong, and the cause of the 400s is still open. The likeliest remaining explanation is
+      unsigned requests from scanners hitting a public URL, which a 400 correctly rejects. Before
+      treating them as a problem, check their request headers for a `Stripe-Signature`. The
+      refund and the receipt were dropped by the founder's call: it was the founder's own
+      subscription. Original entry below.
+- [x] **CAUSE FOUND + FIXED (2026-11-03): the 400s were the *test-mode* endpoint**
+      (`we_1TwDCZ…`) pointed at the production URL. The 2026-10-14 audit only listed *live*
+      endpoints. Every sandbox event — and Stripe's retries of them for up to three days — hit
+      prod signed with the test secret. Disabled (not deleted) on 2026-11-03; local testing uses
+      `stripe listen` instead. The scanner theory above was wrong.
+- [ ] ~~**Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**~~
       The 200s prove the live secret is right, so the 400s are deliveries whose signature doesn't
       verify — almost certainly a **second (test-mode) endpoint pointed at the prod URL** with the
       wrong secret. Stripe → Developers → Webhooks should list exactly one live endpoint at
@@ -533,7 +575,36 @@ Build order (each step is useful on its own):
 - [ ] **Verify the non-Anthropic prices in `pricing.py`** against provider pages. They are the
       input to *both* margin and credits now, and the OpenAI GPT-5.6 tier came from aggregators.
 
+### 3a. Pricing decisions — DECIDED (2026-10-14, by the founder) — ALL SHIPPED (2026-11-02/03)
+
+All four are live; see "🟢 Retier live" below. 1 → #105 (Starter Recommended, live prices, portal).
+2 → #105. 3 → a Stripe coupon, not a dated comp (#107). 4 → #105.
+
+These settle the blocking questions in `calypr-cancel-proof-and-retier-plan.md`. Where they
+differ from that brief, **these win**:
+
+1. **Tiers: Free / $5 Starter / $10 Plus, as the brief proposes.** Set them up in Stripe, but
+   **preview the pricing cards with the founder before shipping**: build the `/pricing` cards
+   first and get sign-off before going live.
+2. **3D and Video are available on every plan, paid in credits.** This **reverses** the brief's
+   Plus-only node gating (B4) for these two blocks, and today's code, where
+   `entitlements.gated_nodes_in` refuses them on Free. Remove that gate. The credit gate does the
+   work instead, and it now covers media-only graphs (#103). Size the costs knowingly: an
+   Image → Video run debited ~56.5 credits in production, so Free's 100 a month buys about one.
+3. **Beta partners get Starter free for 3 months.** Needs an expiry, so this isn't just a bulk
+   plan change. Either a dated comp that the nightly cron reverts, or a Stripe trial/coupon.
+   Decide the mechanism when building it.
+4. **Generated code is Plus-only.** Today `has_roundtrip` allows `beta` and `plus`; Starter must
+   not get it, and with beta moving to Starter, beta loses it too. That settles §5's "read-only
+   code viewing" question: it stays paid.
+
 ### 4. Revisit the beta cohort (deferred by decision, 2026-07-23)
+
+**Superseded by 3a.3, and DONE (2026-11-03, #107):** beta partners get Starter free for 3 months
+via the live promotion code `CALYPRBETA` (100% off, repeating 3 months, Starter only, 25 uses).
+Stripe owns the expiry and the switch to $5. `beta` remains only for anyone comped by hand, and
+has no expiry. Send partners `calypr.co/checkout?plan=starter` plus the code.
+
 
 `beta` currently means "early access, including code export" and is granted by a one-time
 invite. It needs an ending, and the mechanics now support one (`waitlist.granted_at` makes a
@@ -547,7 +618,8 @@ demotion stick — before that fix, demoting the cohort would have silently undo
 
 ### 5. Product decisions still open
 
-- [ ] **Read-only code viewing** — the Code tab shows a 14-line preview to Free today, and the
+- [x] **DECIDED (2026-10-14, 3a.4): code stays paid** — Plus only. Original entry:
+- [ ] ~~**Read-only code viewing**~~ — the Code tab shows a 14-line preview to Free today, and the
       full file to `beta`/`plus`. Decide before Plus goes on sale whether *viewing* is free (it
       doubles as the "no lock-in" reassurance that sells the plan) or paid.
 - [ ] **Does storage ever become a hard cap?** It ships as a *displayed* figure (500 MB / 5 GB)
@@ -557,7 +629,10 @@ demotion stick — before that fix, demoting the cohort would have silently undo
       (deleting a project doesn't free its runs' checkpoints). Live usage says there's no hurry —
       the one Plus account is at **3.0 MB of 5 GB**, 0.06%. Retention plus the project cap may
       simply be enough, and a byte cap on a $20 plan may be all support burden and no benefit.
-- [ ] **Acquisition has no plan.** Cancelling the OSS launch removed the roadmap's only
+- [~] **Acquisition: started (2026-11-03).** The blog is now a deliberate channel aimed at the
+      Starter audience (language learners), the first such post is live (#112), and analytics can
+      follow a person from first visit to paid (#113). Original entry:
+- [ ] ~~**Acquisition has no plan.**~~ Cancelling the OSS launch removed the roadmap's only
       top-of-funnel (Show HN). The blog is shipped, indexed and has two posts — making it a
       deliberate channel is the cheap replacement, but somebody has to decide that.
 - [ ] **Month-1 code-quality gate never ran** (≥70% would-merge, blind panel). Chosen
@@ -646,6 +721,74 @@ RAG ingestion (Phases 6a–6e), dynamic fan-out (`Send`), stdio MCP transport, C
 Anthropic image blocks, RAG-as-tool, state editor for custom channels. See the sections below.
 
 ---
+
+## 🟢 Retier live, and a stranger's first ten minutes — DONE (2026-11-02/03), PRs #105–#113, all merged + live
+
+### Pricing went live (2026-11-02, #105)
+- **Free / $5 Starter / $10 Plus**, Starter marked Recommended, three cards plus a credit guide and
+  a billing FAQ on `/pricing`. Live prices: Starter `price_1UXC6nQ4CLwWKY6VC7FI0RLK`, Plus
+  `price_1UXC6oQ4CLwWKY6Vfwnq0AiZ` (both tagged `metadata.plan`, both their product's default).
+  The old $20 price is archived. Railway holds both ids.
+- **Customer portal** configured by `apps/api/scripts/configure_portal.py` for test and live
+  alike: upgrades now and prorated (`always_invoice`), downgrades and cancels at period end.
+  Rerun it if prices change.
+- **Proven before going live** in test mode with `stripe listen` and a test clock:
+  free → Starter (500) → Plus mid-month (1,000) → scheduled Starter at period end → cancel → free.
+  Credits are kept on downgrade, as the FAQ says.
+- **Proven live (2026-11-03)** on `treyc.design@gmail.com`: $5 Starter checkout → `starter`/500,
+  then dashboard *Cancel → Immediately + Refund last payment* → `customer.subscription.deleted`
+  → `free`.
+
+### Refunds, the beta and the webhook noise (2026-11-03, #106, #107)
+- **Refund policy** in the FAQ: full refund within 7 days of a charge, support@calypr.co.
+  **Issue refunds only as cancel-with-refund** in the Stripe dashboard. The app ignores
+  `charge.refunded`, so a bare refund leaves the plan paid and charges again next month.
+- **Beta = promotion code** `CALYPRBETA` (see §4). Checkout passes `allow_promotion_codes=True`.
+  Proven on a test clock: invoices $0, $0, $0, then $5.
+- **Stray webhook 400s explained** (see §1): the test-mode endpoint pointed at prod. Disabled.
+
+### The new-user walkthrough (2026-11-03, #108–#111)
+A walkthrough of calypr.co as a stranger found the main path working but everything around it
+pointing the wrong way. Fixed:
+- **Copy that sold the wrong product (#108).** Get Started opened a log-in page that said "Welcome
+  back"; a "Join Beta" waitlist sat on an open product; five places promised code export to every
+  plan; Video still said "Plus"; seven footer links were `#`. Now: sign-up everywhere, the waitlist
+  is a build-updates list, no code promise, a working Contact link.
+- **An ex-subscriber couldn't re-upgrade (#108).** Billing showed only "Manage billing", and
+  Stripe's portal can't start a new subscription. Free accounts now always see **See plans**.
+  Out-of-credits leads with an upgrade link.
+- **The first run (#109).** The empty dashboard offers one starter per category (flash cards
+  first). Templates come before the ten frameworks on the new-project page. Projects take the
+  template's name, not "Untitled Agent". Arriving from a template (`?starter=<id>`) opens the
+  chat with first messages to try (`TEMPLATE_STARTERS`, meta-tested). The study score strip
+  shows progress ("1 of 3 answered") instead of "1 / 1, 100%" after one card.
+- **The dashboard on a phone (#110).** The sidebar is always the 60px rail below `md`, from the
+  first frame. The page gets 291px instead of ~110px.
+- **Terms and Privacy (#111)** at `/terms` and `/privacy`, written from what the code does
+  (providers, retention, refunds, share links). The operator is "Tracey Wong, trading as Calypr
+  Co.", under Malaysian law, minimum age 16, all in `apps/web/src/lib/legal.ts`. An E2E guard
+  fails on any `[placeholder]` there. Update the pages when a provider or a retention period
+  changes. Sign-up says "By continuing, you agree to…".
+
+### Acquisition groundwork (2026-11-03, #112, #113)
+- **Blog:** "Practise a language every day with flash cards that adapt to you"
+  (`/blog/language-flash-cards`).
+- **One PostHog person per user.** The browser now calls `identify(userId)` (merging anonymous
+  history). Better Auth's `databaseHooks.user.create.after` sends `user_signed_up`. Billing events
+  are keyed by `account.owner_user_id`. Before this, a person was four unrelated identities.
+
+### Traps worth not rediscovering
+- `stripe listen --print-secret` with `--api-key` prints an auth error, not a secret. Read the
+  `whsec_` from the listener's log. The Claude launch runner doesn't expand `$(…)`, so wrap the
+  command in a script.
+- `Coupon.create` doesn't return `applies_to` unless expanded, and a `StripeObject` has no
+  `.get()`; use `.to_dict()`.
+- JSX dropped the space after `</strong>` on lines that also held `&rsquo;` ("Refunds:if"). Use
+  an explicit `{" "}`.
+- Saving a canvas resets the graph id to `canvas-agent`, so a project forgets which template it
+  came from. The `?starter=` URL param is the only memory of it.
+- The CI E2E web server sometimes fails to fetch Google Fonts (`next/font/google queries have
+  exactly one entry`). It's a network flake: rerun the failed job.
 
 ## 🟢 Credits: a meter that never moved, and media graphs that were never checked — DONE (2026-10-14)
 
