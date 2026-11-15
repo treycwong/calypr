@@ -320,7 +320,17 @@ The code is merged and correct; nothing works until three values exist. See
             silent-swallow bug and it blocks onboarding anyone who might cancel.
       - [ ] Then re-tier per the plan doc, and note the founder account is back on `free` (which is
             the clean state Part B wants anyway).
-- [ ] **Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**
+- [x] **The live cancel is on record (checked 2026-10-14):** `stripe_event` holds
+      `evt_1UB5zOQ4CLwWKY6VaXk6Qkxw` (`customer.subscription.deleted`, 2026-09-02 04:41 UTC). A
+      row is written only after the signature verifies, so it was delivered and accepted.
+- [x] **Webhook audit done (2026-10-14): there is exactly one live destination**, at
+      `…railway.app/billing/webhook`, Active, 6 events. So the "stray second endpoint" theory is
+      wrong, and the cause of the 400s is still open. The likeliest remaining explanation is
+      unsigned requests from scanners hitting a public URL, which a 400 correctly rejects. Before
+      treating them as a problem, check their request headers for a `Stripe-Signature`. The
+      refund and the receipt were dropped by the founder's call: it was the founder's own
+      subscription. Original entry below.
+- [ ] ~~**Audit the live webhook endpoints — prod logs show interleaved `POST /billing/webhook 400`.**~~
       The 200s prove the live secret is right, so the 400s are deliveries whose signature doesn't
       verify — almost certainly a **second (test-mode) endpoint pointed at the prod URL** with the
       wrong secret. Stripe → Developers → Webhooks should list exactly one live endpoint at
@@ -533,7 +543,30 @@ Build order (each step is useful on its own):
 - [ ] **Verify the non-Anthropic prices in `pricing.py`** against provider pages. They are the
       input to *both* margin and credits now, and the OpenAI GPT-5.6 tier came from aggregators.
 
+### 3a. Pricing decisions — DECIDED (2026-10-14, by the founder)
+
+These settle the blocking questions in `calypr-cancel-proof-and-retier-plan.md`. Where they
+differ from that brief, **these win**:
+
+1. **Tiers: Free / $5 Starter / $10 Plus, as the brief proposes.** Set them up in Stripe, but
+   **preview the pricing cards with the founder before shipping**: build the `/pricing` cards
+   first and get sign-off before going live.
+2. **3D and Video are available on every plan, paid in credits.** This **reverses** the brief's
+   Plus-only node gating (B4) for these two blocks, and today's code, where
+   `entitlements.gated_nodes_in` refuses them on Free. Remove that gate. The credit gate does the
+   work instead, and it now covers media-only graphs (#103). Size the costs knowingly: an
+   Image → Video run debited ~56.5 credits in production, so Free's 100 a month buys about one.
+3. **Beta partners get Starter free for 3 months.** Needs an expiry, so this isn't just a bulk
+   plan change. Either a dated comp that the nightly cron reverts, or a Stripe trial/coupon.
+   Decide the mechanism when building it.
+4. **Generated code is Plus-only.** Today `has_roundtrip` allows `beta` and `plus`; Starter must
+   not get it, and with beta moving to Starter, beta loses it too. That settles §5's "read-only
+   code viewing" question: it stays paid.
+
 ### 4. Revisit the beta cohort (deferred by decision, 2026-07-23)
+
+**Superseded by 3a.3:** beta partners get Starter free for 3 months.
+
 
 `beta` currently means "early access, including code export" and is granted by a one-time
 invite. It needs an ending, and the mechanics now support one (`waitlist.granted_at` makes a
