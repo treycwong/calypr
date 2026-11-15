@@ -594,7 +594,7 @@ def customer_support() -> GraphSpec:
     return GraphSpec(
         id="tpl-customer-support",
         name="Customer support automation",
-        description="Triage, retrieve FAQ/ticket knowledge, respond, and escalate.",
+        description="Triage, retrieve FAQ/ticket knowledge, decide on escalation, then reply.",
         state=_RAG_STATE,
         nodes=[
             _input(),
@@ -604,21 +604,28 @@ def customer_support() -> GraphSpec:
                 "technical support, or general inquiry) and restate precisely what they need.",
             ),
             _knowledge(),
-            _role_agent(
-                "response",
-                "You are a customer support specialist. Write a personalised reply that "
-                "resolves the request using the retrieved knowledge below. Warm and concise."
-                "\n\nKnowledge:\n{{ state.context }}",
-            ),
+            # Escalation runs *before* the reply (CAL-39). It used to be the last step, so its
+            # internal summary ("the customer is experiencing…") was what the customer read, and
+            # the graph's output was the reviewer's note rather than the reply.
             _role_agent(
                 "escalation",
-                "You are an escalation reviewer. Decide whether the issue is fully resolved. If "
-                "not, summarise it for a human agent and note what is outstanding; "
-                "otherwise confirm.",
+                "You are an escalation reviewer. Using the request and the knowledge below, "
+                "decide whether a human needs to step in (refunds, account security, or anything "
+                "the knowledge doesn't cover). Write a one-line internal note: \"Handoff: yes\" or "
+                "\"Handoff: no\", and why.\n\nKnowledge:\n{{ state.context }}",
+            ),
+            _role_agent(
+                "response",
+                "You are a customer support specialist. Write a personalised reply to the "
+                "customer that resolves the request using the retrieved knowledge below. Warm "
+                "and concise. If the reviewer's note above says \"Handoff: yes\", tell the "
+                "customer a teammate will follow up, and say what you need from them. Never "
+                "mention internal notes, triage or the reviewer."
+                "\n\nKnowledge:\n{{ state.context }}",
             ),
             _output(),
         ],
-        edges=_chain("in", "intent", "knowledge", "response", "escalation", "out"),
+        edges=_chain("in", "intent", "knowledge", "escalation", "response", "out"),
         entry="in",
     )
 
