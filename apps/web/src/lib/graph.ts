@@ -363,7 +363,6 @@ export const DEFAULT_CONFIG: Record<CalyprNodeType, Record<string, unknown>> = {
     quality: "auto",
     n: 1,
     style: "",
-    use_upload: false,
   },
   tts: {
     model: "gpt-4o-mini-tts",

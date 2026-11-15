@@ -31,7 +31,7 @@ from _equivalence import topology as _topology
 from calypr_codegen import generate_python
 from calypr_compiler.golden import input_agent_output
 from calypr_dsl import GraphSpec
-from calypr_nodes import graph_channels
+from calypr_nodes import graph_channels, resolve_use_upload
 from calypr_roundtrip import parse_python
 
 
@@ -57,9 +57,11 @@ def test_topology_round_trips(graph: GraphSpec) -> None:
 @pytest.mark.parametrize("graph", CORPUS, ids=lambda g: g.id)
 def test_state_channels_round_trip(graph: GraphSpec) -> None:
     # The generated State unions node-owned channels with the spec's state, so compare against
-    # graph_channels(...) — the same augmentation the generator applies.
+    # graph_channels(...) — the same augmentation the generator applies, after the same
+    # resolution of automatic settings (an Image block feeding 3D/Video owns `images`).
     result = parse_python(generate_python(graph))
-    expected = graph_channels(graph.nodes, graph.state)
+    resolved = resolve_use_upload(graph)
+    expected = graph_channels(resolved.nodes, resolved.state)
     assert _channels(result.spec.state) == _channels(expected)
 
 

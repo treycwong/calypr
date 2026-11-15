@@ -13,7 +13,13 @@ import re
 import subprocess
 
 from calypr_dsl import SCHEMA_VERSION, GraphSpec, Reducer, StateChannel, ancestors
-from calypr_nodes import CodegenContext, get_node, graph_channels, has_node
+from calypr_nodes import (
+    CodegenContext,
+    get_node,
+    graph_channels,
+    has_node,
+    resolve_use_upload,
+)
 
 _PYTYPE: dict[str, str] = {
     "string": "str",
@@ -242,6 +248,8 @@ def _tool_router_src(fn: str, owners: str, done: str) -> str:
 
 def generate_python(graph: GraphSpec) -> str:
     """Render a complete, formatted Python module for `graph`."""
+    # Same resolution the compiler applies, so the export does what the canvas run does.
+    graph = resolve_use_upload(graph)
     fn_for: dict[str, str] = {}
     functions: list[str] = []
     imports: set[str] = {

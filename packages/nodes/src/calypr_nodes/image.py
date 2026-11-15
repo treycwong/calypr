@@ -16,7 +16,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from calypr_dsl import Reducer, StateChannel
+from calypr_dsl import GraphSpec, Reducer, StateChannel
+from calypr_model import is_image_to_video
 from langchain_core.messages import AIMessage
 from pydantic import BaseModel, Field
 
@@ -69,15 +70,65 @@ class ImageConfig(BaseModel):
             "to pass the user's prompt through unchanged."
         ),
     )
-    use_upload: bool = Field(
-        default=False,
+    use_upload: bool | None = Field(
+        default=None,
         description=(
             "When the user attaches a photo, use it instead of generating one. The block then "
             "makes nothing and costs nothing, and a media block downstream (Video, 3D) works from "
-            "the photo. Runs without an attachment generate as usual."
+            "the photo. Runs without an attachment generate as usual. Unset (the default) means "
+            "automatic: on when this block feeds an image-to-video or 3D block, off otherwise "
+            "(see `resolve_use_upload`)."
         ),
     )
     images_channel: str = "images"  # where the run seeds the uploaded image URLs (see Upload)
+
+
+def _feeds_photo_consumer(node_id: str, graph: GraphSpec) -> bool:
+    """Whether `node_id` wires straight into a block that works *from* a picture: an
+    image-to-video Video block, or a 3D block."""
+    by_id = {n.id: n for n in graph.nodes}
+    for edge in graph.edges:
+        if edge.source != node_id or edge.target not in by_id:
+            continue
+        target = by_id[edge.target]
+        cfg = target.config if isinstance(target.config, dict) else {}
+        if target.type == "mesh":
+            return True
+        if target.type == "video":
+            from calypr_nodes.video import VideoConfig  # local: video imports this module's peers
+
+            if is_image_to_video(VideoConfig.model_validate(cfg).model):
+                return True
+    return False
+
+
+def resolve_use_upload(graph: GraphSpec) -> GraphSpec:
+    """Settle every Image block's automatic `use_upload` from the wiring (CAL-61).
+
+    An Image block that feeds image-to-video or 3D is there to supply *a picture to work from*,
+    so when the user attaches one, that is the picture. Projects saved before the setting existed
+    have no value at all, and making them opt in was the bug the first fix left behind: a saved
+    Image to video project still generated a new still over the user's photo.
+
+    An explicit True/False is never changed. Called by everything that reads Image settings as a
+    whole graph (compile, code export, the credit estimate) so they cannot disagree. Returns the
+    graph unchanged when there is nothing to settle."""
+    pending = [
+        n
+        for n in graph.nodes
+        if n.type == "image"
+        and (n.config if isinstance(n.config, dict) else {}).get("use_upload") is None
+    ]
+    if not pending:
+        return graph
+    resolved = graph.model_copy(deep=True)
+    for node in resolved.nodes:
+        if node.type == "image" and (node.config or {}).get("use_upload") is None:
+            node.config = {
+                **(node.config or {}),
+                "use_upload": _feeds_photo_consumer(node.id, graph),
+            }
+    return resolved
 
 
 def _uploaded(value: Any) -> list[str]:

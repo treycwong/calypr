@@ -7,7 +7,7 @@ from calypr_nodes._context import current_node_id
 from calypr_nodes.agent import AgentConfig, AgentNode
 from calypr_nodes.code import CodeConfig, CodeNode
 from calypr_nodes.evaluator import EvaluatorConfig, EvaluatorNode
-from calypr_nodes.image import ImageConfig, ImageNode
+from calypr_nodes.image import ImageConfig, ImageNode, resolve_use_upload
 from calypr_nodes.input import InputConfig, InputNode
 from calypr_nodes.memory import MemoryConfig, MemoryNode
 from calypr_nodes.mesh import MeshConfig, MeshNode
@@ -79,6 +79,7 @@ __all__ = [
     "EvaluatorConfig",
     "ImageNode",
     "ImageConfig",
+    "resolve_use_upload",
     "MemoryNode",
     "MemoryConfig",
     "MeshNode",

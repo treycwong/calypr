@@ -25,7 +25,7 @@ from dataclasses import dataclass
 
 from calypr_dsl import GraphSpec
 from calypr_model import priced_model
-from calypr_nodes.image import ImageConfig
+from calypr_nodes.image import ImageConfig, resolve_use_upload
 from calypr_nodes.mesh import MeshConfig
 from calypr_nodes.video import VideoConfig
 
@@ -70,6 +70,7 @@ def estimate_media_credits(
 
     `has_upload`: the run carries an attached photo. An Image block set to `use_upload` then
     generates nothing (CAL-61), so it costs nothing and must not count toward the gate."""
+    graph = resolve_use_upload(graph)
     total = 0.0
     items: list[str] = []
     for node in graph.nodes:
