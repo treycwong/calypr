@@ -43,6 +43,7 @@ from calypr_api.model_access import (
 from calypr_api.posthog_client import posthog_client
 from calypr_api.provider_keys import resolve_tool_keys
 from calypr_api.schemas import RunRequest
+from calypr_api.sse import SSE_HEADERS, with_heartbeat
 
 router = APIRouter()
 
@@ -262,4 +263,8 @@ async def create_run(
             await asyncio.to_thread(convo.fail)
             yield _sse(_error_payload(exc, graph, ctx))
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # Heartbeat + no-buffer headers: a Video/3D block is silent for minutes, and a quiet stream
+    # gets held back by the proxies in front of the API, delaying node events (CAL-61).
+    return StreamingResponse(
+        with_heartbeat(event_stream()), media_type="text/event-stream", headers=SSE_HEADERS
+    )
