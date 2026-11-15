@@ -142,9 +142,13 @@ export function PlaygroundChat({
                 carded
                   ? "block w-full text-left text-sm"
                   : `inline-block max-w-[90%] rounded-lg px-3 py-2 text-left text-sm ${
-                      m.role === "user"
-                        ? "whitespace-pre-wrap bg-primary text-primary-foreground"
-                        : "bg-muted leading-relaxed"
+                      m.role !== "user"
+                        ? "bg-muted leading-relaxed"
+                        : m.images?.length
+                          ? // A sent photo sits on a dark card, not the white text bubble: white
+                            // framing a picture made it the brightest thing in the chat (CAL-61).
+                            "whitespace-pre-wrap border border-white/[0.08] bg-surface-2 text-foreground"
+                          : "whitespace-pre-wrap bg-primary text-primary-foreground"
                     }`
               }
             >
