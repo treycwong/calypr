@@ -138,26 +138,13 @@ class MeshNode(BaseNode):
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
             image_url = image_url_from(state.get(cfg.image_channel), sources)
-            # Where the image came from decides whether it is worth showing again. From the
-            # `images` channel (an Upload node) it is *not* in the transcript, so the run would
-            # otherwise never say what it was built from. From `messages` it already is — and
-            # echoing it there prints the same picture twice, which is exactly what the shipped
-            # `Image → 3D` template does.
-            # True also when `image_channel` *is* `messages` — the source is what matters, not
-            # which branch found it.
-            from_transcript = bool(image_url) and cfg.image_channel == MESSAGES
             if not image_url and cfg.image_channel != MESSAGES:
                 image_url = image_url_from(state.get(MESSAGES), sources)
-                from_transcript = bool(image_url)
             if not image_url:
                 return {}
             writer = safe_stream_writer()
-            # Show the source image *before* the call when it isn't already on screen. Generation
-            # runs tens of seconds, and this is honest progress the user can see — the poster is
-            # part of the final message anyway, so nothing extra is written to achieve it.
-            poster = "" if from_transcript else f"![source]({image_url})"
-            if poster:
-                writer({"type": "token", "text": poster + "\n\n"})
+            # No `![source](…)` echo of the picture: the user's own message already shows an
+            # upload, and an image made upstream is already in the transcript (CAL-61).
 
             result = await client.generate(
                 model=cfg.model,
@@ -206,7 +193,7 @@ class MeshNode(BaseNode):
                 )
             link = f"[⬇ Download model.glb]({stored.url})" if stored.durable else _NO_STORAGE_NOTICE
             writer({"type": "token", "text": link})
-            content = f"{poster}\n\n{link}" if poster else link
+            content = link
             return {cfg.output_channel: [AIMessage(content=content)]}
 
         return _run

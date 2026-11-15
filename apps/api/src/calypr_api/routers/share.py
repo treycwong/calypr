@@ -30,6 +30,7 @@ from calypr_api.errors import run_error_message
 from calypr_api.metering import RunRecorder
 from calypr_api.posthog_client import posthog_client
 from calypr_api.schemas import ShareRunRequest
+from calypr_api.sse import SSE_HEADERS, with_heartbeat
 
 router = APIRouter()
 
@@ -152,4 +153,8 @@ async def create_share_run(token: str, req: ShareRunRequest) -> StreamingRespons
             await asyncio.to_thread(recorder.fail)
             yield _sse({"type": "error", "message": run_error_message(exc)})
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    # Heartbeat + no-buffer headers: a Video/3D block is silent for minutes, and a quiet stream
+    # gets held back by the proxies in front of the API, delaying node events (CAL-61).
+    return StreamingResponse(
+        with_heartbeat(event_stream()), media_type="text/event-stream", headers=SSE_HEADERS
+    )

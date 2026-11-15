@@ -9,13 +9,13 @@ from calypr_nodes.mesh import MeshNode
 from langchain_core.messages import AIMessage, HumanMessage
 
 
-async def test_mesh_node_appends_source_image_and_download_link():
+async def test_mesh_node_appends_the_result_without_echoing_the_photo():
     run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
     update = await run({"images": ["https://example.test/chair.png"]})
     msgs = update["messages"]
     assert len(msgs) == 1
     assert isinstance(msgs[0], AIMessage)
-    assert "![source](https://example.test/chair.png)" in msgs[0].content
+    assert "![source]" not in msgs[0].content
     # No blob token in tests, so this run says so rather than inlining the file — see below.
     assert "storage isn\u2019t configured" in msgs[0].content
 
@@ -52,8 +52,20 @@ async def test_mesh_node_falls_back_to_the_last_markdown_image_in_messages():
 
 async def test_mesh_node_reads_plain_string_channel():
     run = MeshNode.compile(MeshConfig(model="fake", image_channel="photo"), NodeContext())
-    update = await run({"photo": "https://example.test/lamp.png"})
-    assert "![source](https://example.test/lamp.png)" in update["messages"][0].content
+    seen = {}
+
+    class _Capture:
+        async def generate(self, *, image_url, **_):
+            from calypr_model import FakeMeshClient
+
+            seen["image_url"] = image_url
+            return await FakeMeshClient().generate(image_url=image_url)
+
+    run = MeshNode.compile(
+        MeshConfig(model="fake", image_channel="photo"), NodeContext(mesh_model=_Capture())
+    )
+    await run({"photo": "https://example.test/lamp.png"})
+    assert seen["image_url"] == "https://example.test/lamp.png"
 
 
 async def test_mesh_node_no_image_is_noop():
@@ -98,10 +110,9 @@ async def test_mesh_node_emits_usage_for_metering(monkeypatch):
     assert usage[0]["input_tokens"] == 1  # one generation
     assert usage[0]["output_tokens"] == 0
 
-    # The source image streams *before* the provider call, so a run that takes tens of seconds
-    # shows something immediately rather than going silent.
+    # No echo of the photo: the user's own message already shows it (CAL-61).
     tokens = [p for p in captured if p.get("type") == "token"]
-    assert tokens[0]["text"].startswith("![source](https://example.test/chair.png)")
+    assert not any("![source]" in t["text"] for t in tokens)
 
 
 async def test_mesh_node_emits_asset_when_the_upload_is_durable(monkeypatch):
@@ -143,8 +154,7 @@ async def test_mesh_node_says_so_when_there_is_nowhere_to_store_the_mesh(monkeyp
     assert [p for p in captured if p.get("type") == "asset"] == []
     assert not any("base64" in p.get("text", "") for p in captured)
     assert "storage isn\u2019t configured" in update["messages"][0].content
-    # The source image still renders, so the run isn't a blank turn.
-    assert "![source](https://example.test/chair.png)" in update["messages"][0].content
+    assert "![source]" not in update["messages"][0].content
 
 
 async def test_fake_mesh_client_returns_a_structurally_valid_glb():
@@ -167,12 +177,13 @@ async def test_mesh_node_does_not_echo_an_image_already_in_the_transcript():
     assert "![source]" not in update["messages"][0].content
 
 
-async def test_mesh_node_echoes_an_uploaded_image():
-    """The Upload → 3D case, and why the poster exists at all: a URL seeded into `images` is not
-    in the transcript, so without this the run never says what it was built from."""
+async def test_mesh_node_does_not_echo_an_uploaded_image():
+    """The Upload → 3D case. This used to print a `![source]` poster on the reasoning that an
+    upload is not in the transcript, but the user's own message shows it, so the poster was
+    always a second copy of their photo (CAL-61)."""
     run = MeshNode.compile(MeshConfig(model="fake"), NodeContext())
     update = await run({"images": ["https://example.test/c.png"]})
-    assert "![source](https://example.test/c.png)" in update["messages"][0].content
+    assert "![source]" not in update["messages"][0].content
 
 
 async def test_mesh_node_does_not_echo_when_the_channel_is_messages_itself():

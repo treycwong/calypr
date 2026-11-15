@@ -143,17 +143,18 @@ async def test_image_to_video_with_no_image_anywhere_is_a_noop():
     assert await run({"messages": [HumanMessage(content="pan left")]}) == {}
 
 
-async def test_image_to_video_echoes_an_uploaded_image_but_not_one_already_in_the_transcript(
-    blob,
-):
-    """The poster is progress, not decoration: generation runs minutes. It is shown when the
-    source came from the `images` channel (invisible to the reader) and withheld when it came from
-    `messages` (already on screen), so `Image → Video` doesn't print the same picture twice."""
-    uploaded = _run_node(VideoConfig(model=_I2V), _Capture())
+async def test_image_to_video_never_echoes_the_picture_it_animates(blob):
+    """Neither an upload nor an image already in the transcript is printed again above the clip.
+    The upload case used to print a `![source]` poster, on the reasoning that an upload is not in
+    the transcript, but the user's own message shows it, so production showed their photo twice
+    (CAL-61). The clip is still made from the upload."""
+    capture = _Capture()
+    uploaded = _run_node(VideoConfig(model=_I2V), capture)
     out = await uploaded(
         {"images": ["https://example.com/up.png"], "messages": [HumanMessage(content="zoom in")]}
     )
-    assert "![source](https://example.com/up.png)" in out["messages"][0].content
+    assert "![source]" not in out["messages"][0].content
+    assert capture.seen["image_url"] == "https://example.com/up.png"
 
     from_chat = _run_node(VideoConfig(model=_I2V), _Capture())
     out = await from_chat(

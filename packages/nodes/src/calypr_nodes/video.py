@@ -198,30 +198,21 @@ class VideoNode(BaseNode):
             # the Input field is where a Video block gets steered.
             prompt = with_instructions(prompt, state.get(PROMPT_INSTRUCTIONS))
             image_url = ""
-            poster = ""
             if wants_image:
                 image_url = image_url_from(state.get(cfg.image_channel), sources)
-                # Where the image came from decides whether it is worth showing again. From the
-                # `images` channel (an Upload node) it is *not* in the transcript, so the run would
-                # otherwise never say what it animated. From `messages` it already is — and echoing
-                # it there prints the same picture twice, which is what `Image → Video` would do.
-                from_transcript = bool(image_url) and cfg.image_channel == MESSAGES
                 if not image_url and cfg.image_channel != MESSAGES:
                     image_url = image_url_from(state.get(MESSAGES), sources)
-                    from_transcript = bool(image_url)
                 if not image_url:
                     return {}
-                poster = "" if from_transcript else f"![source]({image_url})"
+                # No `![source](…)` echo of the picture being animated. It used to be printed
+                # when the image came from `images` (an upload), on the reasoning that an upload
+                # is not in the transcript, but the user's own message shows it (playground,
+                # share page and saved history alike), so the echo was always a second copy of
+                # their photo above the clip (CAL-61). From `messages` it was already skipped.
             if not prompt:
                 return {}
 
             writer = safe_stream_writer()
-            # Show the source frame *before* the call when it isn't already on screen. Generation
-            # runs one to three minutes — several times longer than image→3D — and this is honest
-            # progress the user can see. The poster is part of the final message anyway, so nothing
-            # extra is written to achieve it.
-            if poster:
-                writer({"type": "token", "text": poster + "\n\n"})
 
             result = await client.generate(
                 model=cfg.model,
@@ -269,8 +260,7 @@ class VideoNode(BaseNode):
                 )
             link = f"[▶ Play video.mp4]({stored.url})" if stored.durable else _NO_STORAGE_NOTICE
             writer({"type": "token", "text": link})
-            content = f"{poster}\n\n{link}" if poster else link
-            return {cfg.output_channel: [AIMessage(content=content)]}
+            return {cfg.output_channel: [AIMessage(content=link)]}
 
         return _run
 

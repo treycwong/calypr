@@ -20,6 +20,8 @@ export async function POST(req: Request, { params }: Ctx) {
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache, no-transform",
+      // Don't let a proxy hold small writes back: node events must arrive as they happen (CAL-61).
+      "x-accel-buffering": "no",
     },
   });
 }
