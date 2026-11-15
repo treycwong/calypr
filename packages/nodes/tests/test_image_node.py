@@ -19,9 +19,7 @@ async def test_image_node_appends_markdown_image():
 
 
 async def test_image_node_reads_plain_string_channel():
-    run = ImageNode.compile(
-        ImageConfig(model="fake", prompt_channel="input"), NodeContext()
-    )
+    run = ImageNode.compile(ImageConfig(model="fake", prompt_channel="input"), NodeContext())
     update = await run({"input": "a blue cat"})
     assert update["messages"][0].content.startswith("![a blue cat](")
 
@@ -70,9 +68,7 @@ async def test_image_node_emits_usage_for_metering(monkeypatch):
     """The node must emit a `{type:'usage', model, input_tokens, output_tokens}` payload with the
     keys `RunRecorder` buffers — that's the whole metering integration."""
     captured: list[dict] = []
-    monkeypatch.setattr(
-        "calypr_nodes.image.safe_stream_writer", lambda: captured.append
-    )
+    monkeypatch.setattr("calypr_nodes.image.safe_stream_writer", lambda: captured.append)
     run = ImageNode.compile(ImageConfig(model="fake"), NodeContext())
     await run({"messages": [HumanMessage(content="a fox")]})
 
@@ -120,3 +116,55 @@ async def test_image_node_emits_no_asset_without_blob_storage(monkeypatch):
     assert [p for p in captured if p.get("type") == "asset"] == []
     tokens = [p for p in captured if p.get("type") == "token"]
     assert tokens and "data:image/png;base64," in tokens[0]["text"]
+
+
+# --- CAL-61: use the attached photo instead of generating -------------------------------------
+
+
+class _Boom:
+    """An image client that fails the test if it is ever called."""
+
+    async def generate(self, **_):  # pragma: no cover - reaching here is the failure
+        raise AssertionError("generated an image although a photo was attached")
+
+
+async def test_use_upload_with_a_photo_generates_nothing():
+    """The user's photo is already on `images`, where a Video/3D block looks first. The block
+    makes nothing, writes nothing and so is never metered."""
+    run = ImageNode.compile(
+        ImageConfig(model="gpt-image-2", use_upload=True), NodeContext(image_model=_Boom())
+    )
+    update = await run(
+        {
+            "messages": [HumanMessage(content="Can you turn this image into a video?")],
+            "images": ["https://blob.example/mine.jpg"],
+        }
+    )
+    assert update == {}
+
+
+async def test_use_upload_without_a_photo_generates_as_usual():
+    run = ImageNode.compile(ImageConfig(model="fake", use_upload=True), NodeContext())
+    update = await run({"messages": [HumanMessage(content="a lion at dawn")], "images": []})
+    assert update["messages"][0].content.startswith("![a lion at dawn](")
+
+
+async def test_without_use_upload_a_photo_is_not_a_reason_to_skip():
+    """Default off: on the Image generation template an attachment must not silence the block."""
+    run = ImageNode.compile(ImageConfig(model="fake"), NodeContext())
+    update = await run(
+        {
+            "messages": [HumanMessage(content="a red bicycle")],
+            "images": ["https://blob.example/x.jpg"],
+        }
+    )
+    assert update["messages"][0].content.startswith("![a red bicycle](")
+
+
+def test_use_upload_declares_the_images_channel():
+    """Without this, a graph with no Upload block has no `images` channel and LangGraph drops the
+    attachment from the run input before any block sees it."""
+    keys = {c.key for c in ImageNode.channels(ImageConfig(use_upload=True))}
+    assert "images" in keys
+    assert "images" not in {c.key for c in ImageNode.channels(ImageConfig())}
+    assert ImageNode.reads(ImageConfig(use_upload=True)) == ["messages", "images"]

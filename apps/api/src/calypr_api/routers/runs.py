@@ -8,6 +8,7 @@ terminated by `data: [DONE]`. The web app proxies this stream to the browser.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import uuid
 from collections.abc import AsyncIterator
@@ -104,7 +105,13 @@ async def create_run(
         # run already started always finishes (`credits.debit_run` may take the balance
         # negative).
         if gate := await asyncio.to_thread(
-            run_access.check_run_gates, workspace_id, req.graph, agent_id
+            functools.partial(
+                run_access.check_run_gates,
+                workspace_id,
+                req.graph,
+                agent_id,
+                has_upload=bool(req.images),
+            )
         ):
             code, message = gate
             posthog_client.capture(

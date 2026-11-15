@@ -683,6 +683,16 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
         options={IMAGE_MODEL_OPTIONS}
         onChange={(v) => set({ model: v })}
       />
+      <SelectField
+        id="cfg-use-upload"
+        label="When a photo is attached"
+        value={config.use_upload ? "use" : "generate"}
+        options={[
+          { value: "generate", label: "Generate a new image anyway" },
+          { value: "use", label: "Use the attached photo instead" },
+        ]}
+        onChange={(v) => set({ use_upload: v === "use" })}
+      />
       <Field id="cfg-style" label="Style (applied to every prompt)">
         <Textarea
           id="cfg-style"
@@ -724,7 +734,9 @@ function ImageFields({ config, set }: { config: Config; set: Setter }) {
         />
       </Field>
       <p className="text-xs text-muted-foreground">
-        Generates an image from the incoming prompt and shows it inline. The{" "}
+        Generates an image from the incoming prompt and shows it inline. Set to use the
+        attached photo, it makes nothing and costs nothing when the user attaches one, and a Video
+        or 3D block after it works from their photo. The{" "}
         <code>fake</code> model is keyless (a tiny preview); gpt-image-* call OpenAI and are
         billed per run.
       </p>

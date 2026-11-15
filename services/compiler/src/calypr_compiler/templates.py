@@ -821,7 +821,10 @@ def image_to_video() -> GraphSpec:
     return GraphSpec(
         id="tpl-image-to-video",
         name="Image to video",
-        description="Describe a scene; get back a generated still and a video that animates it.",
+        description=(
+            "Attach a photo to animate it, or describe a scene and get a generated still and a "
+            "video that animates it."
+        ),
         state=_BASE_STATE,
         nodes=[
             _input(),
@@ -830,6 +833,10 @@ def image_to_video() -> GraphSpec:
                 type="image",
                 config={
                     "model": "gpt-image-2",
+                    # Attach a photo and it is animated as-is: no generation, no image charge.
+                    # Without this the name promised "my image" and the block made a new one
+                    # from the message text, inventing a subject when the text named none (CAL-61).
+                    "use_upload": True,
                     "style": (
                         "{prompt} — a single cinematic still frame, photographic, natural depth "
                         "of field, one clear subject, room around the subject to move within the "
