@@ -476,3 +476,51 @@ def test_free_still_runs_an_ordinary_graph(monkeypatch, ws_factory) -> None:
     monkeypatch.setattr(settings, "internal_key", "prod-key")
     wid = ws_factory(entitlements.FREE)
     assert run_access.check_run_gates(wid, input_agent_output(model="gpt-4o-mini")) is None
+
+
+# --- CAL-37: media must be covered by the balance, not just "above zero" -------------------------
+
+
+def _with_balance(ws_factory, plan: str, credits_left: float) -> uuid.UUID:
+    """A workspace whose account holds exactly `credits_left` after this month's grant."""
+    wid = ws_factory(plan)
+    with SessionLocal() as s:
+        ws = s.get(Workspace, wid)
+        acct = s.get(Account, ws.account_id)
+        credits.grant_monthly(s, acct, ref_id=f"test:{acct.id}")
+        s.flush()
+        spend = credits.balance_micro(s, acct.id) / credits.MICRO - credits_left
+        credits.debit_run(s, acct.id, spend, source="run", workspace_id=wid)
+        s.commit()
+    return wid
+
+
+@requires_db
+def test_a_video_the_balance_cannot_cover_is_refused_before_it_runs(monkeypatch, ws_factory):
+    """The CAL-9 audit: 0.90 credits left, Image to video started anyway and charged 57.09,
+    leaving the account at −56.19."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = _with_balance(ws_factory, entitlements.FREE, 0.9)
+    gate = run_access.check_run_gates(wid, _image_to_video())
+    assert gate is not None
+    code, message = gate
+    assert code == credits.INSUFFICIENT_CREDITS
+    assert "needs about 58 credits" in message
+    assert "video" in message and "0.9 left" in message
+    # Video is credit-only: "add your own API key" would be advice that doesn't work.
+    assert "API key" not in message
+
+
+@requires_db
+def test_the_same_account_can_still_run_text(monkeypatch, ws_factory):
+    """Text runs cost fractions of a credit, so a positive balance stays enough for them."""
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = _with_balance(ws_factory, entitlements.FREE, 0.9)
+    assert run_access.check_run_gates(wid, input_agent_output(model="gpt-4o-mini")) is None
+
+
+@requires_db
+def test_a_video_the_balance_covers_still_runs(monkeypatch, ws_factory):
+    monkeypatch.setattr(settings, "internal_key", "prod-key")
+    wid = _with_balance(ws_factory, entitlements.FREE, 60)
+    assert run_access.check_run_gates(wid, _image_to_video()) is None

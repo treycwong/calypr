@@ -252,8 +252,18 @@ def ensure_current_grant(session: Session, account: Account) -> bool:
     return grant_monthly(session, account, ref_id=f"cycle:{date.today():%Y-%m}")
 
 
-def check_can_run(workspace_id: uuid.UUID | None) -> str | None:
+def check_can_run(
+    workspace_id: uuid.UUID | None,
+    *,
+    media_credits: float = 0.0,
+    media_label: str = "",
+) -> str | None:
     """Why this workspace's account may not start a platform-key run, or None if it may.
+
+    `media_credits` is the run's estimated media cost (`run_cost.estimate_media_credits`). A
+    positive balance is enough for text, which costs fractions of a credit; a run with media must
+    also be *covered* by the balance, or one run can overdraw the account by a whole video
+    (CAL-37). `media_label` names what it's for in the refusal ("a 5-second 720p video").
 
     Takes a *workspace* id because that's what the hot path has, and joins to the account
     internally — credits pool per account, so which of an account's workspaces the run is in
@@ -291,8 +301,22 @@ def check_can_run(workspace_id: uuid.UUID | None) -> str | None:
             # Re-read rather than trusting `account.credit_balance_micro`: `_write` moves the
             # balance with a SQL expression and `synchronize_session=False`, so the in-memory
             # object still holds the pre-grant value.
-            if balance_micro(session, account.id) > 0:
+            balance = balance_micro(session, account.id)
+            if balance > 0 and balance >= media_credits * MICRO:
                 return None
+            if balance > 0:
+                # Credits left, but not enough for this run's media. Own-key advice would be
+                # wrong here: 3D and Video are credit-only, whatever keys are on file.
+                need = max(1, round(media_credits))
+                # "0.9 left", not "0 left": a balance that rounds to zero still reads as a bug.
+                left = balance / MICRO
+                have = f"{left:.1f}" if left < 10 else f"{int(left)}"
+                upgrade = " or upgrade for more credits" if plan == entitlements.FREE else ""
+                return (
+                    f"This run needs about {need} credits for {media_label or 'its media'}, and "
+                    f"you have {have} left this month. Try a shorter or lower-resolution clip, a "
+                    f"smaller image{upgrade}, or wait for your credits to reset next month."
+                )
             # Out of credits. Both answers name the two things that actually work from here —
             # wait for the reset, or bring a key — because the reset is a calendar month away
             # and "wait" alone is not an answer to someone mid-task. `grant_monthly` compares

@@ -46,6 +46,7 @@ from calypr_api.model_access import (
     runs_on_own_key,
 )
 from calypr_api.provider_keys import byok_providers
+from calypr_api.run_cost import MediaCost, describe, estimate_media_credits
 
 log = logging.getLogger(__name__)
 
@@ -123,6 +124,7 @@ def check_run_gates(
             ) + platform_media_models(graph, providers)
             if not on_platform:
                 return None  # every node runs on their own key — nothing of ours is being spent
+            media = estimate_media_credits(graph, providers)
     except Exception:
         log.warning("run access check failed — allowing the run", exc_info=True)
         return None
@@ -130,9 +132,17 @@ def check_run_gates(
     # Something in this graph lands on our keys, so the balance is now the question. Delegated
     # rather than reimplemented: `check_can_run` owns grant-then-check, and two copies of that
     # would eventually disagree about when a lazy grant is issued.
-    if message := credits.check_can_run(workspace_id):
+    # Media must also be *covered*, not just "balance above zero": a started run always finishes,
+    # so without this one video could overdraw a Free account by ~57 credits (CAL-37).
+    if message := _credit_check(workspace_id, media):
         return (credits.INSUFFICIENT_CREDITS, message)
     return None
+
+
+def _credit_check(workspace_id: uuid.UUID, media: MediaCost) -> str | None:
+    return credits.check_can_run(
+        workspace_id, media_credits=media.credits, media_label=describe(media.items)
+    )
 
 
 def assist_on_own_key(workspace_id: uuid.UUID | None, model_id: str) -> bool:
