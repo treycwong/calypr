@@ -15,8 +15,10 @@
 export type WorkflowPhoto = {
   src: string;
   alt: string;
-  by: string;
-  href: string;
+  /** Unsplash photographer, credited on hover and in the credits line. Omitted for Calypr's own
+   *  cover art (served from `public/workflows/`), which needs no attribution. */
+  by?: string;
+  href?: string;
 };
 
 /** Appended to attribution links — Unsplash's API guidelines require the referral params. */
@@ -59,11 +61,10 @@ export const WORKFLOW_PHOTOS: Record<string, WorkflowPhoto> = {
     by: "Will Francis - AI & Marketing",
     href: "https://unsplash.com/@willfrancis",
   },
+  // Calypr's own cover art (no photographer to credit), trialled 2026-11-15.
   "tpl-translate-speak": {
-    src: "https://images.unsplash.com/photo-1543165796-5426273eaab3?ixid=M3wxMDAzOTY3fDB8MXxzZWFyY2h8MXx8Zm9yZWlnbiUyMGxhbmd1YWdlJTIwZGljdGlvbmFyeXxlbnwxfDB8fHwxNzg3MjQwNTQ4fDA&ixlib=rb-4.1.0&w=640&q=80&fm=webp&fit=crop",
-    alt: "open Dictionary",
-    by: "Waldemar Brandt",
-    href: "https://unsplash.com/@waldemarbrandt67w",
+    src: "/workflows/translate-speak.jpg",
+    alt: "two glowing speech bubbles, A and 文, orbiting the Earth",
   },
   "tpl-label-reader": {
     src: "https://images.unsplash.com/photo-1648823161626-0e839927401b?ixid=M3wxMDAzOTY3fDB8MXxzZWFyY2h8MXx8Z3JvY2VyeSUyMHJlY2VpcHQlMjBwYXBlcnxlbnwxfDB8fHwxNzg3MjQwNTQ2fDA&ixlib=rb-4.1.0&w=640&q=80&fm=webp&fit=crop",
@@ -83,11 +84,14 @@ export const WORKFLOW_PHOTOS: Record<string, WorkflowPhoto> = {
     by: "Dan Gold",
     href: "https://unsplash.com/@danielcgold",
   },
+  // Calypr's own cover art (no photographer to credit), trialled 2026-11-15.
   "tpl-street-photography": {
-    src: "https://images.unsplash.com/photo-1687561114602-eb5701981823?ixid=M3wxMDAzOTY3fDB8MXxzZWFyY2h8MXx8c3RyZWV0JTIwcGhvdG9ncmFwaHklMjBmaWxtJTIwZ3JhaW58ZW58MXwwfHx8MTc4NzI0MDU0M3ww&ixlib=rb-4.1.0&w=640&q=80&fm=webp&fit=crop",
-    alt: "a blue car parked in front of a house",
-    by: "Matthew Woinarowicz",
-    href: "https://unsplash.com/@mattxfotographs",
+    src: "/workflows/street-photography.jpg",
+    alt: "a film camera on a ledge facing a purple city skyline at dusk",
+  },
+  "tpl-image-to-video": {
+    src: "/workflows/image-to-video.jpg",
+    alt: "a glowing play button floating over a winding purple film strip",
   },
   "tpl-market-research": {
     src: "https://images.unsplash.com/photo-1611974789855-9c2a0a7236a3?ixid=M3wxMDAzOTY3fDB8MXxzZWFyY2h8MXx8bWFya2V0JTIwcmVzZWFyY2glMjBjaGFydHN8ZW58MXwwfHx8MTc4NzI0MDU1MHww&ixlib=rb-4.1.0&w=640&q=80&fm=webp&fit=crop",

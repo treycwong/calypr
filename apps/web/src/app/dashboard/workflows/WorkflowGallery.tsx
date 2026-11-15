@@ -33,7 +33,7 @@ function WorkflowThumb({ template }: { template: Template }) {
           alt={photo.alt}
           // A native tooltip, not an overlay: it names the photographer on hover without putting
           // a second click target on a card whose whole job is to be one.
-          title={`Photo by ${photo.by} on Unsplash`}
+          title={photo.by ? `Photo by ${photo.by} on Unsplash` : undefined}
           loading="lazy"
           decoding="async"
           className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.03]"
@@ -59,7 +59,8 @@ function PhotoCredits({ templates }: { templates: Template[] }) {
   const people = new Map<string, string>();
   for (const t of templates) {
     const photo = WORKFLOW_PHOTOS[t.id];
-    if (photo) people.set(photo.by, photo.href);
+    // Only Unsplash photos owe a credit; Calypr's own cover art has no photographer.
+    if (photo?.by && photo.href) people.set(photo.by, photo.href);
   }
   if (people.size === 0) return null;
   const credits = [...people.entries()].sort(([a], [b]) => a.localeCompare(b));
