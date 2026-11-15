@@ -97,12 +97,15 @@ def _config(thread_id: str | None) -> dict:
 
 
 def _initial_state(user_input: str, images: list[str] | None) -> dict[str, Any]:
-    """Seed state for one turn. `images` (uploaded attachment URLs) is only included when
-    present so graphs without an Upload node see exactly the state they always did."""
-    state: dict[str, Any] = {"input": user_input}
-    if images:
-        state["images"] = images
-    return state
+    """Seed state for one turn, `images` included **every** turn (empty when nothing is
+    attached).
+
+    `images` is a last-value channel and the thread is checkpointed, so seeding it only when
+    present left the previous turn's photo in place: a text-only follow-up still "had" the old
+    attachment, Upload re-sent it to the model, and an Image block set to use attachments would
+    animate it again (CAL-61). A graph that declares no `images` channel ignores the key, so it
+    sees exactly the state it always did."""
+    return {"input": user_input, "images": list(images or [])}
 
 
 async def run(

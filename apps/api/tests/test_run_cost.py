@@ -59,3 +59,16 @@ def test_text_only_and_fake_media_cost_nothing():
         for n in g.nodes
     ]
     assert estimate_media_credits(g, set()).credits == 0
+
+
+def test_an_attached_photo_drops_the_image_from_the_estimate():
+    """CAL-61: Image to video animates an attached photo without generating one, so the gate
+    must not ask for the image's credits. Without a photo, it still does."""
+    with_photo = estimate_media_credits(_tpl("tpl-image-to-video"), set(), has_upload=True)
+    assert round(with_photo.credits, 2) == 54.0
+    assert with_photo.items == ("a 5-second 720p video",)
+    without = estimate_media_credits(_tpl("tpl-image-to-video"), set())
+    assert without.credits > with_photo.credits
+    # A plain Image block (use_upload off) still costs its image even when a photo is attached.
+    plain = estimate_media_credits(_tpl("tpl-image-generation"), set(), has_upload=True)
+    assert plain.credits > 0

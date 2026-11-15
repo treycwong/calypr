@@ -63,8 +63,13 @@ def _image_credits(cfg: ImageConfig) -> float:
     return pricing.credits_for(cfg.model, 0, tokens)
 
 
-def estimate_media_credits(graph: GraphSpec, providers: set[str] | None) -> MediaCost:
-    """Credits this graph's media blocks will spend on the platform's keys, at least."""
+def estimate_media_credits(
+    graph: GraphSpec, providers: set[str] | None, *, has_upload: bool = False
+) -> MediaCost:
+    """Credits this graph's media blocks will spend on the platform's keys, at least.
+
+    `has_upload`: the run carries an attached photo. An Image block set to `use_upload` then
+    generates nothing (CAL-61), so it costs nothing and must not count toward the gate."""
     total = 0.0
     items: list[str] = []
     for node in graph.nodes:
@@ -84,6 +89,8 @@ def estimate_media_credits(graph: GraphSpec, providers: set[str] | None) -> Medi
             i = ImageConfig.model_validate(cfg)
             if runs_on_own_key(i.model, providers):
                 continue  # their OpenAI key pays
+            if has_upload and i.use_upload:
+                continue  # it uses the attached photo instead of generating one
             total += _image_credits(i)
             items.append("an image")
     return MediaCost(credits=total, items=tuple(items))

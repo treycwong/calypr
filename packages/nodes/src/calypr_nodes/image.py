@@ -69,6 +69,20 @@ class ImageConfig(BaseModel):
             "to pass the user's prompt through unchanged."
         ),
     )
+    use_upload: bool = Field(
+        default=False,
+        description=(
+            "When the user attaches a photo, use it instead of generating one. The block then "
+            "makes nothing and costs nothing, and a media block downstream (Video, 3D) works from "
+            "the photo. Runs without an attachment generate as usual."
+        ),
+    )
+    images_channel: str = "images"  # where the run seeds the uploaded image URLs (see Upload)
+
+
+def _uploaded(value: Any) -> list[str]:
+    """The attached image URLs on the run's `images` channel, if any."""
+    return [u for u in (value or []) if isinstance(u, str) and u.strip()]
 
 
 def _apply_style(style: str, prompt: str) -> str:
@@ -95,7 +109,7 @@ class ImageNode(BaseNode):
 
     @classmethod
     def reads(cls, cfg: ImageConfig) -> list[str]:
-        return [cfg.prompt_channel]
+        return [cfg.prompt_channel, cfg.images_channel] if cfg.use_upload else [cfg.prompt_channel]
 
     @classmethod
     def writes(cls, cfg: ImageConfig) -> list[str]:
@@ -105,13 +119,25 @@ class ImageNode(BaseNode):
     def channels(cls, cfg: ImageConfig) -> list[StateChannel]:
         # The output is a message list (appended Markdown-image AIMessages); declare it so a
         # non-default output channel still exists even if the canvas omits it.
-        return [StateChannel(key=cfg.output_channel, type="messages", reducer=Reducer.append)]
+        channels = [StateChannel(key=cfg.output_channel, type="messages", reducer=Reducer.append)]
+        if cfg.use_upload:
+            # Declared here, exactly as Upload declares it, because a graph with no Upload block
+            # (Image to video) otherwise has no `images` channel at all, and LangGraph silently
+            # drops the attachment from the run's input before any block can see it (CAL-61).
+            channels.append(StateChannel(key=cfg.images_channel, type="list", reducer=Reducer.last))
+        return channels
 
     @classmethod
     def compile(cls, cfg: ImageConfig, ctx: NodeContext) -> NodeFn:
         client = image_model_for_node(ctx, cfg.model)
 
         async def _run(state: dict[str, Any]) -> dict[str, Any]:
+            if cfg.use_upload and _uploaded(state.get(cfg.images_channel)):
+                # Stand aside: the photo is already on the `images` channel, which is where a
+                # Video or 3D block downstream looks first. Writing nothing keeps the transcript
+                # free of a second copy (the user's own message already shows it), records no
+                # usage, and stores no asset, because nothing was made.
+                return {}
             raw = prompt_from(state.get(cfg.prompt_channel))
             if not raw:
                 return {}
@@ -190,6 +216,18 @@ class ImageNode(BaseNode):
             f'    value = state.get("{cfg.prompt_channel}")',
             "    prompt = value if isinstance(value, str) else "
             '(value[-1].content if value else "")',
+        ]
+        if cfg.use_upload:
+            # After the prompt read on purpose: `parse` takes the prompt channel from the first
+            # `state.get` and the upload channel from the second.
+            ch = cfg.images_channel
+            lines += [
+                "    # A photo was attached: use it instead of generating. A Video or 3D step",
+                f'    # reads it from "{ch}" directly, so there is nothing to make here.',
+                f'    if [u for u in (state.get("{ch}") or []) if isinstance(u, str)]:',
+                "        return {}",
+            ]
+        lines += [
             "    if not prompt:",
             "        return {}",
         ]
@@ -235,6 +273,12 @@ class ImageNode(BaseNode):
             return None
         call = gen[0]
         cfg = ImageConfig(prompt_channel=keys[0], output_channel=out, style="")
+        # The second `state.get`, when present and not the run's Prompt Instructions, is the
+        # attached-photo check that `use_upload` emits.
+        uploads = [k for k in keys[1:] if k != PROMPT_INSTRUCTIONS]
+        if uploads:
+            cfg.use_upload = True
+            cfg.images_channel = uploads[0]
         for field, attr in (("model", "model"), ("size", "size"), ("quality", "quality")):
             val = kwarg_const(call, attr)
             if isinstance(val, str):

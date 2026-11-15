@@ -73,6 +73,8 @@ def check_run_gates(
     workspace_id: uuid.UUID | None,
     graph: GraphSpec,
     agent_id: uuid.UUID | str | None = None,
+    *,
+    has_upload: bool = False,
 ) -> tuple[str, str] | None:
     """`(code, message)` explaining why this graph may not run, or None if it may.
 
@@ -124,7 +126,7 @@ def check_run_gates(
             ) + platform_media_models(graph, providers)
             if not on_platform:
                 return None  # every node runs on their own key — nothing of ours is being spent
-            media = estimate_media_credits(graph, providers)
+            media = estimate_media_credits(graph, providers, has_upload=has_upload)
     except Exception:
         log.warning("run access check failed — allowing the run", exc_info=True)
         return None
